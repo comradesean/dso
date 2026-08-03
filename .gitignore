@@ -1,0 +1,22 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.out
+
+# Runtime data (keys, config, sqlite, packet dumps)
+/data/
+
+# Go
+/vendor/
+*.test
+*.prof
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Reference material (kept out of the new project's history)
+/ref/
