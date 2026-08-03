@@ -89,12 +89,12 @@ func TestDataRoundTrip(t *testing.T) {
 	for i := 0; i < 50 && (gotClient == nil || gotServer == nil); i++ {
 		p.step(server, client)
 		if gotClient == nil {
-			if d, ok := client.Receive(); ok {
+			if d, _, ok := client.Receive(); ok {
 				gotClient = d
 			}
 		}
 		if gotServer == nil {
-			if d, ok := server.Receive(); ok {
+			if d, _, ok := server.Receive(); ok {
 				gotServer = d
 			}
 		}

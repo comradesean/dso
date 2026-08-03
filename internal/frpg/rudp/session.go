@@ -78,7 +78,7 @@ type Session struct {
 	remoteSequenceIndexAcked uint32
 
 	pendingReceive  []packet
-	received        [][]byte
+	received        []recvItem
 	sendQueue       []outPacket
 	retransmitBuf   []outPacket
 	isRetransmit    bool
@@ -144,14 +144,22 @@ func (s *Session) State() State { return s.state }
 // Err returns any fatal error the session has entered.
 func (s *Session) Err() error { return s.errState }
 
-// Receive returns the next in-order DAT payload, if any.
-func (s *Session) Receive() ([]byte, bool) {
+// recvItem is a delivered DAT payload together with the local sequence number
+// that a reply should acknowledge (DAT_ACK).
+type recvItem struct {
+	data   []byte
+	ackSeq uint32
+}
+
+// Receive returns the next in-order DAT payload and the sequence a reply should
+// acknowledge.
+func (s *Session) Receive() (data []byte, ackSeq uint32, ok bool) {
 	if len(s.received) == 0 {
-		return nil, false
+		return nil, 0, false
 	}
 	p := s.received[0]
 	s.received = s.received[1:]
-	return p, true
+	return p.data, p.ackSeq, true
 }
 
 func (s *Session) nextRemoteSequence() uint32 { return (s.remoteSequenceIndex + 1) % maxAckValue }
@@ -165,8 +173,13 @@ func (s *Session) Connect() {
 
 // SendData queues an application payload for reliable delivery as a DAT packet.
 func (s *Session) SendData(payload []byte) {
-	p := packet{opcode: OpUnset, payload: payload}
-	s.enqueue(p)
+	s.enqueue(packet{opcode: OpUnset, payload: payload})
+}
+
+// SendDataAck queues an application payload as a DAT_ACK that also acknowledges
+// the remote sequence ackRemote (used for replies).
+func (s *Session) SendDataAck(payload []byte, ackRemote uint32) {
+	s.enqueue(packet{opcode: OpUnset, remote: ackRemote, payload: payload})
 }
 
 // enqueue implements the reference Send(): sequenced/unset opcodes go through the
@@ -293,7 +306,7 @@ func (s *Session) processPacket(p packet) {
 	case OpDATACK:
 		s.handleAckLike(p.remote)
 		s.sendACK(p.local)
-		s.received = append(s.received, p.payload)
+		s.received = append(s.received, recvItem{data: p.payload, ackSeq: p.local})
 	case OpRACK:
 		// "Reject ACK" — ignored.
 	default:
@@ -315,7 +328,7 @@ func (s *Session) handleSYNACK(p packet) {
 }
 
 func (s *Session) handleDAT(p packet) {
-	s.received = append(s.received, p.payload)
+	s.received = append(s.received, recvItem{data: p.payload, ackSeq: p.local})
 	s.sendACK(p.local)
 }
 
