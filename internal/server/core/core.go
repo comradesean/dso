@@ -13,6 +13,8 @@ import (
 
 	"github.com/sstreight/dso/internal/config"
 	"github.com/sstreight/dso/internal/crypto/keys"
+	"github.com/sstreight/dso/internal/identity"
+	"github.com/sstreight/dso/internal/server/authtoken"
 )
 
 // Service is a long-running server component (login, auth, game).
@@ -28,16 +30,44 @@ type Server struct {
 	Logger *slog.Logger
 	Key    *rsa.PrivateKey
 
+	// Tokens maps a game-server auth token to its CWC key; written by the auth
+	// service, read by the game service.
+	Tokens *authtoken.Registry
+	// Auth validates platform tickets.
+	Auth identity.Validator
+
 	services []Service
 }
 
-// New constructs a server, loading or generating the RSA key pair.
+// New constructs a server, loading or generating the RSA key pair and selecting
+// the ticket validator from configuration.
 func New(cfg config.Config, logger *slog.Logger) (*Server, error) {
 	key, err := keys.LoadOrGenerate(cfg.PrivateKeyPath(), cfg.PublicKeyPath(), 2048)
 	if err != nil {
 		return nil, fmt.Errorf("core: load key: %w", err)
 	}
-	return &Server{Config: cfg, Logger: logger, Key: key}, nil
+	validator, err := newValidator(cfg.AuthModeValue)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{
+		Config: cfg,
+		Logger: logger,
+		Key:    key,
+		Tokens: authtoken.NewRegistry(),
+		Auth:   validator,
+	}, nil
+}
+
+// newValidator selects a ticket validator. Only the no-op validator is wired up
+// for now; psn/steam are future work.
+func newValidator(mode config.AuthMode) (identity.Validator, error) {
+	switch mode {
+	case config.AuthNoop, "":
+		return identity.Noop{}, nil
+	default:
+		return nil, fmt.Errorf("core: auth mode %q not implemented yet", mode)
+	}
 }
 
 // AddService registers a service to be run by Run.
