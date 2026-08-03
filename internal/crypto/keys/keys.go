@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 )
@@ -22,12 +23,75 @@ const (
 )
 
 // Generate creates a new RSA key pair with the given modulus size (public
-// exponent 65537, matching the reference server).
+// exponent 65537, matching the reference PC server).
 func Generate(bits int) (*rsa.PrivateKey, error) {
 	if bits == 0 {
 		bits = defaultBits
 	}
 	return rsa.GenerateKey(rand.Reader, bits)
+}
+
+// GenerateWithExponent creates an RSA key pair with a specific public exponent.
+// The standard library only supports e=65537; e=3 is needed to match the
+// Dark Souls 2 PS3 client, whose embedded keys use exponent 3 (so our
+// replacement public key is byte-length-identical for an in-place patch).
+func GenerateWithExponent(bits, e int) (*rsa.PrivateKey, error) {
+	if bits == 0 {
+		bits = defaultBits
+	}
+	if e == 0 || e == 65537 {
+		return Generate(bits)
+	}
+	return generateSmallExponent(bits, e)
+}
+
+func generateSmallExponent(bits, e int) (*rsa.PrivateKey, error) {
+	eBig := big.NewInt(int64(e))
+	one := big.NewInt(1)
+	for attempt := 0; attempt < 1000; attempt++ {
+		p, err := rand.Prime(rand.Reader, bits/2)
+		if err != nil {
+			return nil, err
+		}
+		q, err := rand.Prime(rand.Reader, bits/2)
+		if err != nil {
+			return nil, err
+		}
+		if p.Cmp(q) == 0 {
+			continue
+		}
+		p1 := new(big.Int).Sub(p, one)
+		q1 := new(big.Int).Sub(q, one)
+		// e must be coprime to (p-1) and (q-1).
+		if new(big.Int).GCD(nil, nil, eBig, p1).Cmp(one) != 0 {
+			continue
+		}
+		if new(big.Int).GCD(nil, nil, eBig, q1).Cmp(one) != 0 {
+			continue
+		}
+		n := new(big.Int).Mul(p, q)
+		if n.BitLen() != bits {
+			continue
+		}
+		// d = e^-1 mod lcm(p-1, q-1).
+		g := new(big.Int).GCD(nil, nil, p1, q1)
+		lcm := new(big.Int).Div(new(big.Int).Mul(p1, q1), g)
+		d := new(big.Int).ModInverse(eBig, lcm)
+		if d == nil {
+			continue
+		}
+		key := &rsa.PrivateKey{
+			PublicKey: rsa.PublicKey{N: n, E: e},
+			D:         d,
+			Primes:    []*big.Int{p, q},
+		}
+		key.Precompute()
+		if err := key.Validate(); err != nil {
+			continue
+		}
+		return key, nil
+	}
+	return nil, errors.New("keys: failed to generate key with requested exponent")
 }
 
 // PrivatePEM encodes a private key as PKCS#1 PEM.
