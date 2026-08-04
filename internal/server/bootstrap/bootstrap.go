@@ -31,9 +31,15 @@ func New(srv *core.Server) *Service { return &Service{srv: srv} }
 // Name implements core.Service.
 func (s *Service) Name() string { return "bootstrap-http" }
 
-// Serve listens on the configured HTTP port until ctx is cancelled.
+// Serve listens on the configured HTTP port until ctx is cancelled. It binds the
+// advertised address specifically (the IP the client is redirected to), which
+// also avoids clashing with any other :80 listener on a different interface.
 func (s *Service) Serve(ctx context.Context) error {
-	addr := fmt.Sprintf("%s:%d", s.srv.Config.BindAddress, s.srv.Config.BootstrapHTTPPort)
+	bindHost := s.srv.Config.AdvertiseAddress
+	if bindHost == "" {
+		bindHost = s.srv.Config.BindAddress
+	}
+	addr := fmt.Sprintf("%s:%d", bindHost, s.srv.Config.BootstrapHTTPPort)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		// Port 80 needs privilege. Log an actionable message but do NOT fail the
