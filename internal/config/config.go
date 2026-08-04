@@ -62,6 +62,10 @@ type Config struct {
 
 	LogLevel  string
 	LogFormat string // "text" or "json"
+
+	// DebugRaw hexdumps all raw bytes on the login/auth connections, for
+	// reverse-engineering an unknown client's wire format.
+	DebugRaw bool
 }
 
 // Default returns the baseline configuration (DS2 on PS3, lenient auth for
@@ -109,6 +113,7 @@ func Load() (Config, error) {
 	c.AppVersionMax = envUint("DSO_AUTH_APP_VERSION_MAX", c.AppVersionMax)
 	c.LogLevel = envStr("DSO_LOGGING_LEVEL", c.LogLevel)
 	c.LogFormat = envStr("DSO_LOGGING_FORMAT", c.LogFormat)
+	c.DebugRaw = envBool("DSO_DEBUG_RAW", c.DebugRaw)
 
 	if err := c.Validate(); err != nil {
 		return Config{}, err

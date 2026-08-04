@@ -15,6 +15,7 @@ import (
 
 	"github.com/sstreight/dso/internal/crypto/frpgcipher"
 	"github.com/sstreight/dso/internal/frpg/message"
+	"github.com/sstreight/dso/internal/netdebug"
 	"github.com/sstreight/dso/internal/proto/sharedpb"
 	"github.com/sstreight/dso/internal/server/core"
 )
@@ -62,6 +63,11 @@ func (s *Service) Serve(ctx context.Context) error {
 func (s *Service) handle(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	log := s.srv.Logger.With("service", "login", "peer", conn.RemoteAddr().String())
+	log.Info("login connection opened")
+
+	if s.srv.Config.DebugRaw {
+		conn = netdebug.Wrap(conn, log)
+	}
 
 	stream := message.NewStream(conn)
 	enc, dec := frpgcipher.NewRSAServer(s.srv.Key)
