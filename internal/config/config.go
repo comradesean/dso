@@ -74,6 +74,14 @@ type Config struct {
 	BootstrapHTTPEnabled  bool
 	BootstrapHTTPPort     int
 	BootstrapContentsFile string
+
+	// DNS redirect: on a real PS3 (no IP/Hosts switch) the console is pointed at
+	// this DNS server, which answers the FromSoftware hostnames with our
+	// advertise address and forwards everything else upstream.
+	DNSEnabled       bool
+	DNSPort          int
+	DNSUpstream      string
+	DNSRedirectHosts []string
 }
 
 // Default returns the baseline configuration (DS2 on PS3, lenient auth for
@@ -98,6 +106,12 @@ func Default() Config {
 		LogLevel:          "info",
 		LogFormat:         "text",
 		BootstrapHTTPPort: 80,
+		DNSPort:           53,
+		DNSUpstream:       "8.8.8.8:53",
+		DNSRedirectHosts: []string{
+			"frpg2-ps3-ope.fromsoftware.jp",
+			"frpg2-ps3-internal.s3-website-us-west-2.amazonaws.com",
+		},
 	}
 }
 
@@ -126,6 +140,9 @@ func Load() (Config, error) {
 	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)
 	c.BootstrapHTTPPort = envInt("DSO_BOOTSTRAP_HTTP_PORT", c.BootstrapHTTPPort)
 	c.BootstrapContentsFile = envStr("DSO_BOOTSTRAP_CONTENTS_FILE", c.BootstrapContentsFile)
+	c.DNSEnabled = envBool("DSO_DNS", c.DNSEnabled)
+	c.DNSPort = envInt("DSO_DNS_PORT", c.DNSPort)
+	c.DNSUpstream = envStr("DSO_DNS_UPSTREAM", c.DNSUpstream)
 
 	if err := c.Validate(); err != nil {
 		return Config{}, err
