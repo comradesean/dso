@@ -35,9 +35,15 @@ func New(srv *core.Server) *Service {
 // Name implements core.Service.
 func (s *Service) Name() string { return "dns" }
 
-// Serve runs the UDP and TCP DNS listeners until ctx is cancelled.
+// Serve runs the UDP and TCP DNS listeners until ctx is cancelled. It binds the
+// advertise address specifically (the IP the console queries), avoiding a clash
+// with systemd-resolved on 127.0.0.53 / the WSL gateway.
 func (s *Service) Serve(ctx context.Context) error {
-	addr := fmt.Sprintf("%s:%d", s.srv.Config.BindAddress, s.srv.Config.DNSPort)
+	bindHost := s.srv.Config.AdvertiseAddress
+	if bindHost == "" {
+		bindHost = s.srv.Config.BindAddress
+	}
+	addr := fmt.Sprintf("%s:%d", bindHost, s.srv.Config.DNSPort)
 	mux := dns.NewServeMux()
 	mux.HandleFunc(".", s.handle)
 
