@@ -66,6 +66,14 @@ type Config struct {
 	// DebugRaw hexdumps all raw bytes on the login/auth connections, for
 	// reverse-engineering an unknown client's wire format.
 	DebugRaw bool
+
+	// Bootstrap HTTP: the DS2 PS3 client does an HTTP "calibration" check before
+	// going online. BootstrapHTTPEnabled starts an HTTP server (port 80 by
+	// default, needs privilege) that answers it; BootstrapContentsFile is an
+	// optional file served for the contents request.
+	BootstrapHTTPEnabled  bool
+	BootstrapHTTPPort     int
+	BootstrapContentsFile string
 }
 
 // Default returns the baseline configuration (DS2 on PS3, lenient auth for
@@ -89,6 +97,7 @@ func Default() Config {
 		EnforceAppVersion: false,
 		LogLevel:          "info",
 		LogFormat:         "text",
+		BootstrapHTTPPort: 80,
 	}
 }
 
@@ -114,6 +123,9 @@ func Load() (Config, error) {
 	c.LogLevel = envStr("DSO_LOGGING_LEVEL", c.LogLevel)
 	c.LogFormat = envStr("DSO_LOGGING_FORMAT", c.LogFormat)
 	c.DebugRaw = envBool("DSO_DEBUG_RAW", c.DebugRaw)
+	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)
+	c.BootstrapHTTPPort = envInt("DSO_BOOTSTRAP_HTTP_PORT", c.BootstrapHTTPPort)
+	c.BootstrapContentsFile = envStr("DSO_BOOTSTRAP_CONTENTS_FILE", c.BootstrapContentsFile)
 
 	if err := c.Validate(); err != nil {
 		return Config{}, err

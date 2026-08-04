@@ -15,6 +15,7 @@ import (
 	"github.com/sstreight/dso/internal/crypto/keys"
 	"github.com/sstreight/dso/internal/logging"
 	"github.com/sstreight/dso/internal/server/auth"
+	"github.com/sstreight/dso/internal/server/bootstrap"
 	"github.com/sstreight/dso/internal/server/core"
 	"github.com/sstreight/dso/internal/server/login"
 )
@@ -52,6 +53,9 @@ func run() error {
 
 	srv.AddService(login.New(srv))
 	srv.AddService(auth.New(srv))
+	if cfg.BootstrapHTTPEnabled {
+		srv.AddService(bootstrap.New(srv))
+	}
 	// the game (UDP) service is added as it is implemented.
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
