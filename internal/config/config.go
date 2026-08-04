@@ -68,11 +68,15 @@ type Config struct {
 // bring-up).
 func Default() Config {
 	return Config{
-		Game:              GameDarkSouls2,
-		Platform:          PlatformPS3,
-		BindAddress:       "0.0.0.0",
-		AdvertiseAddress:  "127.0.0.1",
-		LoginPort:         50050,
+		Game:             GameDarkSouls2,
+		Platform:         PlatformPS3,
+		BindAddress:      "0.0.0.0",
+		AdvertiseAddress: "127.0.0.1",
+		// Dark Souls 2 PS3 clients read the login server from Network/SvrList.list,
+		// which points at frpg2-ps3-ope.fromsoftware.jp:50011. Redirect that host
+		// to us and listen on 50011. Auth/game ports are ours to choose (they are
+		// handed to the client in the login/auth responses).
+		LoginPort:         50011,
 		AuthPort:          50000,
 		GamePort:          50010,
 		KeyDir:            "data/keys",
