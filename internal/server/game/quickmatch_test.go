@@ -73,19 +73,25 @@ func TestArenaSearchFindsRegisteredOpponent(t *testing.T) {
 	}
 }
 
-// TestArenaSearchFiltersByModeAndCell — the arena has two game modes and several
-// locations, and mixing them would match players into the wrong bracket.
-func TestArenaSearchFiltersByModeAndCell(t *testing.T) {
+// TestArenaSearchFiltersByVenueNotByMap — the venue is area plus mode, and mixing
+// venues would match players into the wrong arena entirely.
+//
+// The cell is deliberately NOT a filter. It selects the map (one of three statues
+// per arena), and the documented behaviour is to pair across maps when nobody is
+// queued at yours. An earlier version of this test asserted the opposite and was
+// encoding a bug: two players at different statues could see each other and never
+// meet.
+func TestArenaSearchFiltersByVenueNotByMap(t *testing.T) {
 	svc, log, host, joiner := signTestService(t)
 	registerArena(t, svc, log, host, ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood)
 
 	if got := searchArena(t, svc, log, joiner,
 		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, arenaCell); len(got) != 0 {
-		t.Errorf("Blue search returned %d Brotherhood registrations", len(got))
+		t.Errorf("Blue venue returned %d Brotherhood registrations", len(got))
 	}
 	if got := searchArena(t, svc, log, joiner,
-		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell+1); len(got) != 0 {
-		t.Errorf("search of a different cell returned %d registrations", len(got))
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell+1); len(got) != 1 {
+		t.Errorf("a different statue in the same arena returned %d opponents, want 1", len(got))
 	}
 }
 
@@ -275,5 +281,72 @@ func TestEveryAliasIsWithinItsBlock(t *testing.T) {
 				t.Errorf("quickMatch(%d,%d) = %#04x, outside 0x03E0-0x03E7", mode, role, got)
 			}
 		}
+	}
+}
+
+// TestArenaPrefersOwnMapButStillPairsAcross covers the three-statue behaviour.
+//
+// Each arena has three statues, each a vote for a different map. You are matched
+// at your own map when someone is queued there, and paired across maps when
+// nobody is. A strict cell filter would leave two players queued at different
+// statues waiting forever while each was visible to the other.
+func TestArenaPrefersOwnMapButStillPairsAcross(t *testing.T) {
+	svc, log, host, joiner := signTestService(t)
+	const otherStatue = arenaCell + 10
+
+	// Only the other statue has anyone queued.
+	registerArenaAt(t, svc, log, host, otherStatue,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood)
+
+	got := searchArena(t, svc, log, joiner,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell)
+	if len(got) != 1 {
+		t.Fatalf("found %d opponents at another statue, want 1 — players at "+
+			"different statues in the same arena must still be able to meet", len(got))
+	}
+
+	// With both statues occupied, the caller's own map must come first.
+	third := newTestSession("samestatue", 3)
+	svc.sessions["third"] = third
+	registerArenaAt(t, svc, log, third, arenaCell,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood)
+
+	got = searchArena(t, svc, log, joiner,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell)
+	if len(got) < 2 {
+		t.Fatalf("found %d opponents, want both", len(got))
+	}
+	if uint32(got[0].GetPlayerId()) != third.playerID {
+		t.Errorf("first result is player %d, want %d — the caller's own map should "+
+			"be preferred over a cross-map pairing", got[0].GetPlayerId(), third.playerID)
+	}
+}
+
+// TestArenaStillSeparatesVenues — preferring rather than filtering on the cell
+// must not merge the two arenas, which are distinguished by area and mode.
+func TestArenaStillSeparatesVenues(t *testing.T) {
+	svc, log, host, joiner := signTestService(t)
+	registerArenaAt(t, svc, log, host, arenaCell,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood)
+
+	if got := searchArena(t, svc, log, joiner,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, arenaCell); len(got) != 0 {
+		t.Errorf("Blue venue returned %d Brotherhood registrations", len(got))
+	}
+}
+
+func registerArenaAt(t *testing.T, svc *Service, log logger, cs *clientSession, cell int64, mode ds2pb.QuickMatchGameMode) {
+	t.Helper()
+	raw, err := proto.Marshal(&ds2pb.RequestRegisterQuickMatch{
+		OnlineAreaId:      proto.Int64(arenaArea),
+		CellId:            proto.Int64(cell),
+		MatchingParameter: testMatchingParameter(),
+		Mode:              mode.Enum(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.handleRegisterQuickMatch(log, cs, raw); err != nil {
+		t.Fatal(err)
 	}
 }

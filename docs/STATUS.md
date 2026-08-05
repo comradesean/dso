@@ -41,7 +41,7 @@ stretch.
 | Mirror Knight (7 opcodes) | **Working** | Two full fights completed live, both outcomes |
 | Reliable-UDP under load | **Working** | 3-minute fight, no stalls; NACK-driven retransmit |
 | Visitors (3 opcodes) | Implemented | Unit-tested; **push ids unverified** |
-| Duelling arenas (6 opcodes) | Implemented | Unit-tested; push ids well-evidenced |
+| Duelling arenas (6 opcodes) | **Working** | A full duel completed at Undead Purgatory |
 | Champion's Tablet ranking (4 opcodes) | Implemented | Unit-tested; persisted |
 | Keepalive + bandwidth (4 opcodes) | Implemented | `ServerPing` had been going unanswered |
 | Telemetry notifies (8 opcodes) | Implemented | Kill/purchase counters persisted |

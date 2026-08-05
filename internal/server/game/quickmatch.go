@@ -128,19 +128,44 @@ func (q *quickMatchStore) remove(playerID uint32) (*quickMatch, bool) {
 	return m, ok
 }
 
-// search returns registrations at a location, excluding the searcher's own.
+// search returns opponents at a venue, preferring the caller's own map.
+//
+// Each arena has THREE STATUES, and praying at one is a vote for a different map
+// — on the Brotherhood side a bridge over a lethal drop, a two-level labyrinth,
+// and a circular scaffolded stage. The documented behaviour is that you are
+// matched at your own map when someone is queued there, and paired across maps
+// when nobody is, with the higher covenant rank deciding which map is used.
+//
+// So the match is on area and mode (the venue), with the cell ordered first
+// rather than filtered on. A strict cell filter would leave two players queued at
+// different statues waiting forever while each was visible to the other.
+//
+// WHICH FIELD CARRIES THE STATUE IS UNCONFIRMED. cell_id is the only per-venue
+// field the request has and is the obvious candidate — the schema's own samples
+// pair area 10230000 with cell 102350 and area 10310000 with cell 103140 — but we
+// have only ever observed one cell per venue live, because both test clients used
+// the same statue. If a capture shows the cell fixed per venue, the statue is
+// carried elsewhere (most likely inside the opaque MatchingParameter) and this
+// ordering becomes a no-op rather than a wrong answer.
 func (q *quickMatchStore) search(areaID, cellID int64, mode ds2pb.QuickMatchGameMode, exclude uint32, limit int) []*quickMatch {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	var out []*quickMatch
+
+	var sameCell, otherCell []*quickMatch
 	for _, m := range q.byPlayer {
-		if m.playerID == exclude || m.areaID != areaID || m.cellID != cellID || m.mode != mode {
+		if m.playerID == exclude || m.areaID != areaID || m.mode != mode {
 			continue
 		}
-		out = append(out, m)
-		if limit > 0 && len(out) >= limit {
-			break
+		if m.cellID == cellID {
+			sameCell = append(sameCell, m)
+		} else {
+			otherCell = append(otherCell, m)
 		}
+	}
+
+	out := append(sameCell, otherCell...)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
 	return out
 }
@@ -235,9 +260,18 @@ func (s *Service) handleSearchQuickMatch(log logger, cs *clientSession, payload 
 		matches = append(matches, m.toProto())
 	}
 
+	// Log whether any result came from a different statue, since that is the
+	// evidence needed to confirm what cell_id actually encodes.
+	crossMap := 0
+	for _, m := range found {
+		if m.cellID != req.GetCellId() {
+			crossMap++
+		}
+	}
 	log.Info("quick match search",
 		"player_id", cs.playerID, "area_id", req.GetOnlineAreaId(),
-		"cell_id", req.GetCellId(), "mode", req.GetMode(), "returned", len(matches))
+		"cell_id", req.GetCellId(), "mode", req.GetMode(),
+		"returned", len(matches), "cross_map", crossMap)
 
 	return proto.Marshal(&ds2pb.RequestSearchQuickMatchResponse{Matches: matches})
 }

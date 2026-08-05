@@ -131,8 +131,25 @@ Push ids are much better evidenced than the Visitor block: the PC enum's four va
 complete registration pass. `PushRequestAllowQuickMatch` is deliberately never sent — acceptance
 is built by the host's client and tunnelled through the `0x0320` relay, as with invasions.
 
-**Known gap:** each arena has three statues selecting the map, and nothing in
-`RequestRegisterQuickMatch` carries that choice.
+**Confirmed live** — a full duel completed at Undead Purgatory, push id `0x03E1`, no transport
+stalls.
+
+**The three statues are handled.** Each arena has three statues by the bonfire, each a vote for a
+different map: on the Brotherhood side a long bridge over a lethal drop, a two-level labyrinth,
+and a large circular scaffolded stage. You are matched at your own map when someone is queued
+there and paired across maps when nobody is, with the higher covenant rank deciding which map is
+used. Matching therefore orders by cell rather than filtering on it — a strict filter left two
+players at different statues visible to each other and never able to meet.
+
+**Which field carries the statue is still unconfirmed.** `cell_id` is the only per-venue field the
+request has and the schema's samples pair area `10230000` with cell `102350` and area `10310000`
+with cell `103140` — but only one cell per venue has ever been observed live, because both test
+clients used the same statue. Registering at a *different* statue and watching the logged
+`cell_id` settles it in one attempt. If the cell turns out fixed per venue, the statue rides in
+the opaque `MatchingParameter` and the ordering becomes a harmless no-op.
+
+**Not implemented:** the higher-ranked player's map choice deciding the venue. Covenant rank is
+not tracked, and map selection is most likely negotiated client-to-client after the join.
 
 ## 6. ~~Mirror Knight~~ — DONE (2026-08-05)
 
