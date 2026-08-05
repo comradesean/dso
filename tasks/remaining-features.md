@@ -8,7 +8,7 @@ Derived from `docs/protocol-map-ps3.md` (decompilation-derived, authoritative fo
 cross-referenced against `ref/ds3os`, and against what `internal/server/game/boot.go` actually
 dispatches.
 
-**59 of 95 live opcodes are implemented.** Everything below is present in the retail client and
+**65 of 95 live opcodes are implemented.** Everything below is present in the retail client and
 currently unanswered. An unanswered request/response opcode is not harmless: the client retries
 silently and **will not open other online UI while one is outstanding**, which is how several
 "broken menu" symptoms were eventually explained.
@@ -52,9 +52,12 @@ Implemented in `internal/server/game/telemetry.go`. `RequestNotifyKillEnemy` and
 `RequestNotifyBuyItem` feed the `counters` table alongside the death counter, reusing its clamp on
 client-supplied counts.
 
-**`RequestNotifyRingBell` (`0x03EE`) deserves attention beyond logging** — it is the best-named
-candidate for the event-item chest trigger (see `tasks/calibration-reverse-engineering.md`).
-Log its full payload before deciding what it does.
+**`RequestNotifyRingBell` (`0x03EE`) is NOT the event-chest trigger** — that hypothesis is dead.
+DS2 has exactly two bells (Belfry Luna, Belfry Sol) and each is a lever that opens a gate.
+Ringing does not trigger or affect Bell Keeper invasions, which fire on the host's presence in the
+belfry, and the Majula mansion has no bell at all. DS2 dropped DS1's persistent bell-flag model.
+It is almost certainly plain telemetry, in the same family as `NotifyKillEnemy`/`NotifyBuyItem`.
+See `docs/features.md`.
 
 ## 3. ~~Player characters + persistence~~ — DONE (2026-08-05)
 
@@ -108,15 +111,28 @@ to know which host a departing player was in, and no visit session is tracked. T
 on the clients' own timeout instead — the natural companion to the visit-session concept
 QuickMatch will need anyway.
 
-## 5. Quick match  — the largest remaining mode
+## 5. ~~Quick match~~ — DONE (2026-08-05)
 
 | Opcode | Message |
 |---|---|
 | `0x03D9`–`0x03DE` | Register / Unregister / Update / Search / Join / Reject |
 | `0x03E0`–`0x03E7` | QuickMatch push block (8 aliases, unassigned) |
 
-ds3os `DS2_QuickMatchManager`, 12 handlers / 382 lines. This is the arena (Undead Match). Needs a
-match-session concept we do not have yet.
+Implemented in `internal/server/game/quickmatch.go`. DS2's 1v1 duelling arenas — "Undead Match"
+is DS3 terminology and does not apply. `QuickMatchGameMode` names a **venue**, not a format: Blue
+(0) is the Cathedral of Blue, Brotherhood (1) is Undead Purgatory.
+
+Unlike every other mode this one is *advertised* rather than brokered, so it keeps state: a player
+registers and stays registered until they withdraw or disconnect. Filtering is by area, cell and
+mode, which is the whole filter — Soul Memory is ignored in arenas.
+
+Push ids are much better evidenced than the Visitor block: the PC enum's four values
+(`0x03E1`/`0x03E3`/`0x03E5`/`0x03E7`) are **all odd**, and the decompilation records the odds as a
+complete registration pass. `PushRequestAllowQuickMatch` is deliberately never sent — acceptance
+is built by the host's client and tunnelled through the `0x0320` relay, as with invasions.
+
+**Known gap:** each arena has three statues selecting the map, and nothing in
+`RequestRegisterQuickMatch` carries that choice.
 
 ## 6. ~~Mirror Knight~~ — DONE (2026-08-05)
 
@@ -125,6 +141,10 @@ match-session concept we do not have yet.
 | `0x039E`–`0x03A4` | Create / Update / Remove / GetList / Summon / Reject |
 | `0x03A5`–`0x03A7` | Summon / Reject / Remove pushes |
 | `0x03D8` | `RequestNotifyMirrorKnight` (M) |
+
+The Looking Glass Knight in King's Passage, Drangleic Castle — NOT Belfry Sol. The summoned
+player is hostile and fights for the boss, volunteering via a Red Sign Soapstone sign left
+anywhere in the castle, which is why the create message carries no area or cell.
 
 Implemented in `internal/server/game/mirrorknight.go`. Reuses `signStore` with a **disjoint id
 range** (`firstMirrorKnightSignID = 500000`) — both stores seed independently, so sharing the
@@ -136,7 +156,7 @@ carries no area or cell, so listing cannot filter by position. `SignData` still 
 `online_area_id`, `cell_id` and `sign_type`, so those go out as zero — absent required fields
 would be rejected outright.
 
-Not yet confirmed in-game: needs two clients at Belfry Sol.
+Not yet confirmed in-game: needs two clients at Drangleic Castle's King's Passage.
 
 ## 7. ~~Power stone ranking~~ — DONE (2026-08-05)
 

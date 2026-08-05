@@ -11,7 +11,16 @@ import (
 	"github.com/sstreight/dso/internal/server/store"
 )
 
-// Power-stone ranking opcodes — the leaderboard.
+// Power-stone ranking opcodes — the Champion's Tablet.
+//
+// No item called a "Power Stone" exists in DS2; the protocol name is
+// FromSoftware's. In game this is the Victor's Stone in the Undead Purgatory
+// area, whose tablet lists the TOP 100 players by Awestones offered, with names.
+// That top-100 cap is why the client pages (offset/count) and asks for a record
+// count separately, and why submissions carry an increment rather than a total.
+//
+// The displayed name almost certainly rides in the opaque `data` blob, which we
+// store and echo without interpreting.
 //
 // All four are request/response and must be answered. The board is persisted:
 // a leaderboard that resets whenever the server restarts is not a leaderboard.
@@ -30,8 +39,9 @@ const (
 // batch.
 const maxScoreIncrement = 1000000
 
-// maxRankingPage bounds how many rows one request can pull back. The client asks
-// for a page; an absurd count would build an enormous reply.
+// maxRankingPage bounds how many rows one request can pull back. It matches the
+// tablet's own top-100 display, and guards against an absurd count building an
+// enormous reply.
 const maxRankingPage = 100
 
 // rankingToProto renders a stored board row for the wire.

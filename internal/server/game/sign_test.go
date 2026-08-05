@@ -22,6 +22,7 @@ func signTestService(t *testing.T) (*Service, logger, *clientSession, *clientSes
 		srv:          &core.Server{Config: config.Default(), Logger: log},
 		signs:        newSignStore(),
 		mirrorKnight: newSignStoreFrom(firstMirrorKnightSignID),
+		quickMatch:   newQuickMatchStore(),
 		sessions:     make(map[string]*clientSession),
 	}
 

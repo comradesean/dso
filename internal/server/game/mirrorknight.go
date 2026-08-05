@@ -10,11 +10,15 @@ import (
 
 // Mirror Knight opcodes.
 //
-// This is the Belfry Sol arena: players place a sign to be summoned as a phantom
-// during the Mirror Knight boss fight. Mechanically it is the summon-sign system
-// with one structural difference — there is no placement. RequestCreateMirrorKnightSign
-// carries no online_area_id and no cell_id, because the arena is a single global
-// location, so the listing cannot filter by position the way ordinary signs do.
+// The Looking Glass Knight in King's Passage, Drangleic Castle. The boss summons
+// a player through its mirror shield to fight FOR it — the summoned player is
+// hostile to the host, not a co-op phantom.
+//
+// A player volunteers by leaving a Red Sign Soapstone sign anywhere in Drangleic
+// Castle, which is precisely why RequestCreateMirrorKnightSign carries no
+// online_area_id and no cell_id: the sign's position is irrelevant, only
+// availability matters, so the listing cannot filter by position the way ordinary
+// signs do.
 //
 // All six request opcodes and all three push ids are individually confirmed in
 // the decompilation (docs/protocol-map-ps3.md §4.1), so unlike the Visitor and

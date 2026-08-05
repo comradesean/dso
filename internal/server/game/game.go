@@ -61,6 +61,9 @@ type Service struct {
 	// cell to filter on — and its ids come from a disjoint range so the client
 	// cannot confuse one system's sign id for the other's.
 	mirrorKnight *signStore
+	// quickMatch holds Undead Match arena registrations. Unlike the brokered
+	// modes this one is advertised and therefore stateful.
+	quickMatch *quickMatchStore
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -93,6 +96,7 @@ func New(srv *core.Server, st *store.Store) *Service {
 		bloodstains:  newBloodstainStore(),
 		signs:        newSignStore(),
 		mirrorKnight: newSignStoreFrom(firstMirrorKnightSignID),
+		quickMatch:   newQuickMatchStore(),
 	}
 }
 
@@ -309,6 +313,7 @@ func (s *Service) dropSession(key string, cs *clientSession) {
 	if cs.playerID != 0 {
 		s.dropSignsForPlayer(s.srv.Logger, cs.playerID)
 		s.dropMirrorKnightSignsForPlayer(s.srv.Logger, cs.playerID)
+		s.dropQuickMatchForPlayer(s.srv.Logger, cs.playerID)
 	}
 }
 

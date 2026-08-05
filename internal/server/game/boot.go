@@ -147,6 +147,19 @@ func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payloa
 	case opRequestSendMessageToPlayers:
 		return s.handleSendMessageToPlayers(log, cs, payload)
 
+	case opRequestRegisterQuickMatch:
+		return s.handleRegisterQuickMatch(log, cs, payload)
+	case opRequestUnregisterQuickMatch:
+		return s.handleUnregisterQuickMatch(log, cs, payload)
+	case opRequestUpdateQuickMatch:
+		return s.handleUpdateQuickMatch(log, cs, payload)
+	case opRequestSearchQuickMatch:
+		return s.handleSearchQuickMatch(log, cs, payload)
+	case opRequestJoinQuickMatch:
+		return s.handleJoinQuickMatch(log, cs, payload)
+	case opRequestRejectQuickMatch:
+		return s.handleRejectQuickMatch(log, cs, payload)
+
 	case opRequestGetVisitorList:
 		return s.handleGetVisitorList(log, cs, payload)
 	case opRequestVisit:
