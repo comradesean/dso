@@ -22,10 +22,15 @@ import (
 // withdraw or disconnect. Other players search that venue and join. So this file
 // keeps state, where visitor.go and breakin.go do not.
 //
-// KNOWN GAP: each arena has three statues that pick the map, and nothing in
-// RequestRegisterQuickMatch carries that choice — so either it rides in the
-// opaque MatchingParameter, or map selection is negotiated client-to-client after
-// the join.
+// Map selection never crosses this server. Each arena has three statues that pick
+// the map, and nothing the client sends us carries the choice: five captured
+// RequestRegisterQuickMatch payloads from different statues are byte-identical,
+// MatchingParameter included. The one client-to-client channel we relay
+// (0x0320, see relay.go) carries only a NexusRevolution2 join handshake —
+// signature, version, the sender's PSN id twice, a session id — with no map field.
+// That library exchanges "session properties" directly peer-to-peer once the P2P
+// session is up, which is where anything like a map choice lives.
+// See docs/protocol-map-ps3.md §5.2.8.
 const (
 	opRequestRegisterQuickMatch   uint32 = 0x03D9
 	opRequestUnregisterQuickMatch uint32 = 0x03DA
@@ -35,20 +40,32 @@ const (
 	opRequestRejectQuickMatch     uint32 = 0x03DE
 )
 
-// Push alias layout, CONFIRMED at the instruction level in both v1.00 and v1.10.
+// Push alias layout, CONFIRMED at the instruction level in v1.10 (and v1.00).
 //
-//	opcode = quickMatchPushBase + 2*role + mode      (mode-MINOR, unlike the others)
+//	opcode = quickMatchPushBase + 2*role + (1 - mode)   // mode-MINOR *and* INVERTED
 //
 // Eight aliases are two per role, one per venue, dispatched through an 8-entry
-// jump table. Note the operand order is reversed relative to BreakIn and Visitor:
-// here the mode is the fast-moving index.
+// jump table whose entries pair up (0,1)(2,3)(4,5)(6,7) — so the receive side
+// separates the ROLE only, never the venue.
 //
-// mode is the QuickMatchGameMode: Blue (Cathedral of Blue) = 0, Brotherhood
-// (Undead Purgatory) = 1.
+// The venue parity is the reverse of the enum. The manager constructor
+// (v1.10 `0x15DDEC0`) takes the mode in r5 and branches:
 //
-// This replaces an earlier guess of a fixed 0x3E1/0x3E3/0x3E5/0x3E7 taken from
-// the PC enum. Those are the four roles for mode 1 only — right for Undead
-// Purgatory, silently wrong for the Cathedral of Blue.
+//	mode == 0 (Blue)        -> registers 0x3E1 0x3E3 0x3E5 0x3E7   (ODD)
+//	mode == 1 (Brotherhood) -> registers 0x3E0 0x3E2 0x3E4 0x3E6   (EVEN)
+//
+// and the client's own relayed "allow" picks its opcode the same way
+// (v1.10 `0x15DEAE0`: `lwz r0,48(this)`; mode==0 -> `li r0,0x3E5`,
+// mode==1 -> `li r0,0x3E4`). A live BLUS41045 capture of a Brotherhood duel
+// carries push_message_id 0x3E4 — a client-generated id, which settles it.
+//
+// The earlier `+ mode` form had the parity backwards. It still worked live
+// because BOTH manager instances are constructed unconditionally at
+// `0x15C25E0`/`0x15C25F4` (`li r5,0` then `li r5,1`), so every client has all
+// eight aliases registered, both aliases of a role reach the same handler, and
+// the venue travels in the message body (`PushRequestJoinQuickMatch.mode`)
+// rather than in the opcode. Sending the venue-matched alias is the correct
+// behaviour; sending the other one is merely tolerated.
 const quickMatchPushBase = 0x03E0
 
 const (
@@ -60,13 +77,24 @@ const (
 
 // quickMatchPushIDFor returns the alias for a role at a venue.
 func quickMatchPushIDFor(mode ds2pb.QuickMatchGameMode, role int) int32 {
-	return int32(quickMatchPushBase + 2*role + int(mode))
+	// Mirror the client exactly: only mode 1 takes the even parity, anything
+	// else falls to the odd one (the binary's `cmpwi 1` / default path).
+	parity := 1
+	if mode == ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood {
+		parity = 0
+	}
+	return int32(quickMatchPushBase + 2*role + parity)
 }
 
 // PushRequestAllowQuickMatch (role 2) is deliberately never sent. As with the
 // invasion "allow", acceptance is built by the HOST's client and tunnelled back
 // through RequestSendMessageToPlayers (0x0320) rather than originating here —
 // that relay is what made invasions work at all.
+//
+// Those two allows are the ONLY things a client tunnels: scanning v1.10 .text for
+// the relay opcode finds exactly two send sites, 0x15DF124 (this one) and
+// 0x16040FC (PushRequestAllowBreakInTarget). Every other push block, Visitor
+// included, is server-originated only.
 
 // quickMatch is one player advertising themselves at an arena location.
 type quickMatch struct {
@@ -140,7 +168,14 @@ func (q *quickMatchStore) remove(playerID uint32) (*quickMatch, bool) {
 // rather than filtered on. A strict cell filter would leave two players queued at
 // different statues waiting forever while each was visible to the other.
 //
-// CONFIRMED LIVE: cell_id does NOT carry the statue. Registering at the left and
+// CONFIRMED BY CAPTURE, in both directions: the statue never reaches the network.
+// Five RequestRegisterQuickMatch payloads from different statues are byte-identical
+// in every field including the whole MatchingParameter, and three relayed
+// PushRequestAllowQuickMatch bodies from the same player at three different
+// statues differ only in a trailing session counter. Map selection is negotiated
+// peer-to-peer through NexusRevolution2 session-property packets.
+//
+// cell_id does NOT carry the statue either. Registering at the left and
 // middle statues of Undead Purgatory both logged cell_id=102350, so the cell is
 // fixed per venue and the map choice rides elsewhere — almost certainly inside the
 // opaque MatchingParameter, which we store and hand over without interpreting.

@@ -25,11 +25,20 @@ const maxRelayRecipients = 6
 // handleSendMessageToPlayers forwards an opaque, client-authored push to named
 // recipients.
 //
-// Several pushes are never built by the server at all: the client serializes them
-// itself and tunnels them through here. PushRequestAllowBreakInTarget is the one
-// that matters right now — an invasion completes only when the host's "allow"
-// reaches the invader through this path, which is why invasions timed out while
-// this went unhandled even though the break-in push itself was landing.
+// Exactly two pushes are never built by the server: the client serializes them
+// itself and tunnels them through here. Scanning the v1.10 EBOOT's whole .text for
+// this opcode as the send helper's argument finds two sites and no more —
+// 0x16040FC building PushRequestAllowBreakInTarget, and 0x15DF124 building
+// PushRequestAllowQuickMatch. Everything else the client expects from us.
+// PushRequestAllowBreakInTarget is the one that matters most — an invasion
+// completes only when the host's "allow" reaches the invader through this path,
+// which is why invasions timed out while this went unhandled even though the
+// break-in push itself was landing.
+//
+// Both bodies exist to carry one opaque blob (field_5 / player_struct): a
+// NexusRevolution2 P2P matching packet, magic "NXRV", version 100, holding the
+// sender's PSN online id and a session id. It is the peer's connection handshake,
+// nothing the server can synthesise. docs/protocol-map-ps3.md §5.2.7-§5.2.8.
 //
 // The body is forwarded verbatim. The server does not parse or validate it, which
 // is exactly why the recipient cap above exists.

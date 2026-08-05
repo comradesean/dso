@@ -260,7 +260,7 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x03DC` | R/R | `RequestSearchQuickMatch` | `0x1571F24`; resp `0x1574FCC` |
 | `0x03DD` | R/R | `RequestJoinQuickMatch` | `0x1571C28` |
 | `0x03DE` | R/R | `RequestRejectQuickMatch` | `0x1571A90` |
-| `0x03E0`–`0x03E7` | P ×8 | **QuickMatch push block** — `0x3E0 + 2×role + mode`, role `0`=Join `1`=Reject `2`=Allow `3`=Remove (§5.2) | regs `0x15724AC`…`0x157291C` |
+| `0x03E0`–`0x03E7` | P ×8 | **QuickMatch push block** — `0x3E0 + 2×role + (1−mode)` (**mode-inverted**, §5.2.4), role `0`=Join `1`=Reject `2`=Allow `3`=Remove | regs `0x15724AC`…`0x157291C` |
 | `0x03E8` | M | `RequestNotifyJoinGuestPlayer` | `0x15656B4` |
 | `0x03E9` | M | `RequestNotifyLeaveGuestPlayer` | `0x1565354` |
 | `0x03EA` | M | `RequestNotifyJoinSession` | `0x1564A3C` |
@@ -404,10 +404,49 @@ Visitor aliases**.
 
 #### 5.2.4 The mapping — QuickMatch `0x03E0`–`0x03E7` (CONFIRMED)
 
-QuickMatch is **mode-minor**, not role-minor: **`opcode = 0x03E0 + 2×role + mode`**, `mode ∈ {0,1}`.
+> **CORRECTED 2026-08-05 (second pass).** This section previously said
+> `opcode = 0x03E0 + 2×role + mode`. **The venue parity is inverted**: mode 0 owns the ODD
+> aliases and mode 1 the EVEN ones. The correction is forced by a live capture (below) and
+> confirmed twice over in the binary. BreakIn (§5.2.2) and Visitor (§5.2.3) were re-checked
+> against their constructors and are **unaffected** — only QuickMatch was wrong.
+
+QuickMatch is **mode-minor** (not role-minor like the others) **and mode-inverted**:
+
+**`opcode = 0x03E0 + 2×role + (1 − mode)`**, `mode ∈ {0,1}`.
+
 The jump table sends indices `{0,1}`, `{2,3}`, `{4,5}`, `{6,7}` to four targets. All eight are live.
 
-| Role | Opcodes | Message class | Evidence (v1.00 / v1.10) |
+**Evidence for the inversion (all v1.10, `dev_hdd0/…/EBOOT.elf`):**
+
+1. **Constructor `0x15DDEC0`** takes the mode in `r5`, stores it at `this+0x30`
+   (`stw r26,48(r31)` @ `0x15DDF2C`) and branches:
+   `cmpwi r26,0 ; beq 0x15DDF68` → registers **`0x3E1 0x3E3 0x3E5 0x3E7`** (odd);
+   `cmpwi r26,1 ; beq 0x15DE204` → registers **`0x3E0 0x3E2 0x3E4 0x3E6`** (even).
+   Register immediates at `0x15DDF9C`/`0x15DE040`/`0x15DE0DC`/`0x15DE178` and
+   `0x15DE238`/`0x15DE2DC`/`0x15DE378`/`0x15DE414`.
+2. **Send side, same field.** The relayed "allow" (§5.2.7) reads the *same* `this+0x30`
+   (`lwz r0,48(r23)` @ `0x15DEAE0`) and picks `li r0,0x3E5` for mode 0 (`0x15DEAF0`) or
+   `li r0,0x3E4` for mode 1 (`0x15DECAC`); any other value falls back to `0x3E5`.
+3. **`this+0x30` is the wire `mode`.** The `RequestRegisterQuickMatch` builder reads the same
+   slot (`lwz r9,48(r30)` @ `0x15DD190`) straight into the request sent at
+   `li r4,0x3D9` (`0x15DD264`).
+4. **Live capture.** A BLUS41045 v1.10 client duelling at Undead Purgatory — for which our
+   server decoded `mode = QuickMatchGameMode_Brotherhood (1)` out of its own
+   `RequestRegisterQuickMatch` — relayed a **client-built** `PushRequestAllowQuickMatch`
+   with `push_message_id = 996 = 0x3E4`. `0x3E4` is the even (mode-1) allow alias.
+   The old formula predicted `0x3E5`.
+
+**Why the old formula still worked live.** Both manager instances are constructed
+unconditionally, back to back, at `0x15C25E0` (`li r5,0`) and `0x15C25F4` (`li r5,1`), so every
+client has **all eight** aliases registered at all times. Both aliases of a role reach the same
+jump-table branch, and the venue is carried in the message body
+(`PushRequestJoinQuickMatch.mode`, field 6) rather than in the opcode — so a Brotherhood join
+pushed as `0x3E1` is accepted (it lands on the Blue instance, which reads the venue out of the
+payload). Sending the venue-matched alias is the correct behaviour; the other parity is merely
+tolerated. **This means push-id parity is not, on its own, a testable hypothesis in-game — only
+the role is.**
+
+| Role | Opcodes (**mode 1** / **mode 0**) | Message class | Evidence (v1.00 / v1.10) |
 |---|---|---|---|
 | 0 | `0x3E0` `0x3E1` | `Frpg2RequestMessage.PushRequestJoinQuickMatch` | jt→`0x1572C88`/`0x15E0F50`; vt `0x1C60588`/`0x1CE2220`; `GetTypeName` `0x15FF6E4`/`0x16466E0`; str `0x1896FF8`/`0x190CA98` |
 | 1 | `0x3E2` `0x3E3` | `Frpg2RequestMessage.PushRequestRejectQuickMatch` | jt→`0x1572D04`/`0x15E0FCC`; vt `0x1C60508`/`0x1CE21A0`; `GetTypeName` `0x15FF664`/`0x1646660`; str `0x1896F98`/`0x190CA38` |
@@ -437,6 +476,93 @@ in the one shared callback. **Do not stop at the registration site — always fo
 
 The reference explicitly notes DS3's QuickMatch pushes have "7 further aliases", so the alias
 mechanism is real and known — but the **DS2 alias values on PS3 do not match the DS3OS DS2 `.inc`**.
+
+#### 5.2.7 What the client tunnels through `0x0320` — **exhaustive** (v1.10)
+
+`RequestSendMessageToPlayers` (`0x0320`) is a client→server→client relay: the server forwards
+`{1: repeated recipient player_id, 2: opaque body}` verbatim. **The client is the only thing that
+ever originates one.** Every send in the image goes through one helper,
+`0x15F4150(net_client, opcode, msg, ctx, &err)`, whose opcode arrives in `r4`. Scanning the whole
+`.text` for `li r4,0x320` yields exactly **three** sites:
+
+| Site | Enclosing manager | Relayed body | Notes |
+|---|---|---|---|
+| `0x15DF124` (call `0x15DF134`) | QuickMatch (arena) | `Frpg2RequestMessage.PushRequestAllowQuickMatch` | vtable `0x1CE2120`; id `0x3E5`/`0x3E4` by mode |
+| `0x16040FC` (call `0x160410C`) | BreakIn (invasion) | `Frpg2RequestMessage.PushRequestAllowBreakInTarget` | id `0x3BB`/`0x3BF`/`0x3C3`/`0x3C7` by mode (§5.2.2) |
+| `0x15F516C` | the send library itself | — | not a send: registers the **receive** handler for `0x0320` |
+
+Everything else that decodes as `0x320` in the net region is a stack displacement for a `lvx`
+(`0x1571574`, `0x1575CE8`, `0x15782E0`, `0x157C524`, `0x157F734`, `0x157F868`, `0x1582B98`,
+`0x159233C`, `0x15923F8`, `0x15926C4`), not an opcode.
+
+**Consequence for a server: the two "allow" pushes must never be built server-side.** Neither
+`PushRequestAllowQuickMatch` nor `PushRequestAllowBreakInTarget` originates on the server; both
+arrive as a relay and are forwarded untouched. Visitor/co-op (`0x03C9`–`0x03D1`), MirrorKnight and
+every other push block have **no** relay path — they are server-originated only.
+
+The QuickMatch relay builder is the virtual at manager vtable `+0x24`
+(`0x1CE0E3C` → OPD `0x1D8F568` → `0x15DE958`), signature
+`f(this, ctx, online_area_id, cell_id, recipient_player_id, blob*)`; it fills
+`push_message_id / player_id / online_area_id / cell_id / field_5` (has-bits `1|2|4|8|16`) and
+**returns without sending if the blob is empty** (`0x15DE9E4`: `lwz r9,4(r28)` / `lwz r0,8(r28)`,
+begin==end → early out). Carrying that blob is the entire purpose of the message.
+
+#### 5.2.8 `PushRequestAllowQuickMatch.field_5` — a NexusRevolution2 matching packet
+
+`field_5` (and `PushRequestAllowBreakInTarget.player_struct`, field 3) is an opaque byte string
+lifted straight out of a `{begin,end}` buffer. Its first four bytes are the ASCII magic **`NXRV`**,
+which occurs exactly once in the whole EBOOT, at `0x18C3C30` — inside a run of UTF-16BE Japanese
+debug strings belonging to
+`n:\Stable_10_0_FRPG2_Title\ApplicationLibrary\NexusRevolution2\source\matching\Protocol.cpp`
+(`0x18C3ED0`). **`NXRV` = NexusRevolution**, FromSoftware's PS3 P2P matching library.
+
+The serialiser's own debug strings name the wire order (all CONFIRMED strings, addresses v1.10):
+signature `%c%c%c%c` (`0x18C3CF0`), version number `%hu` (`0x18C3D18`), "protocol ??" `%u`
+(`0x18C3CB8`), player list — count `%u` and `プレイヤ<%s>` (`0x18C4258`, `0x18C41E0`), property list
+— count `%u` and `ID=%u, Type=%u, Ope=%u` (`0x18C4330`, `0x18C4380`), phase number
+(`0x18C4190`), session host, migration info. Its packet vocabulary is
+`参加要求 / 参加ＯＫ / 参加ＮＧ` (join request / OK / NG), `セッション情報`, `セッションプロパティ`,
+`ゲーム開始成功`, `調停…` (arbitration), `セッション表示/非表示`.
+
+Five captured arena-duel bodies (players 100000 ↔ 100005, Undead Purgatory, `online_area_id`
+10230000, `cell_id` 102350) give a 59-byte and a 65-byte `field_5`, differing only by the length
+of an 8- vs 11-character PSN id:
+
+```
+00: 4e 58 52 56 | 00 64 | 00 | 00 6d 00 67 00 6e 00 6f 00 6d 00 61 00 64 00 32 | 00 00
+    N  X  R  V    ver=100  ?   UTF-16BE  "m g n o m a d 2"                        NUL
+19: 6d 67 6e 6f 6d 61 64 32 00 00 00 00 00 00 00 00 00      <- 17-byte ASCII buffer
+    "mgnomad2" + NULs                                          (SceNpOnlineId: 16 + NUL)
+2a: 10 | 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 0b    <- 17-byte tail
+```
+
+| Bytes | Field | Status |
+|---|---|---|
+| `0..3` | `"NXRV"` signature | **CONFIRMED** (magic at `0x18C3C30`; writer prints it `%c%c%c%c`) |
+| `4..5` | `u16` BE version = **100** | **CONFIRMED** (writer prints version `%hu`; constant across all 5) |
+| `6` | `u8` = 0 — the "protocol ??" / packet-type byte | INFERRED |
+| `7 …` | UTF-16**BE** PSN online id, NUL-terminated (`2n+2` bytes) | INFERRED — BE is forced by the machine and by the 2-byte `00 00` terminator landing exactly before the ASCII copy; a UTF-16LE read starting at `8` also fits the bytes but leaves a 1-byte terminator |
+| next `17` | ASCII PSN online id, `char[16] + NUL` (`SceNpOnlineId`) | **CONFIRMED from bytes** — 8+9 and 11+6 padding both total 17 |
+| next `1` | `0x10` (16), constant in all five captures | unidentified |
+| next `16` | zero except the last byte: `0b 0c 0d 0e 0f` across the five captures in time order, **across both consoles** | INFERRED a session id (`SessionId=%d` appears throughout the library's logging); the lockstep across two consoles fits one session object created per duel on each peer |
+
+The sender writes **its own** identity: captures from 100005 carry `mgnomad2`, captures from
+100000 carry `comradesean`. So the body is the P2P join handshake — "accept, and here is who and
+which session to connect to".
+
+**There is no map / level / statue id in this body**, and no room for one: every byte is
+accounted for except the constant `0x10`. Note that NexusRevolution2 has its own
+**`セッションプロパティ` (session property) packets**, sent and received *peer-to-peer* once the
+session exists (`0x18C4010` send, `0x18C45D0` receive, with `ID/Type/Ope/Data` records) — that
+channel never touches the game server. Anything negotiated after the join, arena map included,
+travels there.
+
+**Gap now closed (2026-08-05).** Three `0x0320` captures from the SAME sender across THREE
+different statues at Undead Purgatory differ at exactly one byte offset — the trailing session
+counter — and are byte-identical everywhere else. Combined with the five byte-identical
+`RequestRegisterQuickMatch` payloads, **no part of the statue or map selection crosses the network
+in either direction.** It is settled peer-to-peer through NexusRevolution2 session-property
+packets, which never touch this server.
 
 ---
 

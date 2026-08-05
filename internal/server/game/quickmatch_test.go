@@ -239,16 +239,23 @@ func TestPushAliasFormulas(t *testing.T) {
 	})
 
 	t.Run("quickmatch", func(t *testing.T) {
-		// opcode = 0x3E0 + 2*role + mode  -- mode-MINOR, reversed from the others
+		// opcode = 0x3E0 + 2*role + (1-mode) -- mode-MINOR *and* inverted.
+		// Brotherhood (mode 1) owns the EVEN aliases: a live capture of a
+		// Brotherhood duel carries a client-built allow at 0x3E4.
 		for _, tc := range []struct {
 			mode ds2pb.QuickMatchGameMode
 			role int
 			want int32
 		}{
-			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleJoin, 0x3E0},
-			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleJoin, 0x3E1},
-			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleReject, 0x3E2},
-			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleRemove, 0x3E7},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleJoin, 0x3E1},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleJoin, 0x3E0},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleReject, 0x3E3},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleReject, 0x3E2},
+			// The one the wire proves.
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleAllow, 0x3E4},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleAllow, 0x3E5},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleRemove, 0x3E6},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleRemove, 0x3E7},
 		} {
 			if got := quickMatchPushIDFor(tc.mode, tc.role); got != tc.want {
 				t.Errorf("quickMatch(mode=%v, role=%d) = %#04x, want %#04x",
