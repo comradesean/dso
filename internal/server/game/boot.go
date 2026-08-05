@@ -80,6 +80,9 @@ func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, p
 	case opRequestRejectSign:
 		return s.handleRejectSign(log, cs, payload)
 
+	case opRequestSendMessageToPlayers:
+		return s.handleSendMessageToPlayers(log, cs, payload)
+
 	case opRequestGetBreakInTargetList:
 		return s.handleGetBreakInTargetList(log, cs, payload)
 	case opRequestBreakInTarget:

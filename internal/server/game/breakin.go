@@ -16,8 +16,13 @@ const (
 	opRequestRejectBreakInTarget  uint32 = 0x03D4
 )
 
-// breakInPushID is the PushMessageId used for PushRequestBreakInTarget, and it
-// is a GUESS among sixteen candidates.
+// breakInPushID is the PushMessageId used for PushRequestBreakInTarget.
+//
+// CONFIRMED 2026-08-05: 0x03B9 is correct. A real invader selected a target, the
+// server pushed with this id, and the target's client responded by tunnelling its
+// "allow" back through RequestSendMessageToPlayers — which it would not have done
+// had the push gone unrecognised. That single exchange collapsed the sixteen-alias
+// ambiguity described below.
 //
 // The PC value from the protos is 1019 (0x3FB), which is useless here:
 // decompilation found no code for 0x3FB, 0x3FC or 0x3FD anywhere in the PS3
@@ -34,11 +39,9 @@ const (
 //	group 3: 0x3B9 0x3BA 0x3BC 0x3BB
 //	group 4: 0x3C5 0x3C6 0x3C8 0x3C7
 //
-// If an invasion prompt never reaches the target, this constant is the first
-// thing to change — work through the group leaders (0x3BD, 0x3C1, 0x3B9, 0x3C5)
-// before trying the rest. One successful invasion identifies the group and
-// collapses sixteen unknowns at once, which is why it is worth testing directly
-// rather than reasoning further.
+// Group 3 is therefore the BreakIn-target group. The remaining groups still map
+// to reject/allow/remove in an unknown order; pushBreakInRejected below assumes
+// the next alias in sequence, which is NOT yet confirmed.
 const breakInPushID = 0x03B9
 
 func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payload []byte) ([]byte, error) {
