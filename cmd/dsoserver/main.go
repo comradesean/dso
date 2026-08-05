@@ -18,6 +18,7 @@ import (
 	"github.com/sstreight/dso/internal/server/bootstrap"
 	"github.com/sstreight/dso/internal/server/core"
 	"github.com/sstreight/dso/internal/server/dnsredirect"
+	"github.com/sstreight/dso/internal/server/game"
 	"github.com/sstreight/dso/internal/server/login"
 )
 
@@ -54,13 +55,13 @@ func run() error {
 
 	srv.AddService(login.New(srv))
 	srv.AddService(auth.New(srv))
+	srv.AddService(game.New(srv))
 	if cfg.BootstrapHTTPEnabled {
 		srv.AddService(bootstrap.New(srv))
 	}
 	if cfg.DNSEnabled {
 		srv.AddService(dnsredirect.New(srv))
 	}
-	// the game (UDP) service is added as it is implemented.
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
