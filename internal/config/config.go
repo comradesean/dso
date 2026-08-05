@@ -149,6 +149,16 @@ func Default() Config {
 // Load returns the default config overlaid with DSO_-prefixed environment
 // variables, then validates it.
 func Load() (Config, error) {
+	// An env file supplies defaults before anything is read. DSO_ENV_FILE picks a
+	// different one; real environment variables still take precedence over both.
+	envFile := DefaultEnvFile
+	if v, ok := os.LookupEnv("DSO_ENV_FILE"); ok {
+		envFile = v
+	}
+	if err := LoadEnvFile(envFile); err != nil {
+		return Config{}, err
+	}
+
 	c := Default()
 
 	c.Game = GameType(envStr("DSO_GAME", string(c.Game)))

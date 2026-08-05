@@ -28,3 +28,6 @@
 
 # Reference material (kept out of the new project's history)
 /ref/
+
+# Local server config (contains your LAN address).
+/dso.env
