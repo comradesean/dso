@@ -34,7 +34,8 @@ stretch.
 | Summon signs (6 opcodes) | Working | Brokering confirmed host↔summoner |
 | Invasions (3 opcodes + relay) | Working | A real invasion completed between two clients |
 | Client-to-client relay (`0x0320`) | Working | Carries the host's "allow" back to the invader |
-| Persistence (SQLite) | Working | Blood messages survive restart |
+| World death counter (4 opcodes) | Implemented | Unit-tested; not yet confirmed in-game |
+| Persistence (SQLite) | Working | Blood messages and counters survive restart |
 | Player status / character uploads | Recorded | Accepted; nothing consumes them yet |
 
 ## Not built
@@ -94,6 +95,10 @@ port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
   `pushBreakInRejected` assumes the next alias in sequence and is **unverified**; a declined
   invasion may not notify the invader.
 - **Four opcodes are unidentified**: `0x0387`, `0x0388`, `0x038A`, `0x0390`.
+- **The death counter's scope is assumed world-wide.** `RequestGetTotalDeathCount` (`0x03F0`)
+  carries a zero-byte payload — no area, no character, no scope of any kind — so a single global
+  total is the only thing it can be asking for. That is an inference from the request being
+  empty, not a confirmed reading of what the client draws.
 - **The UDP `msg_index` byte order** looks big-endian where TCP is little-endian. It round-trips
   correctly because the server echoes the same bytes, so it is cosmetic — until something
   depends on ordering.
