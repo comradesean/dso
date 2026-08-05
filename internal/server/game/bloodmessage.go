@@ -72,6 +72,7 @@ func (s *Service) handleGetBloodMessageList(log logger, cs *clientSession, paylo
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestGetBloodMessageList: %w", err)
 	}
+	cs.areaID = req.GetOnlineAreaId()
 
 	cells := make([]uint32, 0, len(req.GetSearchAreas()))
 	for _, a := range req.GetSearchAreas() {

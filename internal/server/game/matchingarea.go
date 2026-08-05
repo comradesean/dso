@@ -1,0 +1,69 @@
+package game
+
+import (
+	"fmt"
+
+	"google.golang.org/protobuf/proto"
+
+	"github.com/sstreight/dso/internal/proto/ds2pb"
+)
+
+// opRequestGetRightMatchingArea asks which areas are worth travelling to.
+//
+// ADDED IN v1.10 — it does not exist on the launch disc.
+// docs/protocol-map-ps3.md lists it among six opcodes that "do not exist in this
+// binary", and that is correct *for the build it describes*: the `li r4,0x03fa`
+// encoding (38 80 03 fa) occurs zero times in the v1.00 EBOOT and twice in v1.10.
+//
+//	CONFIRMED LIVE 2026-08-05 — two real BLUS41045 v1.10 clients on separate
+//	machines each sent 0x03FA at boot with a 29-byte payload decoding cleanly as
+//	RequestGetRightMatchingArea{matching_parameter}.
+//
+// See versions.go. The lesson generalises: "absent" from the decompilation means
+// absent from v1.00, not from every build we support.
+//
+// What it is FOR: the response is a list of (online_area_id, population) pairs.
+// Patch 1.10 added population hints to the bonfire warp screen — highlighting the
+// areas with the best chance of finding other players — and this is the opcode
+// that feeds them. It had been going unanswered, which for a request/response
+// opcode is never harmless: the client retries silently and will not open other
+// online UI while one is outstanding.
+const opRequestGetRightMatchingArea uint32 = 0x03FA
+
+// handleGetRightMatchingArea reports where other players actually are.
+//
+// Population is counted from live sessions by the area in each player's last
+// status update. That is genuinely the number the client is asking for, and it
+// costs nothing — the sessions are already in memory.
+//
+// The requester's own area is included: they are a real player in it, and the
+// hint is about where the population is, not about where to go next.
+func (s *Service) handleGetRightMatchingArea(log logger, cs *clientSession, payload []byte) ([]byte, error) {
+	var req ds2pb.RequestGetRightMatchingArea
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		return nil, fmt.Errorf("parse RequestGetRightMatchingArea: %w", err)
+	}
+
+	counts := make(map[uint32]uint32)
+	for _, other := range s.sessions {
+		if other.playerID == 0 || other.areaID == 0 {
+			continue
+		}
+		counts[other.areaID]++
+	}
+
+	areas := make([]*ds2pb.RequestGetRightMatchingAreaResponse_AreaInfo, 0, len(counts))
+	for areaID, n := range counts {
+		areas = append(areas, &ds2pb.RequestGetRightMatchingAreaResponse_AreaInfo{
+			OnlineAreaId: proto.Uint32(areaID),
+			Population:   proto.Uint32(n),
+		})
+	}
+
+	log.Info("matching area populations requested",
+		"player_id", cs.playerID, "areas_reported", len(areas),
+		"calibration", req.GetMatchingParameter().GetCalibrationVersion(),
+		"soul_level", req.GetMatchingParameter().GetSoulLevel())
+
+	return proto.Marshal(&ds2pb.RequestGetRightMatchingAreaResponse{AreaInfo: areas})
+}

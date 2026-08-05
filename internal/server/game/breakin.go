@@ -49,6 +49,7 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestGetBreakInTargetList: %w", err)
 	}
+	cs.areaID = req.GetOnlineAreaId()
 
 	// Candidate hosts are other live players. Matchmaking filters (soul memory
 	// band, area, covenant) come from the status blob, which nothing consumes
@@ -69,6 +70,20 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 		}
 	}
 
+	// With the rejection harness on, offer a synthetic target when nothing real is
+	// available. Without it a lone client gets an empty list, never sends
+	// RequestBreakInTarget at all, and shows "Unable to find a world to invade" of
+	// its own accord — which looks exactly like a working rejection but exercises
+	// nothing. The id is deliberately one no player can hold.
+	if s.srv.Config.DebugForceBreakInReject && len(targets) == 0 {
+		targets = append(targets, &ds2pb.BreakInTargetData{
+			PlayerId: proto.Uint32(debugPhantomTargetID),
+			PsnId:    proto.String("dso-reject-test"),
+		})
+		log.Info("DEBUG: injected a synthetic break-in target so the client will "+
+			"send RequestBreakInTarget", "player_id", cs.playerID)
+	}
+
 	log.Info("break-in target list",
 		"player_id", cs.playerID, "area_id", req.GetOnlineAreaId(),
 		"cell_id", req.GetCellId(), "type", req.GetType(),
@@ -87,6 +102,14 @@ func (s *Service) handleBreakInTarget(log logger, cs *clientSession, payload []b
 	var req ds2pb.RequestBreakInTarget
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestBreakInTarget: %w", err)
+	}
+
+	if s.srv.Config.DebugForceBreakInReject {
+		log.Info("DEBUG: forcing break-in rejection instead of invading",
+			"invader_player_id", cs.playerID, "target_player_id", req.GetPlayerId(),
+			"push_id", fmt.Sprintf("%#04x", s.rejectPushID()))
+		s.pushBreakInRejected(log, cs, req.GetPlayerId())
+		return proto.Marshal(&ds2pb.RequestBreakInTargetResponse{})
 	}
 
 	target, live := s.sessionForPlayerLocked(req.GetPlayerId())
@@ -133,14 +156,39 @@ func (s *Service) handleRejectBreakInTarget(log logger, cs *clientSession, paylo
 	return proto.Marshal(&ds2pb.RequestRejectBreakInTargetResponse{})
 }
 
-// pushBreakInRejected tells an invader their attempt failed. Caller holds s.mu.
+// debugPhantomTargetID is the fake target offered by the rejection harness. No
+// real player can hold it: ids are AUTOINCREMENT from 100000 and this is below
+// that floor, while still being non-zero.
+const debugPhantomTargetID = 1
+
+// breakInRejectPushID is the alias used for the rejection push.
 //
-// Uses the alias immediately after breakInPushID on the assumption that the four
-// message types occupy consecutive groups; like breakInPushID itself this is
-// unverified.
+// PROBABLY WRONG, and worth understanding why. The sixteen aliases sit in four
+// groups of four, each group being four aliases of ONE message type, and group 3
+// (0x3B9 0x3BA 0x3BC 0x3BB) is the BreakInTarget group — 0x3B9 is confirmed live.
+// So 0x3BA is another BreakInTarget alias, and sending it as a rejection likely
+// tells the invader's client "here is another invasion" rather than "you were
+// refused".
+//
+// The rejection push must lead one of the other groups: 0x3BD, 0x3C1 or 0x3C5.
+// DSO_BREAKIN_REJECT_PUSH_ID overrides this so all three can be tried in one
+// session, and DSO_DEBUG_FORCE_BREAKIN_REJECT makes every orb use trigger the
+// path so the test does not depend on provoking a real refusal.
+const breakInRejectPushID = breakInPushID + 1
+
+// rejectPushID is the alias actually sent, honouring the override.
+func (s *Service) rejectPushID() int32 {
+	if v := s.srv.Config.BreakInRejectPushID; v != 0 {
+		return int32(v)
+	}
+	return breakInRejectPushID
+}
+
+// pushBreakInRejected tells an invader their attempt failed. Caller holds s.mu.
 func (s *Service) pushBreakInRejected(log logger, invader *clientSession, hostID uint32) {
+	pushID := s.rejectPushID()
 	body, err := proto.Marshal(&ds2pb.PushRequestRejectBreakInTarget{
-		PushMessageId: ds2pb.PushMessageId(breakInPushID + 1).Enum(),
+		PushMessageId: ds2pb.PushMessageId(pushID).Enum(),
 		PlayerId:      proto.Int64(int64(hostID)),
 		Unknown_3:     proto.Int64(0),
 		PsnId:         proto.String(invader.accountID),
@@ -152,5 +200,6 @@ func (s *Service) pushBreakInRejected(log logger, invader *clientSession, hostID
 	}
 	invader.conn.SendPush(body)
 	log.Info("pushed break-in rejection",
-		"invader_player_id", invader.playerID, "host_player_id", hostID)
+		"invader_player_id", invader.playerID, "host_player_id", hostID,
+		"push_id", fmt.Sprintf("%#04x", pushID), "payload_bytes", len(body))
 }

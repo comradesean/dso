@@ -15,12 +15,18 @@ import (
 // dispatch.
 const ps3MapPath = "../../../docs/protocol-map-ps3.md"
 
-// forbidden are the six opcodes docs/protocol-map-ps3.md §"DO NOT IMPLEMENT"
-// calls out: present in the PC map, absent from this binary. The maximum opcode
-// across all 132 send/register call sites is 0x03F9, and no `li r4` with any of
-// these values exists anywhere in .text.
+// forbidden are the opcodes docs/protocol-map-ps3.md §"DO NOT IMPLEMENT" calls
+// out as present in the PC map but absent from this binary.
+//
+// SCOPE MATTERS: that map decompiles **v1.00**, and its evidence is sound for
+// that build. It is not evidence about v1.10, which adds opcodes v1.00 does not
+// have — 0x03FA was on this list until two v1.10 clients were seen sending it,
+// and `li r4,0x03fa` really does occur zero times in v1.00 and twice in v1.10.
+//
+// So an opcode may leave this list on live evidence from a later build. The rest
+// stay because nothing has been observed sending them in any version. See
+// versions.go.
 var forbidden = map[uint32]string{
-	0x03FA: "RequestGetRightMatchingArea",
 	0x03FB: "PushRequestBreakInTarget (PS3 uses 0x03B9-0x03C8)",
 	0x03FC: "PushRequestRejectBreakInTarget",
 	0x03FD: "PushRequestAllowBreakInTarget",
@@ -134,6 +140,35 @@ func TestDispatchedOpcodesAreInThePS3Map(t *testing.T) {
 				"Either the opcode does not exist on PS3, or the map needs updating — "+
 				"do not assume the PC map or ds3os is right about it.",
 				name, op, ps3MapPath)
+		}
+	}
+}
+
+// TestVersionSpecificOpcodesAreNotForbidden keeps the two lists coherent: an
+// opcode known to exist in some supported build must not also be listed as one
+// that exists in none.
+func TestVersionSpecificOpcodesAreNotForbidden(t *testing.T) {
+	for op, ver := range opcodeIntroducedIn {
+		if why, bad := forbidden[op]; bad {
+			t.Errorf("%#04x is recorded as introduced in v%s but also listed as "+
+				"absent from every build (%s); one of the two is wrong", op, ver, why)
+		}
+	}
+}
+
+// TestVersionSpecificOpcodesAreDispatched — recording that an opcode exists is
+// only useful if we answer it. Every entry in the version map should be routed,
+// since we know a real client sends it.
+func TestVersionSpecificOpcodesAreDispatched(t *testing.T) {
+	dispatched := map[uint32]bool{}
+	for _, op := range dispatchedOpcodes(t) {
+		dispatched[op] = true
+	}
+	for op, ver := range opcodeIntroducedIn {
+		if !dispatched[op] {
+			t.Errorf("%#04x exists in v%s but nothing dispatches it; an unanswered "+
+				"request/response opcode makes the client retry silently and blocks "+
+				"other online UI", op, ver)
 		}
 	}
 }

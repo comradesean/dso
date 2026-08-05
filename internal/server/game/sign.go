@@ -266,6 +266,7 @@ func (s *Service) handleGetSignList(log logger, cs *clientSession, payload []byt
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestGetSignList: %w", err)
 	}
+	cs.areaID = req.GetOnlineAreaId()
 
 	// The client tells us which signs it already holds, per cell. Those come back
 	// as bare SignInfo; anything new comes back as full SignData. Sending the full

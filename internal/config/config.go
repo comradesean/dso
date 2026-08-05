@@ -70,6 +70,31 @@ type Config struct {
 	// reverse-engineering an unknown client's wire format.
 	DebugRaw bool
 
+	// DebugForceBreakInReject makes every invasion attempt fail immediately with a
+	// rejection push instead of invading. It exists to test which push alias the
+	// client actually recognises as a rejection: provoking a real refusal needs
+	// two players in an awkward state, whereas this fires on every orb use.
+	//
+	// Leave off for play.
+	DebugForceBreakInReject bool
+
+	// BreakInRejectPushID overrides the alias used for the rejection push.
+	//
+	// The client registers SIXTEEN aliases across 0x03B9-0x03C8 for four message
+	// types, in four groups of four (registration order):
+	//
+	//	group 1: 0x3BD 0x3BE 0x3C0 0x3BF
+	//	group 2: 0x3C1 0x3C2 0x3C4 0x3C3
+	//	group 3: 0x3B9 0x3BA 0x3BC 0x3BB   <- BreakInTarget, 0x3B9 confirmed live
+	//	group 4: 0x3C5 0x3C6 0x3C8 0x3C7
+	//
+	// Each group is four aliases of ONE type, so the reject push must lead one of
+	// groups 1, 2 or 4 — the candidates are 0x3BD, 0x3C1 and 0x3C5. Being
+	// configurable means all three can be tried in one session without a rebuild.
+	//
+	// Zero keeps the built-in default.
+	BreakInRejectPushID uint64
+
 	// ManagementText is pushed to the client after login as a
 	// ManagementTextMessage. It is the only free-text server->client channel the
 	// DS2 client has, and is the candidate mechanism behind the Majula obelisk
@@ -179,6 +204,8 @@ func Load() (Config, error) {
 	c.LogLevel = envStr("DSO_LOGGING_LEVEL", c.LogLevel)
 	c.LogFormat = envStr("DSO_LOGGING_FORMAT", c.LogFormat)
 	c.DebugRaw = envBool("DSO_DEBUG_RAW", c.DebugRaw)
+	c.DebugForceBreakInReject = envBool("DSO_DEBUG_FORCE_BREAKIN_REJECT", c.DebugForceBreakInReject)
+	c.BreakInRejectPushID = envUint("DSO_BREAKIN_REJECT_PUSH_ID", c.BreakInRejectPushID)
 	c.ManagementText = envStr("DSO_MANAGEMENT_TEXT", c.ManagementText)
 	c.ManagementTextLanguage = envUint("DSO_MANAGEMENT_TEXT_LANGUAGE", c.ManagementTextLanguage)
 	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)

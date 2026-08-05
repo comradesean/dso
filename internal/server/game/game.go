@@ -83,6 +83,12 @@ type clientSession struct {
 	// status is the latest opaque AllStatus blob from RequestUpdatePlayerStatus;
 	// matchmaking filters will read soul memory and area out of it.
 	status []byte
+
+	// areaID is where the player currently is, learned from whichever polling
+	// request last carried an online_area_id. The status blob presumably holds it
+	// too, but that is unparsed — and these requests arrive constantly, so this is
+	// both cheaper and always current.
+	areaID uint32
 }
 
 // New creates a game service bound to the given server. st persists blood

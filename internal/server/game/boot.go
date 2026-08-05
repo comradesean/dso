@@ -160,6 +160,9 @@ func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payloa
 	case opRequestRejectQuickMatch:
 		return s.handleRejectQuickMatch(log, cs, payload)
 
+	case opRequestGetRightMatchingArea:
+		return s.handleGetRightMatchingArea(log, cs, payload)
+
 	case opRequestGetVisitorList:
 		return s.handleGetVisitorList(log, cs, payload)
 	case opRequestVisit:
