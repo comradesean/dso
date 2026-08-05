@@ -2,6 +2,7 @@ package game
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"testing"
@@ -9,10 +10,18 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/sstreight/dso/internal/proto/ds2pb"
+	"github.com/sstreight/dso/internal/server/store"
 )
 
-func testService() (*Service, logger, *clientSession) {
-	svc := &Service{messages: newBloodMessageStore()}
+func testService(t *testing.T) (*Service, logger, *clientSession) {
+	t.Helper()
+	st, err := store.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	svc := &Service{store: st, sessions: make(map[string]*clientSession)}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cs := &clientSession{accountID: "comradesean", playerID: 1, characterID: 1}
 	return svc, log, cs
@@ -22,7 +31,7 @@ func testService() (*Service, logger, *clientSession) {
 // it back from the area listing. This is the first feature that can be verified
 // end to end without a second player.
 func TestBloodMessageRoundTrip(t *testing.T) {
-	svc, log, cs := testService()
+	svc, log, cs := testService(t)
 	body := []byte{0x01, 0x02, 0x03, 0x04}
 
 	createRaw, err := proto.Marshal(&ds2pb.RequestCreateBloodMessage{
@@ -86,7 +95,7 @@ func TestBloodMessageRoundTrip(t *testing.T) {
 // TestBloodMessageAreaAndCellFiltering guards the listing filter: a message must
 // not leak into a different area, or into a cell the client did not ask about.
 func TestBloodMessageAreaAndCellFiltering(t *testing.T) {
-	svc, log, cs := testService()
+	svc, log, cs := testService(t)
 
 	place := func(area, cell uint32) {
 		raw, _ := proto.Marshal(&ds2pb.RequestCreateBloodMessage{
@@ -143,7 +152,7 @@ func TestBloodMessageAreaAndCellFiltering(t *testing.T) {
 // differ from the reference: it disconnects a client that rates its own message,
 // we simply decline to count it.
 func TestBloodMessageSelfEvaluationIgnored(t *testing.T) {
-	svc, log, cs := testService()
+	svc, log, cs := testService(t)
 
 	createRaw, _ := proto.Marshal(&ds2pb.RequestCreateBloodMessage{
 		OnlineAreaId: proto.Uint32(100),
@@ -169,8 +178,8 @@ func TestBloodMessageSelfEvaluationIgnored(t *testing.T) {
 	if _, err := svc.handleEvaluateBloodMessage(log, cs, evalRaw); err != nil {
 		t.Fatal(err)
 	}
-	if m, _ := svc.messages.get(id); m.rating != 0 {
-		t.Errorf("self-evaluation counted: rating %d, want 0", m.rating)
+	if m, _, _ := svc.store.GetBloodMessage(context.Background(), id); m.Rating != 0 {
+		t.Errorf("self-evaluation counted: rating %d, want 0", m.Rating)
 	}
 
 	// Another player rating it does count.
@@ -178,8 +187,8 @@ func TestBloodMessageSelfEvaluationIgnored(t *testing.T) {
 	if _, err := svc.handleEvaluateBloodMessage(log, other, evalRaw); err != nil {
 		t.Fatal(err)
 	}
-	if m, _ := svc.messages.get(id); m.rating != 1 {
-		t.Errorf("rating after another player evaluated: got %d, want 1", m.rating)
+	if m, _, _ := svc.store.GetBloodMessage(context.Background(), id); m.Rating != 1 {
+		t.Errorf("rating after another player evaluated: got %d, want 1", m.Rating)
 	}
 
 	// And the query reflects it.
@@ -203,7 +212,7 @@ func TestBloodMessageSelfEvaluationIgnored(t *testing.T) {
 
 // TestBloodMessageRemove checks a removed message stops appearing in listings.
 func TestBloodMessageRemove(t *testing.T) {
-	svc, log, cs := testService()
+	svc, log, cs := testService(t)
 
 	createRaw, _ := proto.Marshal(&ds2pb.RequestCreateBloodMessage{
 		OnlineAreaId: proto.Uint32(100),

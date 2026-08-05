@@ -14,6 +14,7 @@ import (
 	"github.com/sstreight/dso/internal/frpg/rudp"
 	"github.com/sstreight/dso/internal/server/authtoken"
 	"github.com/sstreight/dso/internal/server/core"
+	"github.com/sstreight/dso/internal/server/store"
 )
 
 // newTestService starts a game service on an ephemeral UDP port and returns it
@@ -50,7 +51,12 @@ func newTestService(t *testing.T) (*core.Server, authtoken.Token, []byte, *net.U
 	}
 	srv.Tokens.Add(tok, key)
 
-	svc := New(srv)
+	st, err := store.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	svc := New(srv, st)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go func() { _ = svc.Serve(ctx) }()

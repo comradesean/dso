@@ -20,6 +20,7 @@ import (
 	"github.com/sstreight/dso/internal/server/dnsredirect"
 	"github.com/sstreight/dso/internal/server/game"
 	"github.com/sstreight/dso/internal/server/login"
+	"github.com/sstreight/dso/internal/server/store"
 )
 
 func main() {
@@ -55,7 +56,14 @@ func run() error {
 
 	srv.AddService(login.New(srv))
 	srv.AddService(auth.New(srv))
-	srv.AddService(game.New(srv))
+	st, err := store.Open(context.Background(), cfg.DatabasePath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	logger.Info("store opened", "path", cfg.DatabasePath)
+
+	srv.AddService(game.New(srv, st))
 	if cfg.BootstrapHTTPEnabled {
 		srv.AddService(bootstrap.New(srv))
 	}

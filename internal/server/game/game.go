@@ -26,6 +26,7 @@ import (
 	"github.com/sstreight/dso/internal/frpg/rudp"
 	"github.com/sstreight/dso/internal/server/authtoken"
 	"github.com/sstreight/dso/internal/server/core"
+	"github.com/sstreight/dso/internal/server/store"
 )
 
 const (
@@ -47,9 +48,12 @@ type Service struct {
 	sessions  map[string]*clientSession // keyed by remote address
 	playerSeq uint32                    // hands out player ids
 
-	// messages and ghosts each have their own lock, so they must not be accessed
-	// while holding s.mu.
-	messages    *bloodMessageStore
+	// store persists blood messages. Ghosts and bloodstains stay in memory: they
+	// are high-volume and disposable, and the reference keeps them memory-only by
+	// default too. Each has its own lock, so none of these may be touched while
+	// holding s.mu... except the store, whose calls are short and serialized by
+	// SQLite anyway.
+	store       *store.Store
 	ghosts      *ghostStore
 	bloodstains *bloodstainStore
 }
@@ -73,12 +77,13 @@ type clientSession struct {
 	status []byte
 }
 
-// New creates a game service bound to the given server.
-func New(srv *core.Server) *Service {
+// New creates a game service bound to the given server. st persists blood
+// messages and must be non-nil.
+func New(srv *core.Server, st *store.Store) *Service {
 	return &Service{
 		srv:         srv,
 		sessions:    make(map[string]*clientSession),
-		messages:    newBloodMessageStore(),
+		store:       st,
 		ghosts:      newGhostStore(),
 		bloodstains: newBloodstainStore(),
 	}

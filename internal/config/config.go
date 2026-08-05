@@ -49,6 +49,9 @@ type Config struct {
 	LoginPort int
 	AuthPort  int
 	GamePort  int
+	// DatabasePath is the SQLite file for persisted content. ":memory:" keeps
+	// everything ephemeral, which is useful for testing.
+	DatabasePath string
 
 	KeyDir            string // RSA key pair directory (generated on first run)
 	AuthModeValue     AuthMode
@@ -99,6 +102,7 @@ func Default() Config {
 		LoginPort:         50011,
 		AuthPort:          50000,
 		GamePort:          50010,
+		DatabasePath:      "data/dso.db",
 		KeyDir:            "data/keys",
 		AuthModeValue:     AuthNoop,
 		AllowInsecureAuth: true,
@@ -128,6 +132,7 @@ func Load() (Config, error) {
 	c.LoginPort = envInt("DSO_SERVER_LOGIN_PORT", c.LoginPort)
 	c.AuthPort = envInt("DSO_SERVER_AUTH_PORT", c.AuthPort)
 	c.GamePort = envInt("DSO_SERVER_GAME_PORT", c.GamePort)
+	c.DatabasePath = envStr("DSO_DATABASE_PATH", c.DatabasePath)
 	c.KeyDir = envStr("DSO_CRYPTO_KEY_DIR", c.KeyDir)
 	c.AuthModeValue = AuthMode(envStr("DSO_AUTH_MODE", string(c.AuthModeValue)))
 	c.AllowInsecureAuth = envBool("DSO_ALLOW_INSECURE_AUTH", c.AllowInsecureAuth)
