@@ -261,7 +261,7 @@ characters is the fix.
 |---|---|---|
 | `0x038B` | `RegulationFileUpdatePushMessage` | **Parked** — see `tasks/calibration-reverse-engineering.md`. Confirmed to parse; never shown to apply. |
 | `0x038C` | `PlayerInfoUploadConfigPushMessage` | Never sent. ds3os sends it at login to configure what the client uploads. A candidate for the chest trigger. |
-| `0x03EF` | session-disconnect push | Would let the server evict a client cleanly instead of letting it time out. |
+| `0x03EF` | `PushRequestNotifyRingBell` | **Not** the session-disconnect push it was long assumed to be — name read off `GetTypeName`. A server→client bell broadcast the client already has a handler for. See below. |
 
 ---
 

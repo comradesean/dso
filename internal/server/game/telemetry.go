@@ -102,42 +102,48 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 
 // handleNotifyRingBell records a bell ring.
 //
-// CONFIRMED BY OBSERVATION 2026-08-05: ringing a belfry bell does NOT send this.
-// A player rang the Belfry Sol bell with full packet logging on and no 0x03EE
-// ever arrived. DS2 has exactly two bells and neither is struck — you pull a
-// lever in a side tower, and ringing is a gate opener and nothing else. It does
-// not trigger, end or affect Bell Keeper invasions, which fire on a trespasser's
-// presence in the belfry.
+// The name is NOT inherited from the PC protos — it is in this binary. The
+// message's GetTypeName (v1.10 vtable 0x1CE1B60 slot 2) returns the literal
+// "Frpg2RequestMessage.RequestNotifyRingBell".
 //
-// So this opcode is misnamed for our purposes and is definitively NOT the
-// event-chest trigger, which was the last reason to care about it. It remains
-// logged in full because nothing has ever been seen sending it, and the payload
-// would be the only evidence of what it actually is.
+// CONFIRMED BY OBSERVATION 2026-08-05: ringing a belfry bell does NOT send this.
+// A player rang Belfry Sol, and later Belfry Luna five times consecutively, with
+// full packet logging on, and no 0x03EE ever arrived.
+//
+// The decompilation explains why. The send at 0x15D0178 is reached only from a
+// data-driven script command interpreter, gated on command id 130631 (0x1FE47).
+// That constant occurs EXACTLY ONCE in the whole executable — at the dispatcher
+// comparison — so there is no second producer and no table. Whether the opcode
+// can fire at all therefore depends on whether any shipped script issues command
+// 130631, which lives in GameData.bdt rather than in code. Both v1.00 and v1.10
+// are instruction-for-instruction identical here, so this is not a version
+// difference. Closing the last step means grepping the script data for 130631.
+//
+// Payload, recovered from the serialiser rather than guessed:
+//
+//	field 1  uint32, the current map id in DS2's decimal convention
+//	         (m10_02_00_00 -> 10020000), from the same helper that feeds
+//	         RequestNotifyJoinGuestPlayer
+//	field 2  bytes, and the only caller always constructs it EMPTY
+//
+// So a real frame would be just: 08 <varint mapid> 12 00.
 //
 // On the "I can hear other players ringing bells" reports, which are real and go
-// back to 2014, and which have to be reconciled with this opcode never firing:
+// back to 2014: there IS a server-to-client broadcast for this. Opcode 0x03EF is
+// PushRequestNotifyRingBell — confirmed by GetTypeName, and long mis-documented
+// here as a session-disconnect push. The client already has a handler for it.
 //
-// The leading explanation is GHOST REPLAY. Ghosts are recordings of another
-// player's actions, fetched via RequestGetGhostDataList and replayed locally with
-// no session between the two players — and the blob is opaque to us, so a bell
-// pull inside one would reach a listener without any bell-specific message ever
-// existing. That fits every part of the reports: heard without being invaded,
-// sounding unlike DS1's global toll, genuinely another player's action, and with
-// no identifiable trigger. It is INFERRED, not proven; proving it means decoding
-// a ghost blob.
+// That supersedes the ghost-replay theory previously written here, which was
+// only ever an inference made on the assumption that no bell channel existed. A
+// dedicated push is the far simpler explanation, and unlike ghost replay it is
+// directly testable: send a 0x03EF and listen. Its four fields (uint32, uint32,
+// uint32, bytes) are of unknown meaning, so that test starts as a guess.
 //
-// An earlier note here claimed the sound was peer-to-peer audio heard only while
-// a Bell Keeper phantom is in the host's world. That is true as far as it goes —
-// a phantom does hear the host's bell — but it cannot explain why the community
-// found the effect mysterious at all: anyone hearing it mid-invasion would know
-// exactly what it was. Ghost replay explains the puzzlement; presence does not.
-//
-// DS1's global bell was genuine world state broadcast to everyone. DS2 has no
-// such channel, so the absence of one here is not a missing feature either way.
+// This opcode remains definitively NOT the event-chest trigger.
 func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []byte) ([]byte, error) {
-	// Not parsed: the message is a TODO in our schema, so parsing it would only
-	// assert a shape we have no evidence for. The bytes are the useful artefact.
-	log.Info("BELL RUNG - unmapped message, capture this",
+	// Still logged raw. The shape above is known, but nothing has ever sent one,
+	// so the first real payload is worth having verbatim to check it against.
+	log.Info("BELL RUNG - never yet observed, capture this",
 		"player_id", cs.playerID, "payload_bytes", len(payload),
 		"payload_hex", fmt.Sprintf("%x", payload))
 	return nil, nil

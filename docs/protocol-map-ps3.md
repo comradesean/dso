@@ -268,7 +268,7 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x03EC` | R/R | `RequestGetAnnounceMessageList` | `0x1558870`; resp `0x155C2D4` — **confirmed live** |
 | `0x03ED` | M | `RequestNotifyKillPlayer` | `0x15654C4` |
 | `0x03EE` | M | `RequestNotifyRingBell` | `0x1566040` |
-| `0x03EF` | P | *(session-disconnect push)* | reg `0x1565BC0`; dispatch `0x156646C` → `0x15664E8` |
+| `0x03EF` | P | `PushRequestNotifyRingBell` | v1.10: reg `0x15CFCD8` (`li r4,0x3EF`); handler `0x15D0528` → `0x15D0630`; ctor `0x16418E4`, vtable `0x1CE1AE0`; `GetTypeName` confirms the name. Serializer `0x1634BA0`: `1 uint32`, `2 uint32`, `3 uint32`, `4 bytes` |
 | `0x03F0` | R/R | `RequestGetTotalDeathCount` | `0x15675E0`; resp `0x1566E50` |
 | `0x03F1` | M | `RequestNotifyDeath` | `0x1564F04` |
 | `0x03F2` | M | `RequestNotifyOfflineDeathCount` | `0x1564D28` |
@@ -280,7 +280,9 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x03F8` | R/R | `RequestGetPowerStoneRankingRecordCount` | `0x1567718`; resp `0x1566D20` |
 | `0x03F9` | M | `RequestNotifyDisconnectSession` | `0x15659D8` |
 
-**Confidence: high** for every row that carries a message name and both a send and a response witness (≈80 rows). **Medium-high** for send-only rows. **Medium** for `0x03AA`, `0x03EF` (opcode certain, name inferred from the enclosing manager). **Opcode certain / name unknown** for `0x0387`, `0x0388`, `0x038A`, `0x0389`, `0x038B`, `0x038C`, `0x0390`, and the three push blocks.
+**Confidence: high** for every row that carries a message name and both a send and a response witness (≈80 rows). **Medium-high** for send-only rows. **Medium** for `0x03AA` (opcode certain, name inferred from the enclosing manager). `0x03EF` was
+in that category and is now **high**: its name was read directly off `GetTypeName`, and it is
+`PushRequestNotifyRingBell`, not the session-disconnect push it was previously guessed to be. **Opcode certain / name unknown** for `0x0387`, `0x0388`, `0x038A`, `0x0389`, `0x038B`, `0x038C`, `0x0390`, and the three push blocks.
 
 ### 4.2 The "no response callback" set (M)
 
