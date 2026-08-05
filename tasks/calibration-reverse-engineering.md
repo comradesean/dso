@@ -1,7 +1,23 @@
-# PARKED: authoring our own calibration payloads
+# UNBLOCKED: authoring our own calibration payloads
 
-**Status:** on hold. Serving FromSoftware's real calibrations works completely; *authoring* our
-own does not, and is blocked on one unsolved format.
+> **2026-08-05: the blocker below is solved.** The 256-byte RSA header format is fully
+> reverse-engineered and reproduces all twenty archived headers byte for byte. Authoring works:
+> `tools/calibration/calibration.py`. **The complete, current specification is
+> `docs/regulation-format.md` — read that, not this file.** Everything below is kept only as a
+> record of how the problem looked before it was solved; the "one blocker" section is obsolete.
+>
+> Short version of the answer: the plaintext is `n - (header^3 mod n)`, not `header^3 mod n`.
+> That negation is what defeated the earlier OAEP / PKCS#1 / constant-XOR attempts. The struct
+> is `0x6B`, 141 × `0xBB`, `0xBA`, `"ENCR"`, version, `SizeOrg` as u64 **LE**, the 16-byte IV,
+> 16 zero bytes, `HMAC-SHA1(hmacKey, plaintext[:SizeOrg])`, zeros, `0xCC`.
+>
+> `docs/regulation-format.md` also revises two conclusions below: the key at `0x189AB48` is the
+> **calibration** key (not the login key), and calibration 0114 changed **four** params in the
+> event chain, not one — including `ResultEventParam`, which is the table that binds a lot to an
+> event. The chest wiring in 0114 was complete, so the gap is that the result event never fires.
+
+**Status:** was on hold. Serving FromSoftware's real calibrations works completely; *authoring*
+our own was blocked on one unsolved format, now solved.
 
 **Why it was parked:** the immediate goal — getting new event items into the Majula Mansion chest
 — was not achieved even after successfully delivering calibration 0114, which is the only

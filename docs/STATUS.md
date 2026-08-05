@@ -65,9 +65,13 @@ Per-opcode detail is in `tasks/remaining-opcodes.md`; the prioritised plan is in
 `tasks/remaining-features.md`; **`docs/features.md` maps every opcode to what a player actually
 does in game**, and is the best starting point for anyone new to the protocol.
 
-Authoring our own calibration payloads is **parked** in `tasks/calibration-reverse-engineering.md`
-— serving FromSoftware's works completely, but writing our own is blocked on the 256-byte RSA
-header format.
+**Authoring our own calibration payloads now works.** The 256-byte RSA header is solved and
+specified in `docs/regulation-format.md`, with a verified reader/writer at
+`tools/calibration/calibration.py`. The blocker was a sign convention: the plaintext is
+`n - (header^3 mod n)`, not `header^3 mod n`, which is why OAEP, PKCS#1 v1.5 and constant-XOR all
+failed. Repacking calibration 0114 reproduces FromSoftware's own `SizeOrg`, `SizeEnc` and
+`DIGEST` byte for byte. Delivering an authored payload additionally needs the client patched to
+trust our key — `tools/rpcs3/dso.yml`, the calibration key at `0x189AB48` / `0x1910670`.
 
 ## Things that cost real time, recorded so they are not re-learned
 
@@ -82,7 +86,8 @@ big-endian read. Ciphertext was always correct; only tags differed.
 **The EBOOT holds two RSA keys and only one is the login key.** On v1.00, `0x17FB338` is the login
 key (byte-identical to the PC one) and `0x189AB48` is the **calibration** key — it verifies the
 `contents_NNNN.bin` header, loaded by the request builder at `0x01673D5C` from mini-TOC slot
-`0x1CC27E8`. Patching the wrong one gives a client that connects but whose RSA block never
+`0x1CC27E8`. Independently corroborated: the UTF-16 `Patch.List.*` format strings sit immediately
+after it in rodata. Patching the wrong one gives a client that connects but whose RSA block never
 decrypts.
 
 **A title update moves the keys and invalidates the patch, silently.** RPCS3 patches are keyed by
@@ -226,9 +231,15 @@ The build-out phase is essentially over; what is left is verification and depth.
 2. **Consume the status blob for matchmaking.** Soul memory, area and covenant all arrive and are
    persisted; nothing reads them, so every listing offers every online player. This is the
    difference between "the mode works" and "the mode works correctly".
-3. **Chase the `0x038B` regulation push**, now the leading event-chest candidate after the
-   ring-bell hypothesis was ruled out. Its `start_at`/`end_at` matches the dated windows the
-   chest actually ran on.
+3. **Fill the event chest by binding a lot to a result event that already fires.**
+   `ResultEventParam.param` is the selector: each of its 82 rows carries an
+   `ItemLotParam2_SvrEvent` lot id at `+0x0C`, and the 11xxx lot ids appear nowhere else in the
+   archive. Calibration 0114 bound its new lots to rows 1200/2400/1100/1300, which had *zero*
+   before — so the chest wiring shipped complete and the chest stayed empty because **the result
+   event never fires**, not because data was missing. Now that we can author payloads, the cheap
+   experiment is to bind a lot to a row known to fire and see whether the chest fills. What
+   actually fires a result event is still unknown; it needs the param registry at `0x1C85BC4` /
+   `0x1C85BC8` followed into `MapObjSvrEventTreasureBoxComponent` (EBOOT `0x17F6CC8`).
 4. **Capture `0x0387`/`0x0388`/`0x038A`.** Patch 1.10 added population hints to the warp screen —
    server-supplied, no known opcode, and these three are emitted early in boot and never seen.
    Warping on 1.10 with full logging may catch them.
