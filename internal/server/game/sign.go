@@ -29,6 +29,13 @@ const (
 // reusing one makes it apply stale state to a new sign.
 const firstSignID = 100000
 
+// firstMirrorKnightSignID keeps Mirror Knight sign ids in a disjoint range from
+// ordinary summon signs. Both live in their own store, so both would otherwise
+// start at firstSignID and hand the same id to two different signs — and the
+// client keys cached state by sign id without regard for which system produced
+// it.
+const firstMirrorKnightSignID = 500000
+
 // sign is one placed summon sign.
 //
 // playerStruct is the game's own opaque blob describing the host character. It is
@@ -66,8 +73,31 @@ type signStore struct {
 	byID   map[uint32]*sign
 }
 
-func newSignStore() *signStore {
-	return &signStore{nextID: firstSignID - 1, byID: make(map[uint32]*sign)}
+func newSignStore() *signStore { return newSignStoreFrom(firstSignID) }
+
+func newSignStoreFrom(firstID uint32) *signStore {
+	return &signStore{nextID: firstID - 1, byID: make(map[uint32]*sign)}
+}
+
+// all returns up to limit signs, ignoring area and cell.
+//
+// Mirror Knight has no placement: the sign is for a single global arena, and
+// RequestCreateMirrorKnightSign carries no area or cell at all. So its listing
+// cannot filter the way inCells does.
+func (s *signStore) all(excludePlayer uint32, limit int) []*sign {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []*sign
+	for _, sg := range s.byID {
+		if sg.ownerID == excludePlayer {
+			continue
+		}
+		out = append(out, sg)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out
 }
 
 func (s *signStore) add(sg *sign) uint32 {

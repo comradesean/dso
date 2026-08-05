@@ -13,7 +13,7 @@ Ordering below is roughly by value-for-effort.
 
 ---
 
-## 1. Connection keepalive and bandwidth  — small, and possibly load-bearing
+## 1. ~~Connection keepalive and bandwidth~~ — DONE (2026-08-05)
 
 | Opcode | Message | Kind |
 |---|---|---|
@@ -26,7 +26,7 @@ ds3os answers the bandwidth pair with a fixed-size payload and treats ping as a 
 Worth doing first: tiny, and an unanswered `ServerPing` is a plausible cause of the periodic
 disconnects that have not been investigated.
 
-## 2. Telemetry notifies  — trivial, and they unblock diagnosis
+## 2. ~~Telemetry notifies~~ — DONE (2026-08-05)
 
 All fire-and-forget (`M`): no reply, but they must be marked handled in `handledOpcodes` or they
 pollute the "no handler" log that is our main discovery signal.
@@ -86,7 +86,7 @@ group in registration order — the same approach should be tried here, then con
 ds3os `DS2_QuickMatchManager`, 12 handlers / 382 lines. This is the arena (Undead Match). Needs a
 match-session concept we do not have yet.
 
-## 6. Mirror Knight  — a clean sign-manager clone
+## 6. ~~Mirror Knight~~ — DONE (2026-08-05)
 
 | Opcode | Message |
 |---|---|
@@ -94,9 +94,17 @@ match-session concept we do not have yet.
 | `0x03A5`–`0x03A7` | Summon / Reject / Remove pushes |
 | `0x03D8` | `RequestNotifyMirrorKnight` (M) |
 
-Mirrors `sign.go` almost exactly — ds3os's `DS2_MirrorKnightManager` is largely a copy of its sign
-manager. Unlike the Visitor and QuickMatch blocks, **these three push ids are individually
-identified in the map**, so there is no alias guessing.
+Implemented in `internal/server/game/mirrorknight.go`. Reuses `signStore` with a **disjoint id
+range** (`firstMirrorKnightSignID = 500000`) — both stores seed independently, so sharing the
+range would hand an arena sign and a summon sign the same id, and the client caches by sign id
+without distinguishing the two systems.
+
+The structural difference from ordinary signs: **no placement**. `RequestCreateMirrorKnightSign`
+carries no area or cell, so listing cannot filter by position. `SignData` still requires
+`online_area_id`, `cell_id` and `sign_type`, so those go out as zero — absent required fields
+would be rejected outright.
+
+Not yet confirmed in-game: needs two clients at Belfry Sol.
 
 ## 7. Power stone ranking
 

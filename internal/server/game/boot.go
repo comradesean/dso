@@ -67,6 +67,7 @@ var handledOpcodes = map[uint32]bool{
 	opRequestNotifyKillEnemy:         true,
 	opRequestNotifyBuyItem:           true,
 	opRequestNotifyDisconnectSession: true,
+	opRequestNotifyMirrorKnight:      true,
 }
 
 func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payload []byte) ([]byte, error) {
@@ -115,6 +116,21 @@ func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payloa
 		return s.handleSummonSign(log, cs, payload)
 	case opRequestRejectSign:
 		return s.handleRejectSign(log, cs, payload)
+
+	case opRequestCreateMirrorKnightSign:
+		return s.handleCreateMirrorKnightSign(log, cs, payload)
+	case opRequestUpdateMirrorKnightSign:
+		return s.handleUpdateMirrorKnightSign(log, cs, payload)
+	case opRequestRemoveMirrorKnightSign:
+		return s.handleRemoveMirrorKnightSign(log, cs, payload)
+	case opRequestGetMirrorKnightSignList:
+		return s.handleGetMirrorKnightSignList(log, cs, payload)
+	case opRequestSummonMirrorKnightSign:
+		return s.handleSummonMirrorKnightSign(log, cs, payload)
+	case opRequestRejectMirrorKnightSign:
+		return s.handleRejectMirrorKnightSign(log, cs, payload)
+	case opRequestNotifyMirrorKnight:
+		return s.handleNotifyMirrorKnight(log, cs, payload)
 
 	case opRequestGetTotalDeathCount:
 		return s.handleGetTotalDeathCount(log, cs, payload)

@@ -57,6 +57,11 @@ type Service struct {
 	ghosts      *ghostStore
 	bloodstains *bloodstainStore
 	signs       *signStore
+	// mirrorKnight holds Belfry Sol arena signs. A separate store from signs
+	// because the two are listed by different rules — arena signs have no area or
+	// cell to filter on — and its ids come from a disjoint range so the client
+	// cannot confuse one system's sign id for the other's.
+	mirrorKnight *signStore
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -82,12 +87,13 @@ type clientSession struct {
 // messages and must be non-nil.
 func New(srv *core.Server, st *store.Store) *Service {
 	return &Service{
-		srv:         srv,
-		sessions:    make(map[string]*clientSession),
-		store:       st,
-		ghosts:      newGhostStore(),
-		bloodstains: newBloodstainStore(),
-		signs:       newSignStore(),
+		srv:          srv,
+		sessions:     make(map[string]*clientSession),
+		store:        st,
+		ghosts:       newGhostStore(),
+		bloodstains:  newBloodstainStore(),
+		signs:        newSignStore(),
+		mirrorKnight: newSignStoreFrom(firstMirrorKnightSignID),
 	}
 }
 
@@ -303,6 +309,7 @@ func (s *Service) dropSession(key string, cs *clientSession) {
 	delete(s.sessions, key)
 	if cs.playerID != 0 {
 		s.dropSignsForPlayer(s.srv.Logger, cs.playerID)
+		s.dropMirrorKnightSignsForPlayer(s.srv.Logger, cs.playerID)
 	}
 }
 

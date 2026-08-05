@@ -19,9 +19,10 @@ func signTestService(t *testing.T) (*Service, logger, *clientSession, *clientSes
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := &Service{
-		srv:      &core.Server{Config: config.Default(), Logger: log},
-		signs:    newSignStore(),
-		sessions: make(map[string]*clientSession),
+		srv:          &core.Server{Config: config.Default(), Logger: log},
+		signs:        newSignStore(),
+		mirrorKnight: newSignStoreFrom(firstMirrorKnightSignID),
+		sessions:     make(map[string]*clientSession),
 	}
 
 	host := newTestSession("comradesean", 1)
