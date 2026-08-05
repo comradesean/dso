@@ -139,35 +139,39 @@ types:
 
   game_server_info:
     doc: |
-      Stage 4 reply. 184 raw bytes, big-endian. Tells the client where the UDP game
+      Stage 4 reply. 184 raw bytes on PC/SOTFS. Tells the client where the UDP game
       server is and issues the auth token that authorises it.
 
-      *** UNCONFIRMED ON PS3 - THIS IS THE CURRENT PRIME SUSPECT. ***
+      *** THIS IS THE PC LAYOUT. PS3 USES A DIFFERENT, 56-BYTE STRUCT. ***
 
-      This layout is taken from the DS3OS reference, which targets PC/SOTFS. Against a
-      real PS3 client it does NOT work: the client completes all four auth stages,
-      reads this struct, closes the auth socket (normal), and then refuses to use its
-      already-bound UDP socket - it never connects or sends. It is rejecting something
-      in here. A decompilation of the PS3 EBOOT is underway to recover the real layout.
-      Do not trust these offsets for PS3.
+      Decompilation of BLUS41045 showed the PS3 client requires a payload of exactly
+      56 bytes (hard equality check at vaddr 0x167091c) with a binary u32 IP, no
+      stack_data block and ten trailing u4 rather than eleven. Sending this 184-byte
+      PC layout to a PS3 client makes it silently skip the entire copy - leaving the
+      address, port and socket buffer sizes at zero - so it binds 0.0.0.0:0 and never
+      sends a datagram.
+
+      See dev/proto/ps3/ for the PS3 struct. Do NOT use this one for PS3.
     seq:
       - id: auth_token
         size: 8
         doc: |
           Random. NOT byte-swapped - raw bytes. The client prefixes this to every
           client->server game datagram in the clear, which is how a connectionless
-          UDP listener demuxes sessions before it can decrypt anything.
+          UDP listener demuxes sessions before it can decrypt anything. Same on PS3.
       - id: game_server_ip
         size: 16
         type: strz
         encoding: ASCII
-        doc: NUL-terminated ASCII address, e.g. "192.168.1.100".
+        doc: |
+          NUL-terminated ASCII address on PC, e.g. "192.168.1.100".
+          On PS3 this is a raw binary u32 instead - the ASCII form does not exist there.
       - id: stack_data
         size: 112
         doc: |
-          Zeroed. The retail server reportedly leaked stack memory here, so the
-          contents are presumed ignored - but that is an assumption, and if the PS3
-          client validates anything in this region it would explain the rejection.
+          Zeroed. The retail PC server leaked stack memory here. This field does not
+          exist at all in the PS3 struct, which suggests it is an artifact of the PC
+          server writing an uninitialised buffer rather than a real protocol field.
       - id: game_port
         type: u2
         doc: UDP game service port, big-endian (50010).
@@ -179,7 +183,10 @@ types:
         repeat: expr
         repeat-expr: 11
         doc: |
-          Eleven big-endian u4 constants, believed to be buffer sizes:
+          Eleven big-endian u4 constants:
             0x8000, 0x8000, 0xA000, 0xA000, 0x80, 0x8000, 0xA000,
             0x493E0, 0x61A8, 0x0C, 0x00
-          Their meaning is unverified in either implementation.
+          PS3 has TEN of these (no trailing zero) and halves the two buffer-size
+          classes: 0x8000 -> 0x4000 and 0xA000 -> 0x5000. The first two are applied
+          verbatim as SO_SNDBUF and SO_RCVBUF, and a failed setsockopt aborts the
+          client's connection setup entirely.

@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"net/netip"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -185,30 +186,24 @@ func (c Config) auth(ctx context.Context, addr string) (AuthResult, error) {
 	return parseGameServerInfo(infoReply.Payload, gameKey)
 }
 
+// parseGameServerInfo decodes the 56-byte Frpg2GameServerInfo the real DS2 PS3
+// client expects. The client enforces the length with a hard equality check and
+// silently discards a mismatched struct, so this emulator is strict too — being
+// lenient here would hide exactly the bug the real client hits.
+//
+// See internal/server/auth/gameserverinfo.go for the recovered layout and the
+// addresses it came from.
 func parseGameServerInfo(buf, gameKey []byte) (AuthResult, error) {
-	if len(buf) != 184 {
-		return AuthResult{}, fmt.Errorf("game server info is %d bytes, want 184", len(buf))
+	if len(buf) != 56 {
+		return AuthResult{}, fmt.Errorf("game server info is %d bytes, want 56", len(buf))
 	}
 	var res AuthResult
 	copy(res.AuthToken[:], buf[0:8])
 	res.GameKey = gameKey
-	// game_server_ip: NUL-terminated ASCII in buf[8:24].
-	ipBytes := buf[8:24]
-	if i := indexZero(ipBytes); i >= 0 {
-		ipBytes = ipBytes[:i]
-	}
-	res.GameServerIP = string(ipBytes)
-	res.GamePort = int(binary.BigEndian.Uint16(buf[136:138]))
+	// game_server_ip is a raw binary u32 (a.b.c.d), not an ASCII string.
+	res.GameServerIP = netip.AddrFrom4([4]byte(buf[8:12])).String()
+	res.GamePort = int(binary.BigEndian.Uint16(buf[12:14]))
 	return res, nil
-}
-
-func indexZero(b []byte) int {
-	for i, c := range b {
-		if c == 0 {
-			return i
-		}
-	}
-	return -1
 }
 
 func dial(ctx context.Context, addr string, timeout time.Duration) (net.Conn, error) {
