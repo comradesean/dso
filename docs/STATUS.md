@@ -5,7 +5,8 @@ Complements `RECOVERED_PLAN.md`, which is the original plan and is now partly ov
 
 ## Headline
 
-**Two real Dark Souls 2 PS3 clients on separate machines play together against this server.**
+**Two real Dark Souls 2 PS3 clients on separate machines play together against this server**, and
+every named multiplayer mode now has an implementation.
 
 They see each other's blood messages, rate them and receive live notifications, summon
 signs broker host-to-summoner, and **invasions work end to end** — one player invaded
@@ -37,23 +38,36 @@ stretch.
 | World death counter (4 opcodes) | **Working** | Counts live in-game; persists across restarts |
 | Management text push (`0x0389`) | **Working** | Renders as the post-login banner, upper left |
 | HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
-| **Serving our own calibrations** | **Working** | Client applied our regulation_0107; save matches byte for byte |
-| Persistence (SQLite) | Working | Blood messages and counters survive restart |
-| Player status / character uploads | Recorded | Accepted; nothing consumes them yet |
+| Mirror Knight (7 opcodes) | Implemented | Unit-tested; needs two clients at King's Passage |
+| Visitors (3 opcodes) | Implemented | Unit-tested; **push ids unverified** |
+| Duelling arenas (6 opcodes) | Implemented | Unit-tested; push ids well-evidenced |
+| Champion's Tablet ranking (4 opcodes) | Implemented | Unit-tested; persisted |
+| Keepalive + bandwidth (4 opcodes) | Implemented | `ServerPing` had been going unanswered |
+| Telemetry notifies (8 opcodes) | Implemented | Kill/purchase counters persisted |
+| **Serving our own calibrations** | **Working** | Client applied our regulation_0107 and 0113; save matches byte for byte |
+| Persistence (SQLite) | Working | Messages, counters, **players, characters, rankings** survive restart |
+| **Stable player ids** | **Working** | Same PSN account keeps its id across restarts |
+| Player status blob | Recorded | Persisted; **nothing consumes it, so no matchmaking filters** |
 
 ## Not built
 
-**33 of 95 live opcodes are implemented.** The full remaining list, ordered by value-for-effort
-and cross-referenced against `ref/ds3os`, is in **`tasks/remaining-features.md`**: connection
-keepalive and bandwidth, telemetry notifies, player-character reads, visitors, quick match,
-Mirror Knight, power-stone ranking, and three pushes we never send.
+**65 of 95 live opcodes are dispatched or emitted.** Every named multiplayer mode now has an
+implementation. What remains is not really features:
+
+- **Matchmaking filters.** The status blob carrying soul memory, area and covenant is persisted
+  but unread, so every listing offers every online player. This is the largest functional gap.
+- **Three pushes we never send** — `0x038B` regulation update, `0x038C` player-info config,
+  `0x03EF` session disconnect.
+- **Four unidentified opcodes** — `0x0387`, `0x0388`, `0x038A`, `0x0390`. None observed live.
+- **28 unused push aliases**, which belong to message types we already send.
+
+Per-opcode detail is in `tasks/remaining-opcodes.md`; the prioritised plan is in
+`tasks/remaining-features.md`; **`docs/features.md` maps every opcode to what a player actually
+does in game**, and is the best starting point for anyone new to the protocol.
 
 Authoring our own calibration payloads is **parked** in `tasks/calibration-reverse-engineering.md`
 — serving FromSoftware's works completely, but writing our own is blocked on the 256-byte RSA
 header format.
-
-Player ids and character ids are still per-run and in memory, which is the same id-reuse hazard
-described below waiting to happen once anything caches them.
 
 ## Things that cost real time, recorded so they are not re-learned
 
@@ -190,15 +204,31 @@ was handed an id a client had already rated, so the client greyed out its rate o
 message it had never seen — and never sent the evaluate at all. It looked exactly like a server
 bug.
 
-Message and sign ids now start at 100000 and never repeat. **Player and character ids do not yet
-have this protection.**
+Message and sign ids start at 100000 and never repeat. **Players are now persisted too**: ids are
+`AUTOINCREMENT` from 100000, so they are never reused even after deletes, and the same PSN account
+always resolves to the same id.
+
+`character_id` is different in kind — it is the **client's local slot number**, not a
+server-assigned id, so every player has a character 1. Anything keyed by character must therefore
+be keyed `(player_id, character_id)`. Getting that wrong is not hypothetical: the leaderboard
+shipped keyed on `character_id` alone and would have merged every player's first character into a
+single board entry.
 
 ## Suggested next steps
 
-1. Verify a *declined* invasion, which is the one BreakIn path still resting on an unverified
-   alias guess.
-2. Visitors and quick match, which follow the same brokering shape as signs and invasions. Their
-   push aliases are unmapped, but the invasion result suggests the lowest value in each
-   registration group is a reasonable first guess.
-3. Persist players and characters, both for continuity and to close the id-reuse hazard.
-4. Consume the player status blob, which is what every matchmaking filter needs.
+The build-out phase is essentially over; what is left is verification and depth.
+
+1. **Live-test the three unverified push paths.** Each is minutes of play and retires real
+   ambiguity that no amount of static analysis has settled:
+   - a *declined* invasion (`pushBreakInRejected` assumes `breakInPushID + 1`)
+   - a covenant auto-summon (the visitor push trio is an inference)
+   - a Mirror Knight summon and an arena duel, neither of which has ever run
+2. **Consume the status blob for matchmaking.** Soul memory, area and covenant all arrive and are
+   persisted; nothing reads them, so every listing offers every online player. This is the
+   difference between "the mode works" and "the mode works correctly".
+3. **Chase the `0x038B` regulation push**, now the leading event-chest candidate after the
+   ring-bell hypothesis was ruled out. Its `start_at`/`end_at` matches the dated windows the
+   chest actually ran on.
+4. **Capture `0x0387`/`0x0388`/`0x038A`.** Patch 1.10 added population hints to the warp screen —
+   server-supplied, no known opcode, and these three are emitted early in boot and never seen.
+   Warping on 1.10 with full logging may catch them.
