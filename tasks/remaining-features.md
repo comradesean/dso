@@ -1,5 +1,9 @@
 # Remaining features
 
+> A per-opcode catalogue of everything still unimplemented, grouped by category with short
+> summaries, is in **`tasks/remaining-opcodes.md`**. This file is the prioritised plan; that one
+> is the reference.
+
 Derived from `docs/protocol-map-ps3.md` (decompilation-derived, authoritative for BLUS41045)
 cross-referenced against `ref/ds3os`, and against what `internal/server/game/boot.go` actually
 dispatches.
@@ -66,7 +70,7 @@ We already accept `RequestUpdatePlayerCharacter` (`0x03A8`) and `RequestUpdatePl
 id-reuse hazard documented in `docs/STATUS.md` becomes real the moment another client caches a
 character id. Persist these first.
 
-## 4. Visitors  — a whole multiplayer mode, and the machinery already exists
+## 4. ~~Visitors~~ — DONE (2026-08-05), push ids UNVERIFIED
 
 | Opcode | Message |
 |---|---|
@@ -75,11 +79,24 @@ character id. Persist these first.
 | `0x03D7` | `RequestRejectVisit` |
 | `0x03C9`–`0x03D1` | Visitor push block (9 aliases, unassigned) |
 
-Structurally identical to invasions, which work. Reuse `breakin.go` almost wholesale.
+Implemented in `internal/server/game/visitor.go` — the covenant auto-summon systems (Bell
+Keepers, Rat King, Blue Sentinels). Structurally the invasion flow, not the sign flow: nothing is
+stored, the server brokers between two live sessions and steps out.
 
-**The push aliases are the risk**: nine registrations for three message types, and static analysis
-cannot separate them. `0x03B9` was guessed correctly for BreakIn on the first try by taking the
-group in registration order — the same approach should be tried here, then confirmed live.
+**The push ids remain the open risk.** Nine aliases across `0x03C9`-`0x03D1` for three message
+types. We send `0x03CF`/`0x03D0`/`0x03D1`, which is better supported than a guess: the PC protos
+assign exactly those to exactly those types, and unlike the BreakIn pushes (PC says
+`0x03FB`-`0x03FD`, absent from this binary) the decompilation confirms all three exist here.
+Three consecutive values hitting three different types also fits interleaved aliasing, which is
+documented for the QuickMatch block.
+
+**If a visit silently does nothing in-game, flip to `0x03C9`/`0x03CC`/`0x03CF`** — the first
+alias of each contiguous group, the shape that proved right for BreakIn.
+
+**`PushRequestRemoveVisitor` is deliberately not sent.** Telling a host their visitor left needs
+to know which host a departing player was in, and no visit session is tracked. The phantom clears
+on the clients' own timeout instead — the natural companion to the visit-session concept
+QuickMatch will need anyway.
 
 ## 5. Quick match  — the largest remaining mode
 
