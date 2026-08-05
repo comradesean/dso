@@ -117,7 +117,21 @@ target sat at a bonfire succeeded within one poll of them walking away.
 the crest is equipped, so an ineligible target used to be re-offered indefinitely — the player saw
 "summoning failed" every twenty seconds. Fixed by matchmaking filters, below.
 
-## 4b. Matchmaking filters — DONE, awaiting live test (2026-08-05)
+## 4b. Matchmaking filters — DONE and CONFIRMED LIVE (2026-08-05)
+
+**Confirmed at Grave of Saints.** With filtering on, the target list flipped from `returned=0
+skipped_wrong_pool=1` to `returned=1` in the same poll that the prey entered the summonable zone,
+and the summon went straight to a joined session on the first attempt. **Zero rejections since the
+fix**, against 54 of 55 before it — the clearest evidence that we had been offering targets that
+were always going to refuse.
+
+Two behaviours worth recording, both CLIENT-side and neither ours to tune:
+
+- The auto-summon poll runs at ~20s, but backs off **4½–6 minutes after a summon that becomes a
+  session** (366s and 276s observed). A summon the prey *escapes* costs nothing: polling resumes at
+  the normal 20s. Plausibly anti-farm behaviour.
+- Escaping into a safe spot genuinely prevents the summon, and is cheap to do.
+
 
 `internal/server/game/matchmaking.go`. Target lists are no longer "every online player".
 
