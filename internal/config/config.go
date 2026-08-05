@@ -116,6 +116,20 @@ type Config struct {
 	// Defaults to the directory of BootstrapContentsFile when unset.
 	BootstrapCalibrationDir string
 
+	// QuickMatchAutoPair makes the server introduce two players who are both
+	// waiting in an arena queue, instead of waiting for one of them to search.
+	//
+	// The client alternates between advertising and searching, and only searches
+	// when the player interacts with the statue — so two players can sit queued
+	// indefinitely with neither looking. Observed repeatedly in testing.
+	//
+	// This is an introduction, not a decision: both players have already declared
+	// availability by registering, and the receiving client still chooses whether
+	// to allow. But it does mean a join arrives that no client asked for, and
+	// whether the other side accepts an allow it did not solicit is UNVERIFIED.
+	// Off by default for that reason.
+	QuickMatchAutoPair bool
+
 	// CalibrationVersion selects which calibration the client actually receives.
 	//
 	// The EBOOT hardcodes the contents_0101.bin URL, so a real client can only
@@ -213,6 +227,7 @@ func Load() (Config, error) {
 	c.BootstrapContentsFile = envStr("DSO_BOOTSTRAP_CONTENTS_FILE", c.BootstrapContentsFile)
 	c.BootstrapCalibrationDir = envStr("DSO_BOOTSTRAP_CALIBRATION_DIR", c.BootstrapCalibrationDir)
 	c.CalibrationVersion = envStr("DSO_CALIBRATION_VERSION", c.CalibrationVersion)
+	c.QuickMatchAutoPair = envBool("DSO_QUICKMATCH_AUTOPAIR", c.QuickMatchAutoPair)
 	c.DNSEnabled = envBool("DSO_DNS", c.DNSEnabled)
 	c.DNSPort = envInt("DSO_DNS_PORT", c.DNSPort)
 	c.DNSUpstream = envStr("DSO_DNS_UPSTREAM", c.DNSUpstream)

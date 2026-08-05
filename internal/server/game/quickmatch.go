@@ -251,7 +251,47 @@ func (s *Service) handleRegisterQuickMatch(log logger, cs *clientSession, payloa
 		"player_id", cs.playerID, "area_id", req.GetOnlineAreaId(),
 		"cell_id", req.GetCellId(), "mode", req.GetMode())
 
+	if s.srv.Config.QuickMatchAutoPair {
+		s.autoPair(log, cs, req.GetOnlineAreaId(), req.GetCellId(), req.GetMode())
+	}
+
 	return proto.Marshal(&ds2pb.RequestRegisterQuickMatchResponse{})
+}
+
+// autoPair introduces a newly registered player to someone already waiting.
+//
+// Both have declared availability by registering; this only removes the need for
+// one of them to happen to be in the searching half of its cycle at the right
+// moment. The longest-waiting player is treated as the host, mirroring the
+// natural flow where a searcher joins an advertiser.
+//
+// Caller holds s.mu.
+func (s *Service) autoPair(log logger, joiner *clientSession, areaID, cellID int64, mode ds2pb.QuickMatchGameMode) {
+	waiting := s.quickMatch.search(areaID, cellID, mode, joiner.playerID, 1)
+	if len(waiting) == 0 {
+		return
+	}
+	host, live := s.sessionForPlayerLocked(waiting[0].playerID)
+	if !live {
+		return
+	}
+
+	body, err := proto.Marshal(&ds2pb.PushRequestJoinQuickMatch{
+		PushMessageId: ds2pb.PushMessageId(quickMatchPushIDFor(mode, quickMatchRoleJoin)).Enum(),
+		PlayerId:      proto.Int64(int64(joiner.playerID)),
+		PlayerPsnId:   proto.String(joiner.accountID),
+		OnlineAreaId:  proto.Int64(areaID),
+		CellId:        proto.Int64(cellID),
+		Mode:          mode.Enum(),
+	})
+	if err != nil {
+		log.Warn("auto-pair: failed to build PushRequestJoinQuickMatch", "err", err)
+		return
+	}
+	host.conn.SendPush(body)
+	log.Info("auto-paired two waiting arena players",
+		"host_player_id", host.playerID, "joiner_player_id", joiner.playerID,
+		"mode", mode, "push_id", fmt.Sprintf("%#04x", quickMatchPushIDFor(mode, quickMatchRoleJoin)))
 }
 
 func (s *Service) handleUnregisterQuickMatch(log logger, cs *clientSession, payload []byte) ([]byte, error) {
@@ -291,6 +331,23 @@ func (s *Service) handleSearchQuickMatch(log logger, cs *clientSession, payload 
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestSearchQuickMatch: %w", err)
 	}
+
+	// A search is a declaration that this player is still queuing, so re-assert
+	// their advertisement.
+	//
+	// The client unregisters immediately BEFORE it searches, which leaves an
+	// actively-looking player briefly invisible — if the other player searches in
+	// that window they see nobody and give up. Re-asserting closes the race
+	// without deciding anything: the searcher wanted a match either way, and the
+	// other side still chooses whether to join.
+	s.quickMatch.put(&quickMatch{
+		playerID: cs.playerID,
+		psnID:    cs.accountID,
+		areaID:   req.GetOnlineAreaId(),
+		cellID:   req.GetCellId(),
+		mode:     req.GetMode(),
+		matching: req.GetMatchingParameter(),
+	})
 
 	found := s.quickMatch.search(req.GetOnlineAreaId(), req.GetCellId(),
 		req.GetMode(), cs.playerID, int(req.GetMaxResults()))

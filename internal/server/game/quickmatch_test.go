@@ -5,6 +5,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/sstreight/dso/internal/config"
 	"github.com/sstreight/dso/internal/proto/ds2pb"
 )
 
@@ -66,10 +67,14 @@ func TestArenaSearchFindsRegisteredOpponent(t *testing.T) {
 	if got := uint32(found[0].GetPlayerId()); got != host.playerID {
 		t.Errorf("found player %d, want the host %d", got, host.playerID)
 	}
-	// The searcher must never be offered their own registration.
-	if own := searchArena(t, svc, log, host,
-		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell); len(own) != 0 {
-		t.Errorf("host was offered their own registration (%d results)", len(own))
+	// The searcher must never be offered their own registration. Note the host
+	// WILL now see the joiner: a search re-asserts the searcher's availability,
+	// so the joiner became queued by looking.
+	for _, m := range searchArena(t, svc, log, host,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell) {
+		if uint32(m.GetPlayerId()) == host.playerID {
+			t.Error("host was offered their own registration")
+		}
 	}
 }
 
@@ -355,5 +360,46 @@ func registerArenaAt(t *testing.T, svc *Service, log logger, cs *clientSession, 
 	}
 	if _, err := svc.handleRegisterQuickMatch(log, cs, raw); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSearchReassertsAvailability covers the race the client creates for itself.
+//
+// It unregisters immediately BEFORE searching, so an actively-looking player is
+// briefly invisible — if the other player searches in that window they see nobody
+// and give up, and both then sit in the advertising half of their cycle with
+// neither looking. Treating a search as a declaration of availability closes it
+// without deciding anything.
+func TestSearchReassertsAvailability(t *testing.T) {
+	svc, log, host, joiner := signTestService(t)
+
+	// The joiner is NOT registered — it only searches, exactly as the client does
+	// straight after unregistering.
+	if _, ok := svc.quickMatch.get(joiner.playerID); ok {
+		t.Fatal("joiner unexpectedly pre-registered")
+	}
+	searchArena(t, svc, log, joiner,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell)
+
+	if _, ok := svc.quickMatch.get(joiner.playerID); !ok {
+		t.Fatal("a searching player is not advertised; the other side cannot find " +
+			"them and both end up waiting")
+	}
+
+	// And the other player can now see them.
+	found := searchArena(t, svc, log, host,
+		ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, arenaCell)
+	if len(found) != 1 || uint32(found[0].GetPlayerId()) != joiner.playerID {
+		t.Errorf("host found %d opponents, want the searching joiner", len(found))
+	}
+}
+
+// TestAutoPairIsOffByDefault — introducing two waiting players sends a join no
+// client asked for, and whether the far side accepts an unsolicited allow is
+// unverified. It must stay opt-in.
+func TestAutoPairIsOffByDefault(t *testing.T) {
+	if config.Default().QuickMatchAutoPair {
+		t.Error("QuickMatchAutoPair defaults on; it changes observable client " +
+			"behaviour in a way that has never been tested against a real client")
 	}
 }
