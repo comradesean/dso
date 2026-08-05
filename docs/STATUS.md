@@ -34,7 +34,7 @@ stretch.
 | Summon signs (6 opcodes) | Working | Brokering confirmed host↔summoner |
 | Invasions (3 opcodes + relay) | Working | A real invasion completed between two clients |
 | Client-to-client relay (`0x0320`) | Working | Carries the host's "allow" back to the invader |
-| World death counter (4 opcodes) | Implemented | Unit-tested; not yet confirmed in-game |
+| World death counter (4 opcodes) | **Working** | Counts live in-game; persists across restarts |
 | Management text push (`0x0389`) | **Working** | Renders as the post-login banner, upper left |
 | HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
 | Persistence (SQLite) | Working | Blood messages and counters survive restart |
@@ -115,10 +115,10 @@ port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
   `RegulationFileDiffData` carries `start_at`/`end_at`, which is exactly the shape of a
   time-windowed content rotation, so this is the likely event-item channel. Note the field
   *numbers* are unrecoverable from the string table and would have to come from tag immediates.
-- **The death counter's scope is assumed world-wide.** `RequestGetTotalDeathCount` (`0x03F0`)
-  carries a zero-byte payload — no area, no character, no scope of any kind — so a single global
-  total is the only thing it can be asking for. That is an inference from the request being
-  empty, not a confirmed reading of what the client draws.
+- **~~The death counter's scope~~ RESOLVED.** `RequestGetTotalDeathCount` (`0x03F0`) carries a
+  zero-byte payload — no area, no character, no scope — so a single global total was the only
+  reading available. Confirmed in-game: the client labels it **"deaths worldwide"**. The reply
+  must be sent; the unanswered retry was the original timeout.
 - **The UDP `msg_index` byte order** looks big-endian where TCP is little-endian. It round-trips
   correctly because the server echoes the same bytes, so it is cosmetic — until something
   depends on ordering.
