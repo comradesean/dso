@@ -83,7 +83,7 @@ for this player and silently merge two characters.
 complete answer. Its request shape reads more like an update than a query and is logged in full
 pending a capture.
 
-## 4. ~~Visitors~~ — DONE (2026-08-05), push ids now DERIVED
+## 4. ~~Visitors~~ — DONE and CONFIRMED LIVE (2026-08-05)
 
 | Opcode | Message |
 |---|---|
@@ -96,7 +96,11 @@ Implemented in `internal/server/game/visitor.go` — the covenant auto-summon sy
 Keepers, Rat King, Blue Sentinels). Structurally the invasion flow, not the sign flow: nothing is
 stored, the server brokers between two live sessions and steps out.
 
-**The push ids remain the open risk.** Nine aliases across `0x03C9`-`0x03D1` for three message
+**Push ids confirmed live.** A Bell Keeper summon pushed `0x03CC`, exactly
+`0x3C9 + 3*mode + role` for mode 1 (BellKeepers) role 0 (visit), and the host received it and
+joined. The rejection path was exercised too (`0x03CD`).
+
+Historical note on how they were chosen: Nine aliases across `0x03C9`-`0x03D1` for three message
 types. We send `0x03CF`/`0x03D0`/`0x03D1`, which is better supported than a guess: the PC protos
 assign exactly those to exactly those types, and unlike the BreakIn pushes (PC says
 `0x03FB`-`0x03FD`, absent from this binary) the decompilation confirms all three exist here.

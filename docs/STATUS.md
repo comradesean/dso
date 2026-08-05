@@ -40,7 +40,7 @@ stretch.
 | HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
 | Mirror Knight (7 opcodes) | **Working** | Two full fights completed live, both outcomes |
 | Reliable-UDP under load | **Working** | 3-minute fight, no stalls; NACK-driven retransmit |
-| Visitors (3 opcodes) | Implemented | Unit-tested; **push ids unverified** |
+| Covenant auto-summons (3 opcodes) | **Working** | Bell Keeper summon confirmed live, push id `0x03CC` |
 | Duelling arenas (6 opcodes) | **Working** | A full duel completed at Undead Purgatory |
 | Champion's Tablet ranking (4 opcodes) | Implemented | Unit-tested; persisted |
 | Keepalive + bandwidth (4 opcodes) | Implemented | `ServerPing` had been going unanswered |

@@ -68,7 +68,9 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 //	field_1  the PEER's player id (the guest here, the host in JoinSession)
 //	field_7  the online area id, confirmed by matching the sign's own area
 //	field_2  the session kind, observed live: 5 = ordinary summon sign,
-//	         8 = arena duel, 9 = Mirror Knight squire.
+//	         8 = arena duel, 9 = Mirror Knight squire, 13 and 14 seen during Bell
+//	         Keeper covenant summons (14 confirmed as the grey-spirit visit; 13
+//	         seen once alongside it and not yet attributed).
 //
 // field_9 remains an opaque blob and is logged by length only.
 func (s *Service) handleNotifyJoinGuestPlayer(log logger, cs *clientSession, payload []byte) ([]byte, error) {
@@ -95,13 +97,17 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 
 // handleNotifyRingBell records a bell ring.
 //
-// DELIBERATELY LOGGED IN FULL, including a hexdump of the raw payload. Our proto
-// for this message is an empty TODO, so nothing is known about its shape — and
-// this is the best-named candidate for whatever selects an active lot in
-// ItemLotParam2_SvrEvent, the table behind the Majula Mansion event chest. That
-// chest stayed empty even after calibration 0114 put the new lots in the client's
-// regulation, so the trigger is server-side and unidentified. See
-// tasks/calibration-reverse-engineering.md.
+// CONFIRMED BY OBSERVATION 2026-08-05: ringing a belfry bell does NOT send this.
+// A player rang the Belfry Sol bell with full packet logging on and no 0x03EE
+// ever arrived. DS2 has exactly two bells and neither is struck — you pull a
+// lever in a side tower, and ringing is a gate opener and nothing else. It does
+// not trigger, end or affect Bell Keeper invasions, which fire on a trespasser's
+// presence in the belfry.
+//
+// So this opcode is misnamed for our purposes and is definitively NOT the
+// event-chest trigger, which was the last reason to care about it. It remains
+// logged in full because nothing has ever been seen sending it, and the payload
+// would be the only evidence of what it actually is.
 func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	// Not parsed: the message is a TODO in our schema, so parsing it would only
 	// assert a shape we have no evidence for. The bytes are the useful artefact.
