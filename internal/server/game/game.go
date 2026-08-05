@@ -49,8 +49,9 @@ type Service struct {
 
 	// messages and ghosts each have their own lock, so they must not be accessed
 	// while holding s.mu.
-	messages *bloodMessageStore
-	ghosts   *ghostStore
+	messages    *bloodMessageStore
+	ghosts      *ghostStore
+	bloodstains *bloodstainStore
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -75,10 +76,11 @@ type clientSession struct {
 // New creates a game service bound to the given server.
 func New(srv *core.Server) *Service {
 	return &Service{
-		srv:      srv,
-		sessions: make(map[string]*clientSession),
-		messages: newBloodMessageStore(),
-		ghosts:   newGhostStore(),
+		srv:         srv,
+		sessions:    make(map[string]*clientSession),
+		messages:    newBloodMessageStore(),
+		ghosts:      newGhostStore(),
+		bloodstains: newBloodstainStore(),
 	}
 }
 

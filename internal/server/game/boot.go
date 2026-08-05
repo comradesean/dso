@@ -55,6 +55,13 @@ func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, p
 	case opRequestGetBloodMessageEvaluation:
 		return s.handleGetBloodMessageEvaluation(log, cs, payload)
 
+	case opRequestCreateBloodstain:
+		return s.handleCreateBloodstain(log, cs, payload)
+	case opRequestGetBloodstainList:
+		return s.handleGetBloodstainList(log, cs, payload)
+	case opRequestGetDeadingGhost:
+		return s.handleGetDeadingGhost(log, cs, payload)
+
 	case opRequestCreateGhostData:
 		return s.handleCreateGhostData(log, cs, payload)
 	case opRequestGetGhostDataList:
