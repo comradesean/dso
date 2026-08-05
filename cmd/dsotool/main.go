@@ -3,7 +3,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -40,9 +39,11 @@ commands:
   keygen     --out DIR [--bits 2048] [--exponent 3]
              Generate an RSA key pair and write server.private.pem / server.public.pem.
 
-  ps3-patch  --key FILE --ppu-hash PPU-xxxx --vaddr 0x189AB48 [--orig-len N] [--title BLUS41045]
+  ps3-patch  --key FILE --ppu-hash PPU-xxxx [--vaddr 0x17FB338] [--orig-len N] [--title BLUS41045]
              Emit an RPCS3 patch.yml that overwrites the client's login RSA public
-             key (at the given virtual address) with our public key.
+             key with our public key. --vaddr defaults to the BLUS41045 login key
+             at 0x17FB338; note the EBOOT also holds a second, unrelated key at
+             0x189AB48 which must NOT be patched in its place.
 `)
 }
 
@@ -99,7 +100,11 @@ func cmdPS3Patch(args []string) error {
 	}
 	vaddrStr := f["vaddr"]
 	if vaddrStr == "" {
-		return fmt.Errorf("ps3-patch: --vaddr is required")
+		// Default to the login key. BLUS41045 embeds two distinct 2048-bit e=3
+		// PEMs and only this one is used for the login handshake; the other, at
+		// 0x189AB48, is not, and patching it instead yields a client that
+		// connects but whose RSA block never decrypts.
+		vaddrStr = defaultLoginKeyVaddr
 	}
 	vaddr, err := strconv.ParseUint(strings.TrimPrefix(vaddrStr, "0x"), 16, 64)
 	if err != nil {
@@ -128,7 +133,11 @@ func cmdPS3Patch(args []string) error {
 		return fmt.Errorf("ps3-patch: our key PEM (%d bytes) is larger than the original (%d); regenerate with --exponent 3", len(pubPEM), origLen)
 	}
 
-	hexStr := hex.EncodeToString(pubPEM)
+	// RPCS3 has no "bytes" patch type: "byte" writes a single byte, so a hex
+	// blob never applies. A PEM is ASCII, so "utf8" is the right type — it
+	// memcpys the string as-is. ("cutf8" would append a NUL and overrun the
+	// fixed-width field.) Newlines are escaped for YAML's double-quoted style.
+	yamlStr := yamlQuote(pubPEM)
 
 	fmt.Printf(`Version: 1.2
 
@@ -144,9 +153,38 @@ func cmdPS3Patch(args []string) error {
       public key so the client's login/auth handshake targets this server.
       Our PEM is %d bytes; original field is %d bytes.
     Patch:
-      - [ bytes, 0x%X, "%s" ]
-`, ppu, title, vaddr, len(pubPEM), origLen, vaddr, hexStr)
+      - [ utf8, 0x%X, %s ]
+`, ppu, title, vaddr, len(pubPEM), origLen, vaddr, yamlStr)
 	return nil
+}
+
+// defaultLoginKeyVaddr is the virtual address of the BLUS41045 login RSA key.
+const defaultLoginKeyVaddr = "0x17FB338"
+
+// yamlQuote renders b as a YAML double-quoted scalar, escaping the characters
+// that style defines. The PEM is ASCII, so only newlines, quotes and backslashes
+// can occur in practice.
+func yamlQuote(b []byte) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, c := range b {
+		switch c {
+		case '\n':
+			sb.WriteString(`\n`)
+		case '\r':
+			sb.WriteString(`\r`)
+		case '\t':
+			sb.WriteString(`\t`)
+		case '"':
+			sb.WriteString(`\"`)
+		case '\\':
+			sb.WriteString(`\\`)
+		default:
+			sb.WriteByte(c)
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
 }
 
 func atoiDefault(s string, def int) int {

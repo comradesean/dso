@@ -5,7 +5,6 @@ package login
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -81,8 +80,12 @@ func (s *Service) handle(ctx context.Context, conn net.Conn) {
 
 		msg, err := stream.Recv()
 		if err != nil {
-			if !errors.Is(err, net.ErrClosed) {
+			// An ordinary hang-up is routine; a decrypt or framing failure is
+			// not and must not be hidden behind debug logging.
+			if core.IsBenignDisconnect(err) {
 				log.Debug("connection closed", "err", err)
+			} else {
+				log.Warn("login stream failed", "err", err)
 			}
 			return
 		}

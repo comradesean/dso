@@ -76,32 +76,46 @@ func (s *Service) handle(ctx context.Context, conn net.Conn) {
 	rsaEnc, rsaDec := frpgcipher.NewRSAServer(s.srv.Key)
 	stream.SetCiphers(rsaEnc, rsaDec)
 
+	// A stage failing part-way through is a real problem (bad crypto, an
+	// unexpected message, a version rejection) and must be visible at the
+	// default log level; only an ordinary disconnect is demoted to Debug.
 	if err := s.doHandshake(conn, stream, log); err != nil {
-		log.Debug("handshake failed", "err", err)
+		logStageFailure(log, "handshake failed", err)
 		return
 	}
 
 	// Stage 2: service status / version gate.
 	steamID, err := s.doServiceStatus(conn, stream, log)
 	if err != nil {
-		log.Debug("service status failed", "err", err)
+		logStageFailure(log, "service status failed", err)
 		return
 	}
 
 	// Stage 3: game-key material exchange.
 	gameKey, err := s.doKeyMaterial(conn, stream, log)
 	if err != nil {
-		log.Debug("key material failed", "err", err)
+		logStageFailure(log, "key material failed", err)
 		return
 	}
 
 	// Stage 4: ticket + game server info.
 	if err := s.doSteamTicket(ctx, conn, stream, log, steamID, gameKey); err != nil {
-		log.Debug("ticket exchange failed", "err", err)
+		logStageFailure(log, "ticket exchange failed", err)
 		return
 	}
 
 	// Authentication complete; the client disconnects and moves to UDP.
+}
+
+// logStageFailure reports a handshake stage that did not complete. An ordinary
+// disconnect is routine and stays at Debug; anything else is a genuine failure
+// and is logged at Warn so it is visible without turning on debug logging.
+func logStageFailure(log logger, msg string, err error) {
+	if core.IsBenignDisconnect(err) {
+		log.Debug(msg, "err", err)
+		return
+	}
+	log.Warn(msg, "err", err)
 }
 
 // recv reads the next message with the read deadline applied and checks its type.
