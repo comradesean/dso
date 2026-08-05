@@ -232,10 +232,14 @@ func (s *Service) drain(log logger, cs *clientSession) {
 			log.Info("hexdump\n" + hex.Dump(msg.Payload))
 		}
 
-		reply, err := s.handleMessage(log, cs, msg.Type, msg.Payload)
+		reply, handled, err := s.handleMessage(log, cs, msg.Type, msg.Payload)
 		if err != nil {
 			log.Warn("game: message handler failed",
 				"type", fmt.Sprintf("%#04x", msg.Type), "err", err)
+			continue
+		}
+		if handled && reply == nil {
+			// Deliberately answered with silence; the client expects no reply.
 			continue
 		}
 		if reply == nil {

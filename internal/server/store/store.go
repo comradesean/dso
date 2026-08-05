@@ -89,6 +89,14 @@ CREATE TABLE IF NOT EXISTS blood_messages (
 -- query shape that matters.
 CREATE INDEX IF NOT EXISTS idx_blood_messages_area_cell
     ON blood_messages(area_id, cell_id);
+
+-- Cumulative world statistics. A generic table rather than a total_deaths
+-- column: RequestNotifyKillEnemy and RequestNotifyBuyItem are the same shape of
+-- statistic and already arrive unhandled.
+CREATE TABLE IF NOT EXISTS counters (
+    name  TEXT    PRIMARY KEY,
+    value INTEGER NOT NULL DEFAULT 0
+);
 `
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
@@ -221,4 +229,35 @@ func scanBloodMessage(sc scanner) (*BloodMessage, error) {
 		return nil, err
 	}
 	return &m, nil
+}
+
+// AddCounter adds delta to a named counter, creating it if absent, and returns
+// the new value.
+//
+// Counters are cumulative world statistics — low-volume and meaningless if they
+// reset, which is why these are persisted where bloodstains and ghosts are not.
+func (s *Store) AddCounter(ctx context.Context, name string, delta int64) (int64, error) {
+	var value int64
+	err := s.db.QueryRowContext(ctx,
+		`INSERT INTO counters(name, value) VALUES(?, ?)
+		   ON CONFLICT(name) DO UPDATE SET value = value + excluded.value
+		 RETURNING value`, name, delta).Scan(&value)
+	if err != nil {
+		return 0, fmt.Errorf("store: add counter %q: %w", name, err)
+	}
+	return value, nil
+}
+
+// Counter returns a named counter, or 0 if it has never been set.
+func (s *Store) Counter(ctx context.Context, name string) (int64, error) {
+	var value int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT value FROM counters WHERE name = ?`, name).Scan(&value)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("store: read counter %q: %w", name, err)
+	}
+	return value, nil
 }

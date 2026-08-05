@@ -27,13 +27,41 @@ func (s *Service) nextPlayerID() uint32 {
 	return s.playerSeq
 }
 
-// handleMessage dispatches one decoded game message. It returns the reply payload
-// to send, or nil to send nothing.
+// handleMessage dispatches one decoded game message.
 //
-// Unhandled messages are logged with their payload rather than answered — the
-// client tolerates silence better than a malformed reply, and the capture is what
-// the remaining handlers get built from.
-func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, payload []byte) ([]byte, error) {
+// It returns the reply payload (nil for messages that take no reply), whether the
+// opcode was handled at all, and any error. The handled flag matters for
+// diagnosis: several opcodes are deliberately answered with silence because the
+// client registers no response callback for them, and without this they would be
+// logged identically to opcodes we simply have not implemented — which is exactly
+// the signal used to find the next thing to build.
+//
+// Genuinely unhandled messages are logged with their payload rather than
+// answered: the client tolerates silence better than a malformed reply, and the
+// capture is what the remaining handlers get built from.
+func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, payload []byte) ([]byte, bool, error) {
+	reply, err := s.dispatch(log, cs, msgType, payload)
+	if err != nil {
+		return nil, true, err
+	}
+	if reply == nil && !handledOpcodes[msgType] {
+		return nil, false, nil
+	}
+	return reply, true, nil
+}
+
+// handledOpcodes lists opcodes we deliberately answer with no reply, so they are
+// not mistaken for unimplemented ones.
+var handledOpcodes = map[uint32]bool{
+	opRequestUpdatePlayerStatus:      true,
+	opRequestUpdatePlayerCharacter:   true,
+	opRequestCreateBloodstain:        true,
+	opRequestNotifyDeath:             true,
+	opRequestNotifyOfflineDeathCount: true,
+	opRequestNotifyKillPlayer:        true,
+}
+
+func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payload []byte) ([]byte, error) {
 	switch msgType {
 	case opRequestWaitForUserLogin:
 		return s.handleWaitForUserLogin(log, cs, payload)
@@ -79,6 +107,15 @@ func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, p
 		return s.handleSummonSign(log, cs, payload)
 	case opRequestRejectSign:
 		return s.handleRejectSign(log, cs, payload)
+
+	case opRequestGetTotalDeathCount:
+		return s.handleGetTotalDeathCount(log, cs, payload)
+	case opRequestNotifyDeath:
+		return s.handleNotifyDeath(log, cs, payload)
+	case opRequestNotifyOfflineDeathCount:
+		return s.handleNotifyOfflineDeathCount(log, cs, payload)
+	case opRequestNotifyKillPlayer:
+		return s.handleNotifyKillPlayer(log, cs, payload)
 
 	case opRequestSendMessageToPlayers:
 		return s.handleSendMessageToPlayers(log, cs, payload)
