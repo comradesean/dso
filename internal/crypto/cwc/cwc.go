@@ -46,10 +46,15 @@ func NewContext(key []byte) (*Context, error) {
 	return c, nil
 }
 
-// msgState is the mutable per-message hashing/counter state.
+// msgState is the mutable per-message hashing/counter state. buf holds the
+// partially-filled authentication block; the header and the ciphertext stream
+// into it contiguously, so a header whose length is not a multiple of 12 does
+// not force the ciphertext onto a fresh block boundary.
 type msgState struct {
-	hash polyHash
-	ctr  [16]byte
+	hash   polyHash
+	ctr    [16]byte
+	buf    [ablkLen]byte
+	bufLen int
 }
 
 // initMessage sets up the counter block and zeroes the hash. iv must be 11 bytes.
@@ -71,22 +76,32 @@ func (s *msgState) beIncCtr() {
 	}
 }
 
-// absorb feeds a byte slice into the hash as a sequence of full 12-byte blocks,
-// with any trailing partial block zero-padded to 12 bytes. This matches the
-// reference behaviour where the header's and the ciphertext's trailing partial
-// blocks are each finalized as their own padded block.
+// absorb streams a byte slice into the hash, emitting a block every time the
+// 12-byte buffer fills. Anything left over stays buffered for the next absorb
+// call or for flush.
 func (c *Context) absorb(s *msgState, data []byte) {
-	n := len(data)
-	off := 0
-	for n-off >= ablkLen {
-		s.hash.update(data[off : off+ablkLen])
-		off += ablkLen
+	for len(data) > 0 {
+		n := copy(s.buf[s.bufLen:], data)
+		s.bufLen += n
+		data = data[n:]
+		if s.bufLen == ablkLen {
+			s.hash.update(s.buf[:])
+			s.bufLen = 0
+		}
 	}
-	if rem := n - off; rem > 0 {
-		var blk [ablkLen]byte
-		copy(blk[:], data[off:])
-		s.hash.update(blk[:])
+}
+
+// flush zero-pads and absorbs any trailing partial block. Called once, after
+// both the header and the ciphertext have been streamed in.
+func (c *Context) flush(s *msgState) {
+	if s.bufLen == 0 {
+		return
 	}
+	for i := s.bufLen; i < ablkLen; i++ {
+		s.buf[i] = 0
+	}
+	s.hash.update(s.buf[:])
+	s.bufLen = 0
 }
 
 // crypt applies the AES-CTR keystream to data in place. The counter is
@@ -138,10 +153,10 @@ func (c *Context) EncryptMessage(iv, hdr, msg []byte, tagLen int) (ciphertext, t
 	var s msgState
 	c.initMessage(&s, iv)
 	c.absorb(&s, hdr)
-	// finalize header block boundary vs data: absorb() already padded the
-	// header's partial block, so ciphertext absorption starts on a fresh block.
+	c.flush(&s) // the header's trailing partial block is padded on its own
 	c.crypt(&s, ct)
 	c.absorb(&s, ct)
+	c.flush(&s)
 	tag = c.computeTag(&s, len(hdr), len(ct), tagLen)
 	return ct, tag
 }
@@ -152,7 +167,9 @@ func (c *Context) DecryptMessage(iv, hdr, ct, tag []byte) (plaintext []byte, ok 
 	var s msgState
 	c.initMessage(&s, iv)
 	c.absorb(&s, hdr)
+	c.flush(&s) // the header's trailing partial block is padded on its own
 	c.absorb(&s, ct)
+	c.flush(&s)
 	want := c.computeTag(&s, len(hdr), len(ct), len(tag))
 	if subtle.ConstantTimeCompare(want, tag) != 1 {
 		return nil, false
