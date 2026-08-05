@@ -38,7 +38,8 @@ stretch.
 | World death counter (4 opcodes) | **Working** | Counts live in-game; persists across restarts |
 | Management text push (`0x0389`) | **Working** | Renders as the post-login banner, upper left |
 | HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
-| Mirror Knight (7 opcodes) | **Working** | Confirmed live: a real squire was summoned and returned |
+| Mirror Knight (7 opcodes) | **Working** | Two full fights completed live, both outcomes |
+| Reliable-UDP under load | **Working** | 3-minute fight, no stalls; NACK-driven retransmit |
 | Visitors (3 opcodes) | Implemented | Unit-tested; **push ids unverified** |
 | Duelling arenas (6 opcodes) | Implemented | Unit-tested; push ids well-evidenced |
 | Champion's Tablet ranking (4 opcodes) | Implemented | Unit-tested; persisted |
@@ -163,8 +164,13 @@ unimplemented opcode (`RequestNotifyRingBell` `0x03EE` is suggestively named), o
 
 ## The random-disconnect bug, and what it really was
 
-Sessions were dying mid-fight with `rudp: connection died (max retransmits)` while the client was
-still actively sending messages seconds earlier. Two independent faults, both now fixed.
+**FIXED AND CONFIRMED LIVE (2026-08-05).** Two full Mirror Knight fights completed back to back —
+one ending in the host's death, one in the boss's — with zero pump failures and zero retransmit
+stalls. The second ran just under three minutes, which is the same duration band in which the
+previous two attempts died, so it is a real test rather than a short one.
+
+Sessions had been dying mid-fight with `rudp: connection died (max retransmits)` while the client
+was still actively sending messages seconds earlier. Three independent faults, all now fixed.
 
 **0. RACK is a NACK, and ignoring it was the main fault.** The reference calls it "Reject ACK",
 says it is "95% sure" that is what it means, and ignores it. The PS3 binary says otherwise: RACK
