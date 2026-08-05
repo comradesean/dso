@@ -70,6 +70,14 @@ type Config struct {
 	// reverse-engineering an unknown client's wire format.
 	DebugRaw bool
 
+	// ManagementText is pushed to the client after login as a
+	// ManagementTextMessage. It is the only free-text server->client channel the
+	// DS2 client has, and is the candidate mechanism behind the Majula obelisk
+	// (whose offline text is "the letters are worn beyond recognition"). Empty
+	// disables the push. ManagementTextLanguage is 0 for JP, 1 for EN.
+	ManagementText         string
+	ManagementTextLanguage uint64
+
 	// Bootstrap HTTP: the DS2 PS3 client does an HTTP "calibration" check before
 	// going online. BootstrapHTTPEnabled starts an HTTP server (port 80 by
 	// default, needs privilege) that answers it; BootstrapContentsFile is an
@@ -109,9 +117,13 @@ func Default() Config {
 		EnforceAppVersion: false,
 		LogLevel:          "info",
 		LogFormat:         "text",
-		BootstrapHTTPPort: 80,
-		DNSPort:           53,
-		DNSUpstream:       "8.8.8.8:53",
+		// English. The client reads this field as a signed int and the reference
+		// server treats it as a language selector, so a wrong value is a plausible
+		// reason for the push to be silently ignored on a NA console.
+		ManagementTextLanguage: 1,
+		BootstrapHTTPPort:      80,
+		DNSPort:                53,
+		DNSUpstream:            "8.8.8.8:53",
 		DNSRedirectHosts: []string{
 			"frpg2-ps3-ope.fromsoftware.jp",
 			"frpg2-ps3-internal.s3-website-us-west-2.amazonaws.com",
@@ -142,6 +154,8 @@ func Load() (Config, error) {
 	c.LogLevel = envStr("DSO_LOGGING_LEVEL", c.LogLevel)
 	c.LogFormat = envStr("DSO_LOGGING_FORMAT", c.LogFormat)
 	c.DebugRaw = envBool("DSO_DEBUG_RAW", c.DebugRaw)
+	c.ManagementText = envStr("DSO_MANAGEMENT_TEXT", c.ManagementText)
+	c.ManagementTextLanguage = envUint("DSO_MANAGEMENT_TEXT_LANGUAGE", c.ManagementTextLanguage)
 	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)
 	c.BootstrapHTTPPort = envInt("DSO_BOOTSTRAP_HTTP_PORT", c.BootstrapHTTPPort)
 	c.BootstrapContentsFile = envStr("DSO_BOOTSTRAP_CONTENTS_FILE", c.BootstrapContentsFile)

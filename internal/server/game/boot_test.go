@@ -8,7 +8,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/sstreight/dso/internal/config"
 	"github.com/sstreight/dso/internal/proto/ds2pb"
+	"github.com/sstreight/dso/internal/server/core"
 )
 
 // capturedWaitForUserLogin is the real payload a Dark Souls 2 PS3 client
@@ -31,8 +33,8 @@ func TestHandleWaitForUserLoginFromCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := &Service{}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := &Service{srv: &core.Server{Config: config.Default(), Logger: log}}
 	cs := &clientSession{}
 
 	reply, err := svc.handleWaitForUserLogin(log, cs, payload)
@@ -66,8 +68,8 @@ func TestPlayerIDsAreDistinct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := &Service{}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := &Service{srv: &core.Server{Config: config.Default(), Logger: log}}
 
 	seen := map[uint32]bool{}
 	for i := 0; i < 5; i++ {
@@ -83,8 +85,8 @@ func TestPlayerIDsAreDistinct(t *testing.T) {
 }
 
 func TestHandleWaitForUserLoginRejectsGarbage(t *testing.T) {
-	svc := &Service{}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	svc := &Service{srv: &core.Server{Config: config.Default(), Logger: log}}
 
 	// Missing the required psn_id field.
 	empty, err := proto.Marshal(&ds2pb.RequestWaitForUserLogin{})

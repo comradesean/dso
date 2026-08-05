@@ -188,6 +188,11 @@ func (s *Service) handleWaitForUserLogin(log logger, cs *clientSession, payload 
 		"unknown_1", req.GetUnknown_1(), "unknown_2", req.GetUnknown_2(),
 		"unknown_3", req.GetUnknown_3(), "unknown_4", req.GetUnknown_4())
 
+	// Push the configured server text once the client has an identity. This is
+	// queued behind the login reply rather than sent instead of it — the client
+	// will not proceed while a request/response is outstanding.
+	s.sendManagementText(log, cs)
+
 	resp := &ds2pb.RequestWaitForUserLoginResponse{
 		PsnId:    proto.String(accountID),
 		PlayerId: proto.Uint32(cs.playerID),

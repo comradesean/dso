@@ -9,7 +9,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/sstreight/dso/internal/config"
 	"github.com/sstreight/dso/internal/proto/ds2pb"
+	"github.com/sstreight/dso/internal/server/core"
 	"github.com/sstreight/dso/internal/server/store"
 )
 
@@ -21,8 +23,15 @@ func testService(t *testing.T) (*Service, logger, *clientSession) {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	svc := &Service{store: st, sessions: make(map[string]*clientSession)}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	// A real Server with real config rather than a zero value: handlers read
+	// config, and a nil srv would make them panic in tests while working in
+	// production, which is the wrong way round.
+	svc := &Service{
+		srv:      &core.Server{Config: config.Default(), Logger: log},
+		store:    st,
+		sessions: make(map[string]*clientSession),
+	}
 	cs := &clientSession{accountID: "comradesean", playerID: 1, characterID: 1}
 	return svc, log, cs
 }
