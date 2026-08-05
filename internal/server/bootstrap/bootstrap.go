@@ -103,8 +103,18 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 		if data, err := os.ReadFile(filePath); err == nil {
 			w.Header().Set("Content-Type", "application/octet-stream")
 			// The client checks SizeEnc against the manifest, so the length must be
-			// the file's own. Report the file's real mtime rather than now: the real
-			// origin serves 2014 dates and these payloads genuinely never change.
+			// the file's own.
+			//
+			// Last-Modified is the file's mtime, which means the mtime has to be set
+			// deliberately: the origin serves 2014-01-26 for both payloads, but a
+			// plain re-fetch (curl -o, git checkout, a copy) stamps them with today.
+			// After re-fetching, restore them:
+			//
+			//	touch -d '2014-01-26 02:00:02 UTC' data/contents_0101.bin
+			//	touch -d '2014-01-26 02:00:01 UTC' data/regulation_0101.bin
+			//
+			// Nothing is known to depend on this, but a 2026 date on a payload frozen
+			// since before the game shipped is a lie we would rather not tell.
 			if fi, err := os.Stat(filePath); err == nil {
 				w.Header().Set("Last-Modified", fi.ModTime().UTC().Format(http.TimeFormat))
 			}
