@@ -99,3 +99,25 @@ func (s *Service) handleUpdatePlayerCharacter(log logger, cs *clientSession, pay
 		"data_bytes", len(req.GetCharacterData()))
 	return nil, nil
 }
+
+// opRequestGetLoginPlayerCharacter is request/response and was going unanswered.
+const opRequestGetLoginPlayerCharacter uint32 = 0x03B3
+
+// handleGetLoginPlayerCharacter returns a player's current character blob.
+//
+// Character data is not persisted yet, so this replies with the requested ids and
+// an empty blob rather than staying silent: an unanswered request/response stalls
+// whatever UI is waiting on it, which is worse than an empty answer.
+func (s *Service) handleGetLoginPlayerCharacter(log logger, cs *clientSession, payload []byte) ([]byte, error) {
+	var req ds2pb.RequestGetLoginPlayerCharacter
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		return nil, fmt.Errorf("parse RequestGetLoginPlayerCharacter: %w", err)
+	}
+	log.Debug("login player character requested",
+		"player_id", cs.playerID, "for_player_id", req.GetPlayerId())
+	return proto.Marshal(&ds2pb.RequestGetLoginPlayerCharacterResponse{
+		PlayerId:      proto.Int64(req.GetPlayerId()),
+		CharacterId:   proto.Uint32(cs.characterID),
+		CharacterData: []byte{},
+	})
+}
