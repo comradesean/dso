@@ -35,6 +35,8 @@ stretch.
 | Invasions (3 opcodes + relay) | Working | A real invasion completed between two clients |
 | Client-to-client relay (`0x0320`) | Working | Carries the host's "allow" back to the invader |
 | World death counter (4 opcodes) | Implemented | Unit-tested; not yet confirmed in-game |
+| Management text push (`0x0389`) | Implemented | Unit-tested; render surface unverified |
+| HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
 | Persistence (SQLite) | Working | Blood messages and counters survive restart |
 | Player status / character uploads | Recorded | Accepted; nothing consumes them yet |
 
@@ -95,6 +97,18 @@ port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
   `pushBreakInRejected` assumes the next alias in sequence and is **unverified**; a declined
   invasion may not notify the invader.
 - **Four opcodes are unidentified**: `0x0387`, `0x0388`, `0x038A`, `0x0390`.
+- **Where `ManagementTextMessage` renders is unknown.** Push `0x0389` is confirmed at the
+  instruction level (dispatcher `0x158C138` special-cases it by value; handler `0x1587F60` builds
+  the message), and it is the *only* free-text server->client channel in the whole protocol. But
+  the code installing its listener (stored at manager+72) was never found, so the binary does not
+  say whether it draws on the Majula obelisk, in a popup, or nowhere. A live test settles it; text
+  appearing somewhere unexpected is an answer, not a failure.
+- **The `0x038B` regulation push parses but may not apply.** Confirmed: the client special-cases
+  it, constructs `RegulationFileUpdatePushMessage` and calls `ParseFromArray`. Unproven: that
+  anything downstream consumes it — no param reload or file write was reached. Its
+  `RegulationFileDiffData` carries `start_at`/`end_at`, which is exactly the shape of a
+  time-windowed content rotation, so this is the likely event-item channel. Note the field
+  *numbers* are unrecoverable from the string table and would have to come from tag immediates.
 - **The death counter's scope is assumed world-wide.** `RequestGetTotalDeathCount` (`0x03F0`)
   carries a zero-byte payload — no area, no character, no scope of any kind — so a single global
   total is the only thing it can be asking for. That is an inference from the request being
