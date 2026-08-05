@@ -109,13 +109,14 @@ func TestVisitBrokersToHost(t *testing.T) {
 // the wrong push id, which is the thing actually in doubt here.
 func TestVisitPushWireFormat(t *testing.T) {
 	body, err := proto.Marshal(&ds2pb.PushRequestVisit{
-		PushMessageId: ds2pb.PushMessageId(pushVisitID).Enum(),
-		PlayerId:      proto.Int64(7),
-		PlayerPsnId:   proto.String("comradesean"),
-		PlayerStruct:  []byte{0x01},
-		Type:          ds2pb.VisitorType_VisitorType_BellKeepers.Enum(),
-		OnlineAreaId:  proto.Int64(10160000),
-		CellId:        proto.Int64(101640),
+		PushMessageId: ds2pb.PushMessageId(visitorPushIDFor(
+			ds2pb.VisitorType_VisitorType_BellKeepers, visitorRoleVisit)).Enum(),
+		PlayerId:     proto.Int64(7),
+		PlayerPsnId:  proto.String("comradesean"),
+		PlayerStruct: []byte{0x01},
+		Type:         ds2pb.VisitorType_VisitorType_BellKeepers.Enum(),
+		OnlineAreaId: proto.Int64(10160000),
+		CellId:       proto.Int64(101640),
 	})
 	if err != nil {
 		t.Fatalf("the push we send does not marshal: %v", err)
@@ -124,8 +125,9 @@ func TestVisitPushWireFormat(t *testing.T) {
 	if err := proto.Unmarshal(body, &got); err != nil {
 		t.Fatalf("client-side parse would reject our push: %v", err)
 	}
-	if int(got.GetPushMessageId()) != pushVisitID {
-		t.Errorf("push id = %#04x, want %#04x", int(got.GetPushMessageId()), pushVisitID)
+	want := visitorPushIDFor(ds2pb.VisitorType_VisitorType_BellKeepers, visitorRoleVisit)
+	if int32(got.GetPushMessageId()) != want {
+		t.Errorf("push id = %#04x, want %#04x", int(got.GetPushMessageId()), want)
 	}
 }
 

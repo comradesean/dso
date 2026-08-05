@@ -22,44 +22,39 @@ const (
 	opRequestRejectVisit    uint32 = 0x03D7
 )
 
-// Visitor push ids.
+// Push alias layout, CONFIRMED at the instruction level in both v1.00 and v1.10.
 //
-// The client registers NINE push handlers across 0x03C9-0x03D1 for only three
-// push classes (PushRequestVisit @0x157C20C, PushRequestRejectVisit @0x157C6CC,
-// PushRequestRemoveVisitor @0x157C658) — three aliases per message type. Static
-// analysis could not say which alias maps to which type: every registration site
-// loads the same callback vtable and the distinguishing state is passed through
-// the callback object at runtime.
+//	opcode = visitorPushBase + 3*mode + role
 //
-// These three are the best-supported choice available, and the situation is
-// materially better than it was for BreakIn:
+// The nine aliases are three per MODE, not three per message type: the manager is
+// instantiated once per covenant, and each instance registers all three message
+// types at its own triple. The shared callback re-derives the role from
+// opcode-0x3C9 with the masks 0x049 / 0x092 / 0x124, which together cover all
+// nine — so every alias is live.
 //
-//   - The PC/SOTFS protos assign exactly these values to exactly these three
-//     types, and unlike the BreakIn pushes (PC says 0x03FB-0x03FD, which appear
-//     NOWHERE in this binary) the decompilation confirms all three DO exist here,
-//     as the last group of the block.
-//   - Three consecutive values landing on three different message types is
-//     consistent with the aliases being interleaved rather than run in blocks.
-//     That pattern is real in this client: the QuickMatch block is documented as
-//     two interleaved groups of four, odds then evens.
+// mode is the VisitorType: BlueSentinels=0, BellKeepers=1, Rat=2.
 //
-// So this is an inference with positive evidence behind it, not a coin flip. It
-// is still unverified in-game. If a visit silently does nothing, the alternative
-// hypothesis is contiguous groups — try 0x03C9 / 0x03CC / 0x03CF, the first alias
-// of each group, which is the shape that turned out to be right for BreakIn where
-// 0x03B9 led its group.
+// This replaces an earlier guess of a fixed 0x3CF/0x3D0/0x3D1, which happened to
+// be mode 2's triple — correct only for the Rat covenant, silently wrong for the
+// other two.
+const visitorPushBase = 0x03C9
+
 const (
-	pushVisitID       = 0x03CF
-	pushRejectVisitID = 0x03D0
-	// pushRemoveVisitorID is recorded but NOT sent: telling a host their visitor
-	// is gone requires knowing which host a departing player was visiting, and no
-	// visit session is tracked. Until that exists the phantom clears on the
-	// clients' own session timeout. Wiring this up is the natural companion to a
-	// visit-session concept, which QuickMatch will need anyway.
-	pushRemoveVisitorID = 0x03D1
+	visitorRoleVisit  = 0
+	visitorRoleReject = 1
+	visitorRoleRemove = 2
 )
 
-var _ = pushRemoveVisitorID // referenced above; kept for when visits are tracked
+// visitorPushIDFor returns the alias for a role within a covenant.
+func visitorPushIDFor(mode ds2pb.VisitorType, role int) int32 {
+	m := int(mode)
+	if m < 0 {
+		// VisitorType_None; nothing sensible to derive, so fall back to mode 0
+		// rather than computing an id below the block.
+		m = 0
+	}
+	return int32(visitorPushBase + 3*m + role)
+}
 
 // handleGetVisitorList offers candidate worlds to visit.
 //
@@ -121,7 +116,7 @@ func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]
 	}
 
 	body, err := proto.Marshal(&ds2pb.PushRequestVisit{
-		PushMessageId: ds2pb.PushMessageId(pushVisitID).Enum(),
+		PushMessageId: ds2pb.PushMessageId(visitorPushIDFor(req.GetType(), visitorRoleVisit)).Enum(),
 		PlayerId:      proto.Int64(int64(cs.playerID)),
 		PlayerPsnId:   proto.String(cs.accountID),
 		PlayerStruct:  req.GetPlayerStruct(),
@@ -136,7 +131,8 @@ func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]
 
 	log.Info("pushed visit to host",
 		"visitor_player_id", cs.playerID, "target_player_id", targetID,
-		"type", req.GetType(), "push_id", fmt.Sprintf("%#04x", pushVisitID),
+		"type", req.GetType(),
+		"push_id", fmt.Sprintf("%#04x", visitorPushIDFor(req.GetType(), visitorRoleVisit)),
 		"payload_bytes", len(body))
 
 	return proto.Marshal(&ds2pb.RequestVisitResponse{})
@@ -162,7 +158,7 @@ func (s *Service) handleRejectVisit(log logger, cs *clientSession, payload []byt
 // pushVisitRejected tells a visitor their attempt failed. Caller holds s.mu.
 func (s *Service) pushVisitRejected(log logger, visitor *clientSession, hostID uint32, vType ds2pb.VisitorType) {
 	body, err := proto.Marshal(&ds2pb.PushRequestRejectVisit{
-		PushMessageId: ds2pb.PushMessageId(pushRejectVisitID).Enum(),
+		PushMessageId: ds2pb.PushMessageId(visitorPushIDFor(vType, visitorRoleReject)).Enum(),
 		PlayerId:      proto.Int64(int64(hostID)),
 		Unknown_3:     proto.Int64(0),
 		PsnId:         proto.String(visitor.accountID),
@@ -174,5 +170,6 @@ func (s *Service) pushVisitRejected(log logger, visitor *clientSession, hostID u
 	}
 	visitor.conn.SendPush(body)
 	log.Info("pushed visit rejection",
-		"visitor_player_id", visitor.playerID, "host_player_id", hostID)
+		"visitor_player_id", visitor.playerID, "host_player_id", hostID,
+		"type", vType, "push_id", fmt.Sprintf("%#04x", visitorPushIDFor(vType, visitorRoleReject)))
 }

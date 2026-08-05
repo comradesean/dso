@@ -35,20 +35,35 @@ const (
 	opRequestRejectQuickMatch     uint32 = 0x03DE
 )
 
-// Quick match push ids.
+// Push alias layout, CONFIRMED at the instruction level in both v1.00 and v1.10.
 //
-// The client registers EIGHT handlers across 0x03E0-0x03E7 for four message
-// types — two aliases each — and the decompilation records them as two
-// interleaved groups: the odds 0x3E1, 0x3E3, 0x3E5, 0x3E7 registered first, then
-// the evens 0x3E0, 0x3E2, 0x3E4, 0x3E6.
+//	opcode = quickMatchPushBase + 2*role + mode      (mode-MINOR, unlike the others)
 //
-// The PC/SOTFS enum assigns Join=0x03E1, Reject=0x03E3, Allow=0x03E5,
-// Remove=0x03E7 — all four odd, and exactly the group registered first as a
-// complete set. Four values landing precisely on one registration pass is a much
-// stronger fit than the Visitor case, so these are used as-is via the generated
-// enum constants. The evens are presumably the second alias of each type.
+// Eight aliases are two per role, one per venue, dispatched through an 8-entry
+// jump table. Note the operand order is reversed relative to BreakIn and Visitor:
+// here the mode is the fast-moving index.
 //
-// PushRequestAllowQuickMatch (0x03E5) is deliberately never sent. As with the
+// mode is the QuickMatchGameMode: Blue (Cathedral of Blue) = 0, Brotherhood
+// (Undead Purgatory) = 1.
+//
+// This replaces an earlier guess of a fixed 0x3E1/0x3E3/0x3E5/0x3E7 taken from
+// the PC enum. Those are the four roles for mode 1 only — right for Undead
+// Purgatory, silently wrong for the Cathedral of Blue.
+const quickMatchPushBase = 0x03E0
+
+const (
+	quickMatchRoleJoin   = 0
+	quickMatchRoleReject = 1
+	quickMatchRoleAllow  = 2
+	quickMatchRoleRemove = 3
+)
+
+// quickMatchPushIDFor returns the alias for a role at a venue.
+func quickMatchPushIDFor(mode ds2pb.QuickMatchGameMode, role int) int32 {
+	return int32(quickMatchPushBase + 2*role + int(mode))
+}
+
+// PushRequestAllowQuickMatch (role 2) is deliberately never sent. As with the
 // invasion "allow", acceptance is built by the HOST's client and tunnelled back
 // through RequestSendMessageToPlayers (0x0320) rather than originating here —
 // that relay is what made invasions work at all.
@@ -245,7 +260,7 @@ func (s *Service) handleJoinQuickMatch(log logger, cs *clientSession, payload []
 	}
 
 	body, err := proto.Marshal(&ds2pb.PushRequestJoinQuickMatch{
-		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestJoinQuickMatch.Enum(),
+		PushMessageId: ds2pb.PushMessageId(quickMatchPushIDFor(req.GetMode(), quickMatchRoleJoin)).Enum(),
 		PlayerId:      proto.Int64(int64(cs.playerID)),
 		PlayerPsnId:   proto.String(cs.accountID),
 		OnlineAreaId:  proto.Int64(req.GetOnlineAreaId()),
@@ -259,7 +274,9 @@ func (s *Service) handleJoinQuickMatch(log logger, cs *clientSession, payload []
 
 	log.Info("pushed quick match join to host",
 		"joiner_player_id", cs.playerID, "host_player_id", hostID,
-		"mode", req.GetMode(), "payload_bytes", len(body))
+		"mode", req.GetMode(),
+		"push_id", fmt.Sprintf("%#04x", quickMatchPushIDFor(req.GetMode(), quickMatchRoleJoin)),
+		"payload_bytes", len(body))
 
 	return proto.Marshal(&ds2pb.RequestJoinQuickMatchResponse{})
 }
@@ -284,7 +301,7 @@ func (s *Service) handleRejectQuickMatch(log logger, cs *clientSession, payload 
 // pushQuickMatchRejected tells a joiner their attempt failed. Caller holds s.mu.
 func (s *Service) pushQuickMatchRejected(log logger, joiner *clientSession, hostID uint32, areaID, cellID int64, mode ds2pb.QuickMatchGameMode) {
 	body, err := proto.Marshal(&ds2pb.PushRequestRejectQuickMatch{
-		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestRejectQuickMatch.Enum(),
+		PushMessageId: ds2pb.PushMessageId(quickMatchPushIDFor(mode, quickMatchRoleReject)).Enum(),
 		PlayerId:      proto.Int64(int64(hostID)),
 		PlayerPsnId:   proto.String(joiner.accountID),
 		OnlineAreaId:  proto.Int64(areaID),
@@ -305,7 +322,7 @@ func (s *Service) pushQuickMatchRejected(log logger, joiner *clientSession, host
 // Caller holds s.mu.
 func (s *Service) pushQuickMatchRemoved(log logger, m *quickMatch) {
 	body, err := proto.Marshal(&ds2pb.PushRequestRemoveQuickMatch{
-		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestRemoveQuickMatch.Enum(),
+		PushMessageId: ds2pb.PushMessageId(quickMatchPushIDFor(m.mode, quickMatchRoleRemove)).Enum(),
 		PlayerId:      proto.Int64(int64(m.playerID)),
 		OnlineAreaId:  proto.Int64(m.areaID),
 		CellId:        proto.Int64(m.cellID),

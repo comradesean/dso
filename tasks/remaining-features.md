@@ -83,7 +83,7 @@ for this player and silently merge two characters.
 complete answer. Its request shape reads more like an update than a query and is logged in full
 pending a capture.
 
-## 4. ~~Visitors~~ — DONE (2026-08-05), push ids UNVERIFIED
+## 4. ~~Visitors~~ — DONE (2026-08-05), push ids now DERIVED
 
 | Opcode | Message |
 |---|---|

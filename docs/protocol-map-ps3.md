@@ -13,28 +13,40 @@
 
 ---
 
-## ⛔ DO NOT IMPLEMENT THESE SIX OPCODES
+## ⛔ DO NOT IMPLEMENT THESE FIVE OPCODES
 
-The PC/SOTFS map lists all six as DS2 opcodes. **This client contains no code for any of them.**
-Anyone working from the PC map will implement all six by default. Don't.
+The PC/SOTFS map lists six as DS2 opcodes. **The v1.00 client contains no code for any of them,
+and five are still absent in v1.10.** Anyone working from the PC map will implement all six by
+default. Don't.
 
-| Opcode | PC/SOTFS name | Status on BLUS41045 |
-|---|---|---|
-| `0x03FA` | `RequestGetRightMatchingArea` | **Absent** |
-| `0x03FB` | `PushRequestBreakInTarget` | **Absent** |
-| `0x03FC` | `PushRequestRejectBreakInTarget` | **Absent** |
-| `0x03FD` | `PushRequestAllowBreakInTarget` | **Absent** |
-| `0x03FF` | `RequestGetAreaBloodMessageList` | **Absent** |
-| `0x0400` | `RequestGetAreaBloodstainList` | **Absent** |
+| Opcode | PC/SOTFS name | v1.00 | v1.10 |
+|---|---|---|---|
+| `0x03FA` | `RequestGetRightMatchingArea` | **Absent** | ✅ **PRESENT — implement it** (`li r4,0x03FA` ×2; sent live at boot with `{1: MatchingParameter}`) |
+| `0x03FB` | `PushRequestBreakInTarget` | **Absent** | **Absent** |
+| `0x03FC` | `PushRequestRejectBreakInTarget` | **Absent** | **Absent** |
+| `0x03FD` | `PushRequestAllowBreakInTarget` | **Absent** | **Absent** |
+| `0x03FF` | `RequestGetAreaBloodMessageList` | **Absent** | **Absent** |
+| `0x0400` | `RequestGetAreaBloodstainList` | **Absent** | **Absent** |
 
-No `li r4` with any of those values exists anywhere in `.text`. The maximum opcode constant across
-all 132 send/register call sites is `0x03F9`. The BreakIn pushes live at **`0x03B9`–`0x03C8`**
-instead (§5.2) — a server that sends `0x03FB` will simply never be dispatched by a PS3 client.
-Full evidence in §6.3 / §6.4.
+No `li r4` with any of the five remaining values exists anywhere in `.text` in either build. The
+BreakIn pushes live at **`0x03B9`–`0x03C8`** instead (§5.2) — a server that sends `0x03FB` will
+simply never be dispatched by a PS3 client. Full evidence in §6.3 / §6.4.
+
+**The real BreakIn rejection push is `0x03BA`** (mode 0; `0x03BE`/`0x03C2`/`0x03C6` for the other
+three invasion modes) — see §5.2, resolved 2026-08-05.
 
 ---
 
 **Target:** `EBOOT.elf`, BLUS41045, PPC64 BE, 30,756,464 bytes. File offset + `0x10000` = vaddr (re-verified: RSA PEM `-----BEGIN RSA PUBLIC KEY-----` at file `0x17EB338` / vaddr `0x17FB338`).
+
+> **BUILD VERSION — read this first.** Unless a section says otherwise, every address in this
+> document is from the **v1.00** disc EBOOT at
+> `games/DARK SOULS Ⅱ [BLUS41045]/PS3_GAME/USRDIR/EBOOT.elf` (30,756,464 B, net-module TOC
+> `0x1D2EFE0`). **The clients we test against run the v1.10 title update**, at
+> `dev_hdd0/game/BLUS41045/USRDIR/EBOOT.elf` (31,301,872 B, net-module TOC `0x1DB3530`).
+> Addresses do not carry over between builds and the opcode sets are not identical (`0x03FA`
+> is v1.10-only). §5.2 is dual-annotated for both builds; nothing else is.
+
 **Tools:** `powerpc64-linux-gnu-objdump`, `readelf`, custom Python decoders. Full `.text` disassembly (`0x10230`–`0x17DFA54`, 251 MB) produced once and indexed.
 **The reference doc was not opened until the comparison section was written.**
 
@@ -233,8 +245,8 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x03B6` | R/R | `RequestUpdateLoginPlayerCharacter` | `0x1567A0C`; resp `0x1566FB8` — **confirmed live** |
 | `0x03B7` | R/R | **`RequestBenchmarkThroughput`** | `0x155A27C`; resp `0x155929C` |
 | `0x03B8` | M | `RequestUpdatePlayerStatus` | `0x1580094` |
-| `0x03B9`–`0x03C8` | P ×16 | **BreakIn push block** (see §5.2) | regs `0x15964EC`…`0x1596910` |
-| `0x03C9`–`0x03D1` | P ×9 | **Visitor push block** | regs `0x157A624`…`0x157AB38` |
+| `0x03B9`–`0x03C8` | P ×16 | **BreakIn push block** — `0x3B9 + 4×mode + role`, role `0`=Target `1`=Reject `2`=Allow `3`=**dead** (§5.2) | regs `0x15964EC`…`0x1596910` |
+| `0x03C9`–`0x03D1` | P ×9 | **Visitor push block** — `0x3C9 + 3×mode + role`, role `0`=Visit `1`=RejectVisit `2`=RemoveVisitor (§5.2) | regs `0x157A624`…`0x157AB38` |
 | `0x03D2` | R/R | `RequestGetBreakInTargetList` | `0x1595AC8`; resp `0x159A4CC` |
 | `0x03D3` | R/R | `RequestBreakInTarget` | `0x1595664` |
 | `0x03D4` | R/R | `RequestRejectBreakInTarget` | `0x15957F0` |
@@ -248,7 +260,7 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x03DC` | R/R | `RequestSearchQuickMatch` | `0x1571F24`; resp `0x1574FCC` |
 | `0x03DD` | R/R | `RequestJoinQuickMatch` | `0x1571C28` |
 | `0x03DE` | R/R | `RequestRejectQuickMatch` | `0x1571A90` |
-| `0x03E0`–`0x03E7` | P ×8 | **QuickMatch push block** | regs `0x15724AC`…`0x157291C` |
+| `0x03E0`–`0x03E7` | P ×8 | **QuickMatch push block** — `0x3E0 + 2×role + mode`, role `0`=Join `1`=Reject `2`=Allow `3`=Remove (§5.2) | regs `0x15724AC`…`0x157291C` |
 | `0x03E8` | M | `RequestNotifyJoinGuestPlayer` | `0x15656B4` |
 | `0x03E9` | M | `RequestNotifyLeaveGuestPlayer` | `0x1565354` |
 | `0x03EA` | M | `RequestNotifyJoinSession` | `0x1564A3C` |
@@ -307,21 +319,124 @@ The map is populated by the 41 `0x1588900` calls. Two independent confirmations 
 
 Both sets match the reference's DS2 push numbers exactly. **Confidence: high.**
 
-### 5.2 The three large push *alias blocks* — the biggest divergence
+### 5.2 The three large push *alias blocks* — **SOLVED**
 
-Three subsystems register far more push opcodes than there are distinct push message types, in obvious grouped runs:
+> **This section was rewritten 2026-08-05.** The earlier text said the alias→message mapping
+> "could not be determined statically". That was wrong; it is fully determinable, and the
+> reason the earlier pass missed it is recorded at the end of this section so nobody repeats it.
+>
+> **Addresses are given for both builds.** v1.00 = `PS3_GAME/USRDIR/EBOOT.elf` (30,756,464 B,
+> net TOC `0x1D2EFE0`); v1.10 = `dev_hdd0/game/BLUS41045/USRDIR/EBOOT.elf` (31,301,872 B,
+> net TOC `0x1DB3530`). **The two builds are byte-identical in logic here** — same masks, same
+> jump table, same class names, only relocated. Live clients run v1.10.
 
-**BreakIn — 16 opcodes `0x03B9`–`0x03C8`**, registered in the region `0x1595E2C`–`0x1596980` in four groups of four (call-site order): `(0x3BD,0x3BE,0x3C0,0x3BF)`, `(0x3C1,0x3C2,0x3C4,0x3C3)`, `(0x3B9,0x3BA,0x3BC,0x3BB)`, `(0x3C5,0x3C6,0x3C8,0x3C7)`. The BreakIn subsystem has exactly four push classes in the proto (`PushRequestBreakInTarget` @`0x1598B68`, `PushRequestAllowBreakInTarget` @`0x1597898`/`0x1598BF8`, `PushRequestRejectBreakInTarget` @`0x1598F90`, `PushRequestRemoveBreakInTarget`), i.e. **4 message types × 4 aliases**.
+#### 5.2.1 The mechanism
 
-**Visitor — 9 opcodes `0x03C9`–`0x03D1`**, three groups of three; three push classes (`PushRequestVisit` @`0x157C20C`, `PushRequestRejectVisit` @`0x157C6CC`, `PushRequestRemoveVisitor` @`0x157C658`) — **3 × 3**.
+Each of the three managers is instantiated **N times**, once per gameplay *mode*, and each
+instance registers the **same set of message types** at a **different opcode quartet/triple**.
+All registrations in a manager therefore legitimately share one callback (vtable `0x1C5F530`,
+member fn OPD `0x1D0B4D0` → `0x1598A30`, v1.00) — the callback then separates the aliases itself
+with a **bitmask on `opcode − block_base`**.
 
-**QuickMatch — 8 opcodes `0x03E0`–`0x03E7`**, two interleaved groups of four (odds `0x3E1,0x3E3,0x3E5,0x3E7` registered first, then evens `0x3E0,0x3E2,0x3E4,0x3E6`); four push classes — **4 × 2**.
+BreakIn instance ctor `0x1595EE0` (v1.00) takes the mode in `r5` and switches on it; the four
+instances are constructed back-to-back at `0x15586D0`, `0x15586E8`, `0x1558700`, `0x1558718` with
+`li r5,0/1/2/3`. Visitor (`0x157A510`) and QuickMatch are built the same way.
 
-I could **not** determine which alias maps to which message type: every registration site in a given manager loads the same callback vtable (e.g. `0x1C5F530` at `0x1595FD0`, `0x159626C`, `0x15964C4`, `0x1596714`), and the distinguishing state is passed through the callback object, not visible statically.
+The receive-side demultiplexer, all CONFIRMED:
 
-The reference explicitly notes DS3's QuickMatch pushes have "7 further aliases", so the alias mechanism is real and known — but the **DS2 alias values on PS3 do not match the DS3OS DS2 `.inc`**.
+| Manager | callback | range guard | discriminator |
+|---|---|---|---|
+| BreakIn | `0x1598A30` (v1.00) / `0x1604D98` (v1.10) | `addi r0,r28,-953` + `cmplwi r0,14` (**note: 14, not 15**) | `sld r0,1,r0` then `and` vs `0x1111` / `0x2222` / `0x4444` |
+| Visitor | `0x157C0C8` (v1.00) / `0x15E80B8` (v1.10) | `addi r0,r28,-969` + `cmplwi r0,8` | `and` vs `0x049` / `0x092` / `0x124` |
+| QuickMatch | `0x1572B40` (v1.00) / `0x15E0E08` (v1.10) | `addi r4,r28,-992` + `cmplwi r4,7` | **8-entry jump table** at `0x1572C68` (v1.00) / `0x15E0F30` (v1.10), offsets `20,20,9c,9c,118,118,4bc,4bc` |
 
-**Confidence: high** that these 33 opcodes are registered push handlers. **Low/none** on the individual name mapping — I am deliberately not guessing.
+Each branch stack-constructs the protobuf message (vtable from TOC, then `bl 0x1655F68` =
+`ParseFromArray`). The class is read off vtable **slot 2 = `GetTypeName()`**, which loads a
+`const char*` from the TOC — the same technique that identified `0x0389`.
+
+#### 5.2.2 The mapping — BreakIn `0x03B9`–`0x03C8` (CONFIRMED)
+
+**`opcode = 0x03B9 + 4×mode + role`**, `mode ∈ {0,1,2,3}`, `role ∈ {0=Target, 1=Reject, 2=Allow, 3=Remove}`.
+
+| Role | Opcodes | Message class | Evidence (v1.00 / v1.10) |
+|---|---|---|---|
+| 0 | `0x3B9` `0x3BD` `0x3C1` `0x3C5` | `Frpg2RequestMessage.PushRequestBreakInTarget` | mask `0x1111` @ `0x1598B40`/`0x1604EA8`; vt `0x1C60C88`/`0x1CE2920`; `GetTypeName` `0x15FFDE4`/`0x1646DE0`; str `0x1897558`/`0x190CFF8` |
+| 1 | `0x3BA` `0x3BE` `0x3C2` `0x3C6` | `Frpg2RequestMessage.PushRequestRejectBreakInTarget` | mask `0x2222` @ `0x1598BCC`/`0x1604F34`; vt `0x1C60B88`/`0x1CE2820`; `GetTypeName` `0x15FFCE4`/`0x1646CE0`; str `0x1897480`/`0x190CF20` |
+| 2 | `0x3BB` `0x3BF` `0x3C3` `0x3C7` | `Frpg2RequestMessage.PushRequestAllowBreakInTarget` | mask `0x4444` @ `0x1598BDC`/`0x1604F44`; vt `0x1C60C48`/`0x1CE28E0`; `GetTypeName` `0x15FFDA4`/`0x1646DA0`; str `0x1897520`/`0x190CFC0` |
+| 3 | `0x3BC` `0x3C0` `0x3C4` `0x3C8` | **none — dead** | see below |
+
+`0x3B9` matches the live capture (a real invader's target replied to a `0x3B9` push), which is an
+independent end-to-end check of the whole table.
+
+**Role 3 is registered but has no handler.** There is no `0x8888` mask, and `0x3C8`
+(offset 15) is additionally rejected by `cmplwi r0,14`. All four fall straight through to the
+callback's cleanup/return path. `Frpg2RequestMessage.PushRequestRemoveBreakInTarget` *is* linked
+into the client (`GetTypeName` `0x15FFEC0` v1.00 / `0x1646EBC` v1.10, vtable `0x1C60D48`/`0x1CE29E0`),
+but the only four code sites that load its vtable are protobuf boilerplate (`New`/default-instance,
+e.g. `0x15D3C10`, `0x15EA78C`), none inside the BreakIn manager. **A `RemoveBreakInTarget` push
+sent on any of the 16 registered BreakIn opcodes will be silently discarded.** CONFIRMED.
+
+**Independent send-side cross-check of role 2.** The invader's client relays its "allow" through
+`0x0320 RequestSendMessageToPlayers`. That relay builds a `PushRequestAllowBreakInTarget`
+(vtable load at `0x1597898`, same TOC slot as role 2 above), writes `this->mode` (`+0x30`) into the
+message with has-bit `|= 8`, then picks the relay opcode by mode:
+`li r0,0x3BB` (mode 0, `0x1597908`/`0x1597E90`), `li r0,0x3BF` (mode 1, `0x1597ADC`),
+`li r0,0x3C3` (mode 2, `0x1597E74`), `li r0,0x3C7` (mode 3, `0x1597F80`) — exactly the `0x4444` set.
+Two fully independent derivations agree.
+
+Because the mode is a serialised field, **the invasion type is readable off the wire** from the
+relayed Allow message (it is the 4th *declared* field — has-bit index 3 — of
+`PushRequestAllowBreakInTarget`; field *number* is not recoverable statically). INFERRED that
+mode is the DS2 invasion/covenant type; the four modes are not otherwise named in the binary.
+Mode 0 (`0x3B9`–`0x3BC`) is the quartet exercised by ordinary invasions in live testing.
+
+#### 5.2.3 The mapping — Visitor `0x03C9`–`0x03D1` (CONFIRMED)
+
+**`opcode = 0x03C9 + 3×mode + role`**, `mode ∈ {0,1,2}`, `role ∈ {0=Visit, 1=RejectVisit, 2=RemoveVisitor}`.
+All nine are live — masks `0x049 | 0x092 | 0x124 = 0x1FF` covers every bit, so there are **no dead
+Visitor aliases**.
+
+| Role | Opcodes | Message class | Evidence (v1.00 / v1.10) |
+|---|---|---|---|
+| 0 | `0x3C9` `0x3CC` `0x3CF` | `Frpg2RequestMessage.PushRequestVisit` | mask `0x049` @ `0x157C1E4`/`0x15E81D4`; vt `0x1C609C8`/`0x1CE2660`; `GetTypeName` `0x15FFB24`/`0x1646B20`; str `0x1897348`/`0x190CDE8` |
+| 1 | `0x3CA` `0x3CD` `0x3D0` | `Frpg2RequestMessage.PushRequestRejectVisit` | mask `0x092` @ `0x157C62C`/`0x15E861C`; vt `0x1C60908`/`0x1CE25A0`; `GetTypeName` `0x15FFA64`/`0x1646A60`; str `0x18972C0`/`0x190CD60` |
+| 2 | `0x3CB` `0x3CE` `0x3D1` | `Frpg2RequestMessage.PushRequestRemoveVisitor` | mask `0x124` @ `0x157C63C`/`0x15E862C`; vt `0x1C60A88`/`0x1CE2720`; `GetTypeName` `0x15FFBE4`/`0x1646BE0`; str `0x18973C8`/`0x190CE68` |
+
+#### 5.2.4 The mapping — QuickMatch `0x03E0`–`0x03E7` (CONFIRMED)
+
+QuickMatch is **mode-minor**, not role-minor: **`opcode = 0x03E0 + 2×role + mode`**, `mode ∈ {0,1}`.
+The jump table sends indices `{0,1}`, `{2,3}`, `{4,5}`, `{6,7}` to four targets. All eight are live.
+
+| Role | Opcodes | Message class | Evidence (v1.00 / v1.10) |
+|---|---|---|---|
+| 0 | `0x3E0` `0x3E1` | `Frpg2RequestMessage.PushRequestJoinQuickMatch` | jt→`0x1572C88`/`0x15E0F50`; vt `0x1C60588`/`0x1CE2220`; `GetTypeName` `0x15FF6E4`/`0x16466E0`; str `0x1896FF8`/`0x190CA98` |
+| 1 | `0x3E2` `0x3E3` | `Frpg2RequestMessage.PushRequestRejectQuickMatch` | jt→`0x1572D04`/`0x15E0FCC`; vt `0x1C60508`/`0x1CE21A0`; `GetTypeName` `0x15FF664`/`0x1646660`; str `0x1896F98`/`0x190CA38` |
+| 2 | `0x3E4` `0x3E5` | `Frpg2RequestMessage.PushRequestAllowQuickMatch` | jt→`0x1572D80`/`0x15E1048`; vt `0x1C60488`/`0x1CE2120`; `GetTypeName` `0x15FF5E4`/`0x16465E0`; str `0x1896F30`/`0x190C9D0` |
+| 3 | `0x3E6` `0x3E7` | `Frpg2RequestMessage.PushRequestRemoveQuickMatch` | jt→`0x1573120`/`0x15E13EC`; vt `0x1C60448`/`0x1CE20E0`; `GetTypeName` `0x15FF5A4`/`0x16465A0`; str `0x1896F00`/`0x190C9A0` |
+
+#### 5.2.5 Correction to the previously recorded group structure
+
+The old "four groups of four in call-site order" is **real but semantically inverted**. Those
+groups are **per-instance (mode) groups**, not per-message-type groups; each group contains one of
+*each* message type. Reading them as "four aliases of one type, take the leader" is what produced
+three wrong live-test candidates (`0x3BD`, `0x3C1`, `0x3C5` — all three are in fact
+`PushRequestBreakInTarget` for modes 1/2/3, which is exactly why an invader ignored them).
+
+Within a BreakIn mode group the *call-site* order is Target, Reject, **Remove, Allow** (e.g. mode 0
+registers `0x3B9, 0x3BA, 0x3BC, 0x3BB`) — the last two are swapped relative to numeric order.
+Numeric order is the authoritative one: `+0` Target, `+1` Reject, `+2` Allow, `+3` Remove.
+
+#### 5.2.6 Why the earlier pass missed this
+
+The earlier conclusion ("the distinguishing state is passed through the callback object") was a
+half-truth that stopped one step early. All 16 registration nodes really are identical 16-byte
+`{vtable, this, member-fn OPD, adjust}` records differing only in the map key — but the
+*distinguishing state* is `this`, one of four manager instances, **and the callback re-derives the
+role from the opcode it is handed**. The mapping was never in the registration sites; it was always
+in the one shared callback. **Do not stop at the registration site — always follow the callback.**
+
+The reference explicitly notes DS3's QuickMatch pushes have "7 further aliases", so the alias
+mechanism is real and known — but the **DS2 alias values on PS3 do not match the DS3OS DS2 `.inc`**.
 
 ---
 
@@ -339,7 +454,17 @@ The reference explicitly notes DS3's QuickMatch pushes have "7 further aliases",
    ```
    806-entry offset table at `0x1586254`, 92 distinct targets, index groups `0–4, 100–115, 200–206, 300–314, 400–408, 500–507, …`. That grouping is an **internal client job/state enum**, not the wire opcode space (which is `0x320`/`0x386`–`0x3F9`). Do not mistake it for the protocol table.
 
-3. **`0x03FA`, `0x03FB`, `0x03FC`, `0x03FD`, `0x03FE` appear nowhere as opcodes.** No `li r4` with those values exists anywhere in `.text`. The maximum `r4` constant across all 132 send/register call sites is `0x03F9`.
+3. **`0x03FA`, `0x03FB`, `0x03FC`, `0x03FD`, `0x03FE` appear nowhere as opcodes — *in v1.00*.** No `li r4` with those values exists anywhere in `.text`. The maximum `r4` constant across all 132 send/register call sites is `0x03F9`.
+
+   > **VERSION CAVEAT (added 2026-08-05).** This whole document was written against the **v1.00**
+   > EBOOT. **`0x03FA` does exist in the v1.10 title update** — `li r4,0x03FA` occurs twice there,
+   > zero times in v1.00 — and live v1.10 clients send it at boot with a 29-byte
+   > `{1: MatchingParameter}` payload (i.e. `RequestGetRightMatchingArea`). The scan method is
+   > sound; it was applied to the wrong build. Re-verify any negative result against
+   > `dev_hdd0/game/BLUS41045/USRDIR/EBOOT.elf` before relying on it. Note that
+   > `Frpg2RequestMessage.RequestGetRightMatchingArea` is **not** in the v1.00 `GetTypeName`
+   > string run (212 distinct `Frpg2RequestMessage.*` names, none containing "Matching" except
+   > `MatchingParameter`), which is consistent with the message being new in v1.10.
 
 4. **`0x03FF` and `0x0400` are not opcodes here.** All `0x400` immediates in the net region are `li r8,0x400` / `li r5,0x400` (buffer sizes, at `0x1586F84`, `0x1587044`, `0x1587104`, `0x15871C4`, `0x1587284`, `0x1587344`, `0x1659F3C`, `0x1659F54`, `0x1679050`); the sole `0x3FF` (`0x1669834`) is `cmplwi cr7,r4,1023` in a boolean range predicate, not a dispatch.
 
@@ -404,7 +529,7 @@ Since `Frpg2GameServerInfo` carries **ten trailing u32 transport params from off
 ### 8.3 Neither source can currently answer
 
 - **What `0x0387`, `0x0388`, `0x038A`, `0x0390` are.** They are emitted from TOC-B net-module functions that contain no Frpg2 message-class construction in the reachable window, so the vtable trick yields nothing. Raising confidence would need dynamic tracing or reading the encrypted-blob layout at those call sites.
-- **Which alias in each push block corresponds to which push message type** (the 33 opcodes in §5.2). Static analysis cannot separate them; a live capture of a BreakIn/visit/arena summon would settle it immediately, and is by far the cheapest way to close this gap.
+- ~~**Which alias in each push block corresponds to which push message type**~~ — **RESOLVED 2026-08-05, see §5.2.** Static analysis *can* separate them; the mapping lives in the shared push callback, not in the registration sites.
 - **Whether the push transport opcode is `0x0320` with `msg_index = 0xFFFFFFFF`, as the reference claims.** The PS3 dispatcher (`0x158C138`) keys on a u32 that the *caller* has already deposited at `148(r1)`; I could not determine statically whether that u32 came from the transport header or from a parsed protobuf field. Both models are consistent with what I see. **This is an open question and I am explicitly not resolving it.**
 - **Whether the "M" opcodes still require a `Reply` frame on the wire.**
 - **The 12-byte message header layout** — not derivable from this pass (§6.6). The existing byte-confirmed facts remain the only source.
@@ -413,10 +538,17 @@ Since `Frpg2GameServerInfo` carries **ten trailing u32 transport params from off
 
 ## 9. Suggested next steps, in value order
 
-1. Reply to a PS3 client's `0x03D2 RequestGetBreakInTargetList` and drive a real invasion; capture which of `0x03B9`–`0x03C8` the server must use. That single capture converts 16 low-confidence opcodes to high.
-2. Same for a visit (`0x03C9`–`0x03D1`) and an arena match (`0x03E0`–`0x03E7`).
+1. ~~Capture which of `0x03B9`–`0x03C8` the server must use~~ — **done statically, §5.2.** Use
+   `0x03BA` for `PushRequestRejectBreakInTarget` on a mode-0 invasion (`0x03BE`/`0x03C2`/`0x03C6`
+   for modes 1/2/3). Do **not** send a `RemoveBreakInTarget` push — the client has no handler.
+2. ~~Same for a visit and an arena match~~ — **done statically, §5.2.**
 3. Log what the client sends for `0x0387`/`0x0388`/`0x038A`/`0x0390` during boot — they fire early (the `0x0390` path is the `NRLoggingMessage` uploader, so it may be an opt-in telemetry channel you can safely stub).
-4. **Do not implement `0x03FA`, `0x03FB`, `0x03FC`, `0x03FD`, `0x03FF`, `0x0400`.** This client has no code for them.
+4. **Do not implement `0x03FB`, `0x03FC`, `0x03FD`, `0x03FF`, `0x0400`.** No code for them in
+   either build. **`0x03FA` is the exception — it is absent in v1.00 but present and actively sent
+   in v1.10** (`RequestGetRightMatchingArea`); implement it, since the live clients are v1.10.
+5. Re-run every negative result in §6 against the **v1.10** EBOOT
+   (`dev_hdd0/game/BLUS41045/USRDIR/EBOOT.elf`, net TOC `0x1DB3530`). This document was written
+   against v1.00; the two builds differ.
 
 ---
 

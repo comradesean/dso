@@ -24,6 +24,7 @@ import (
 
 	"github.com/sstreight/dso/internal/crypto/frpgcipher"
 	"github.com/sstreight/dso/internal/frpg/rudp"
+	"github.com/sstreight/dso/internal/proto/ds2pb"
 	"github.com/sstreight/dso/internal/server/authtoken"
 	"github.com/sstreight/dso/internal/server/core"
 	"github.com/sstreight/dso/internal/server/store"
@@ -89,6 +90,11 @@ type clientSession struct {
 	// too, but that is unparsed — and these requests arrive constantly, so this is
 	// both cheaper and always current.
 	areaID uint32
+
+	// breakInType is the invasion type of this player's most recent break-in
+	// attempt. RequestRejectBreakInTarget does not carry it, but the rejection
+	// push alias is mode-specific, so it has to be remembered from the attempt.
+	breakInType ds2pb.BreakInType
 }
 
 // New creates a game service bound to the given server. st persists blood

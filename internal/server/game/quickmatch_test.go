@@ -143,33 +143,10 @@ func TestUnregisterRemoves(t *testing.T) {
 	}
 }
 
-// TestJoinPushUsesTheOddAliasGroup pins the push ids.
-//
-// Eight aliases exist for four message types. The PC enum's four values are all
-// odd and match exactly the group the decompilation records as registered first,
-// which is why they are used unchanged — this test fails if someone "helpfully"
-// switches them to the even group.
-func TestJoinPushUsesTheOddAliasGroup(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		got  ds2pb.PushMessageId
-		want int
-	}{
-		{"join", ds2pb.PushMessageId_PushID_PushRequestJoinQuickMatch, 0x03E1},
-		{"reject", ds2pb.PushMessageId_PushID_PushRequestRejectQuickMatch, 0x03E3},
-		{"allow", ds2pb.PushMessageId_PushID_PushRequestAllowQuickMatch, 0x03E5},
-		{"remove", ds2pb.PushMessageId_PushID_PushRequestRemoveQuickMatch, 0x03E7},
-	} {
-		if int(tc.got) != tc.want {
-			t.Errorf("%s push id = %#04x, want %#04x (odd group, registered first)",
-				tc.name, int(tc.got), tc.want)
-		}
-		if int(tc.got)%2 == 0 {
-			t.Errorf("%s push id %#04x is even; the odd group is the one the "+
-				"decompilation records as a complete registration pass", tc.name, int(tc.got))
-		}
-	}
-}
+// The former TestJoinPushUsesTheOddAliasGroup asserted the PC enum's four odd
+// values were correct because they matched "the group registered first". That
+// theory is superseded: the aliases are two per role, one per venue, so those
+// four are simply mode 1. TestPushAliasFormulas below replaces it.
 
 // TestJoinBrokersToHost is the feature: a joiner asks, the host is pushed.
 func TestJoinBrokersToHost(t *testing.T) {
@@ -194,5 +171,109 @@ func TestJoinBrokersToHost(t *testing.T) {
 	var resp ds2pb.RequestJoinQuickMatchResponse
 	if err := proto.Unmarshal(replyRaw, &resp); err != nil {
 		t.Fatalf("reply does not parse: %v", err)
+	}
+}
+
+// TestPushAliasFormulas pins the three alias layouts recovered from the
+// disassembly. Each manager is instantiated once per mode and registers all of
+// its message types at that mode's slice of the block, so an alias identifies a
+// (mode, role) pair — not a message type on its own.
+//
+// Getting this wrong is silent and expensive: 0x3BD, 0x3C1 and 0x3C5 were each
+// tested live as invasion rejections and ignored, because they are TARGET pushes
+// for modes 1, 2 and 3.
+func TestPushAliasFormulas(t *testing.T) {
+	t.Run("breakin", func(t *testing.T) {
+		// opcode = 0x3B9 + 4*mode + role
+		for _, tc := range []struct {
+			mode ds2pb.BreakInType
+			role int
+			want int32
+		}{
+			{ds2pb.BreakInType_BreakInType_RedEyeOrb, breakInRoleTarget, 0x3B9},
+			{ds2pb.BreakInType_BreakInType_RedEyeOrb, breakInRoleReject, 0x3BA},
+			{ds2pb.BreakInType_BreakInType_RedEyeOrb, breakInRoleAllow, 0x3BB},
+			{ds2pb.BreakInType_BreakInType_BlueEyeOrb, breakInRoleTarget, 0x3C1},
+			{ds2pb.BreakInType_BreakInType_BlueEyeOrb, breakInRoleReject, 0x3C2},
+		} {
+			if got := breakInPushIDFor(tc.mode, tc.role); got != tc.want {
+				t.Errorf("breakIn(mode=%v, role=%d) = %#04x, want %#04x",
+					tc.mode, tc.role, got, tc.want)
+			}
+		}
+		// 0x03B9 is the one value confirmed live; guard it explicitly.
+		if got := breakInPushIDFor(ds2pb.BreakInType_BreakInType_RedEyeOrb, breakInRoleTarget); got != 0x03B9 {
+			t.Errorf("the confirmed-live target push moved to %#04x", got)
+		}
+	})
+
+	t.Run("visitor", func(t *testing.T) {
+		// opcode = 0x3C9 + 3*mode + role
+		for _, tc := range []struct {
+			mode ds2pb.VisitorType
+			role int
+			want int32
+		}{
+			{ds2pb.VisitorType_VisitorType_BlueSentinels, visitorRoleVisit, 0x3C9},
+			{ds2pb.VisitorType_VisitorType_BlueSentinels, visitorRoleRemove, 0x3CB},
+			{ds2pb.VisitorType_VisitorType_BellKeepers, visitorRoleVisit, 0x3CC},
+			{ds2pb.VisitorType_VisitorType_Rat, visitorRoleVisit, 0x3CF},
+			{ds2pb.VisitorType_VisitorType_Rat, visitorRoleRemove, 0x3D1},
+		} {
+			if got := visitorPushIDFor(tc.mode, tc.role); got != tc.want {
+				t.Errorf("visitor(mode=%v, role=%d) = %#04x, want %#04x",
+					tc.mode, tc.role, got, tc.want)
+			}
+		}
+		// VisitorType_None is -1 and must not compute an id below the block.
+		if got := visitorPushIDFor(ds2pb.VisitorType_VisitorType_None, visitorRoleVisit); got < visitorPushBase {
+			t.Errorf("VisitorType_None produced %#04x, below the block base %#04x",
+				got, visitorPushBase)
+		}
+	})
+
+	t.Run("quickmatch", func(t *testing.T) {
+		// opcode = 0x3E0 + 2*role + mode  -- mode-MINOR, reversed from the others
+		for _, tc := range []struct {
+			mode ds2pb.QuickMatchGameMode
+			role int
+			want int32
+		}{
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleJoin, 0x3E0},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleJoin, 0x3E1},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Blue, quickMatchRoleReject, 0x3E2},
+			{ds2pb.QuickMatchGameMode_QuickMatchGameMode_Brotherhood, quickMatchRoleRemove, 0x3E7},
+		} {
+			if got := quickMatchPushIDFor(tc.mode, tc.role); got != tc.want {
+				t.Errorf("quickMatch(mode=%v, role=%d) = %#04x, want %#04x",
+					tc.mode, tc.role, got, tc.want)
+			}
+		}
+	})
+}
+
+// TestEveryAliasIsWithinItsBlock — an id outside the registered range is never
+// dispatched, so an off-by-one here is a feature that silently does nothing.
+func TestEveryAliasIsWithinItsBlock(t *testing.T) {
+	for mode := 0; mode <= 3; mode++ {
+		for role := 0; role <= 2; role++ {
+			if got := breakInPushIDFor(ds2pb.BreakInType(mode), role); got < 0x03B9 || got > 0x03C8 {
+				t.Errorf("breakIn(%d,%d) = %#04x, outside 0x03B9-0x03C8", mode, role, got)
+			}
+		}
+	}
+	for mode := 0; mode <= 2; mode++ {
+		for role := 0; role <= 2; role++ {
+			if got := visitorPushIDFor(ds2pb.VisitorType(mode), role); got < 0x03C9 || got > 0x03D1 {
+				t.Errorf("visitor(%d,%d) = %#04x, outside 0x03C9-0x03D1", mode, role, got)
+			}
+		}
+	}
+	for mode := 0; mode <= 1; mode++ {
+		for role := 0; role <= 3; role++ {
+			if got := quickMatchPushIDFor(ds2pb.QuickMatchGameMode(mode), role); got < 0x03E0 || got > 0x03E7 {
+				t.Errorf("quickMatch(%d,%d) = %#04x, outside 0x03E0-0x03E7", mode, role, got)
+			}
+		}
 	}
 }

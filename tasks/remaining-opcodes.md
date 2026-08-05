@@ -73,31 +73,32 @@ real client. Nothing to build until one appears in a capture.
 
 ---
 
-## D. Unused push aliases — 28 values, but not 28 features
+## ~~D. Unused push aliases~~ — RESOLVED (2026-08-05)
 
-These belong to message types we already send. Each subsystem registers several opcodes per
-message type, and static analysis could not say which alias maps to which: every registration
-site loads the same callback vtable, and the distinguishing state passes through the callback
-object at runtime.
+All 33 aliases are mapped. They are **not** several aliases per message type: each manager is
+instantiated once per gameplay MODE, and every instance registers all of its message types at its
+own slice of the block. A shared callback re-derives the role from `opcode - block_base` with a
+bitmask. So an alias identifies a **(mode, role) pair**.
 
-| Block | Range | Registered | We use | Unused |
-|---|---|---|---|---|
-| BreakIn | `0x03B9`–`0x03C8` | 16 for 4 types | `0x03B9` (target, **confirmed live**), `0x03BA` (reject, unverified) | 14 |
-| Visitor | `0x03C9`–`0x03D1` | 9 for 3 types | `0x03CF`/`0x03D0`/`0x03D1` (unverified) | 6 |
-| QuickMatch | `0x03E0`–`0x03E7` | 8 for 4 types | none | 8 |
+| Block | Formula | Roles |
+|---|---|---|
+| BreakIn `0x03B9`–`0x03C8` | `0x3B9 + 4*mode + role` | 0 target, 1 reject, 2 allow, 3 **dead — no handler** |
+| Visitor `0x03C9`–`0x03D1` | `0x3C9 + 3*mode + role` | 0 visit, 1 reject, 2 remove |
+| QuickMatch `0x03E0`–`0x03E7` | `0x3E0 + 2*role + mode` (mode-MINOR) | 0 join, 1 reject, 2 allow, 3 remove |
 
-BreakIn registration order, in groups of four (call-site order, from the disassembly):
+mode is the request's own type enum: `BreakInType`, `VisitorType`, `QuickMatchGameMode`.
 
-```
-group 1: 0x3BD 0x3BE 0x3C0 0x3BF
-group 2: 0x3C1 0x3C2 0x3C4 0x3C3
-group 3: 0x3B9 0x3BA 0x3BC 0x3BB   <- BreakInTarget (0x3B9 confirmed live)
-group 4: 0x3C5 0x3C6 0x3C8 0x3C7
-```
+Verified identical in v1.00 and v1.10 — same masks, same jump table, only relocated. Corroborated
+from the send side: the invader's `0x0320` Allow-relay picks `0x3BB`/`0x3BF`/`0x3C3`/`0x3C7` by
+mode, exactly the role-2 set, derived by a different route.
 
-Groups 1, 2 and 4 map to reject/allow/remove in an unknown order. `pushBreakInRejected` assumes
-`breakInPushID + 1`, which is **not confirmed** — a declined invasion may not notify the invader,
-and that is a cheap live test.
+**There is no working Remove push for BreakIn.** `PushRequestRemoveBreakInTarget` is linked in but
+the manager never loads its vtable and the callback has no role-3 branch, so it is silently
+discarded on all sixteen ids.
+
+**What this cost:** `0x3BD`, `0x3C1` and `0x3C5` were each tested live as rejections and ignored,
+because they are TARGET pushes for modes 1/2/3. The original `breakInPushID + 1` = `0x3BA` was
+right all along for mode 0 — and was never tested.
 
 ---
 

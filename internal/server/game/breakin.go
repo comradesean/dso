@@ -8,41 +8,20 @@ import (
 	"github.com/sstreight/dso/internal/proto/ds2pb"
 )
 
-// Invasion (break-in) opcodes. The request/response side is unambiguous; the
-// push id is not — see breakInPushID below.
+// Invasion (break-in) opcodes.
 const (
 	opRequestGetBreakInTargetList uint32 = 0x03D2
 	opRequestBreakInTarget        uint32 = 0x03D3
 	opRequestRejectBreakInTarget  uint32 = 0x03D4
 )
 
-// breakInPushID is the PushMessageId used for PushRequestBreakInTarget.
+// CONFIRMED 2026-08-05: 0x03B9 is PushRequestBreakInTarget for mode 0 (Red Eye
+// Orb). A real invader selected a target, the server pushed with this id, and the
+// target's client tunnelled its "allow" back through RequestSendMessageToPlayers
+// — which it would not have done had the push gone unrecognised.
 //
-// CONFIRMED 2026-08-05: 0x03B9 is correct. A real invader selected a target, the
-// server pushed with this id, and the target's client responded by tunnelling its
-// "allow" back through RequestSendMessageToPlayers — which it would not have done
-// had the push gone unrecognised. That single exchange collapsed the sixteen-alias
-// ambiguity described below.
-//
-// The PC value from the protos is 1019 (0x3FB), which is useless here:
-// decompilation found no code for 0x3FB, 0x3FC or 0x3FD anywhere in the PS3
-// client. Instead the BreakIn subsystem registers SIXTEEN push handlers spanning
-// 0x03B9-0x03C8 — four message types with four aliases each — and static analysis
-// could not say which alias maps to which type, because every registration site
-// loads the same callback vtable and the distinguishing state is passed through
-// the callback object at runtime.
-//
-// Registration order from the disassembly, in groups of four:
-//
-//	group 1: 0x3BD 0x3BE 0x3C0 0x3BF
-//	group 2: 0x3C1 0x3C2 0x3C4 0x3C3
-//	group 3: 0x3B9 0x3BA 0x3BC 0x3BB
-//	group 4: 0x3C5 0x3C6 0x3C8 0x3C7
-//
-// Group 3 is therefore the BreakIn-target group. The remaining groups still map
-// to reject/allow/remove in an unknown order; pushBreakInRejected below assumes
-// the next alias in sequence, which is NOT yet confirmed.
-const breakInPushID = 0x03B9
+// The PC value from the protos is 0x3FB, useless here: no code exists for 0x3FB,
+// 0x3FC or 0x3FD anywhere in this client.
 
 func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestGetBreakInTargetList
@@ -105,9 +84,10 @@ func (s *Service) handleBreakInTarget(log logger, cs *clientSession, payload []b
 	}
 
 	if s.srv.Config.DebugForceBreakInReject {
+		cs.breakInType = req.GetType()
 		log.Info("DEBUG: forcing break-in rejection instead of invading",
 			"invader_player_id", cs.playerID, "target_player_id", req.GetPlayerId(),
-			"push_id", fmt.Sprintf("%#04x", s.rejectPushID()))
+			"push_id", fmt.Sprintf("%#04x", s.rejectPushID(req.GetType())))
 		s.pushBreakInRejected(log, cs, req.GetPlayerId())
 		return proto.Marshal(&ds2pb.RequestBreakInTargetResponse{})
 	}
@@ -120,8 +100,12 @@ func (s *Service) handleBreakInTarget(log logger, cs *clientSession, payload []b
 		return proto.Marshal(&ds2pb.RequestBreakInTargetResponse{})
 	}
 
+	// Remember the invasion type: RequestRejectBreakInTarget does not carry it,
+	// but the rejection push must use the same mode's alias.
+	cs.breakInType = req.GetType()
+
 	push := &ds2pb.PushRequestBreakInTarget{
-		PushMessageId: ds2pb.PushMessageId(breakInPushID).Enum(),
+		PushMessageId: ds2pb.PushMessageId(breakInPushIDFor(req.GetType(), breakInRoleTarget)).Enum(),
 		PlayerId:      proto.Uint32(cs.playerID),
 		PsnId:         proto.String(cs.accountID),
 		Type:          req.GetType().Enum(),
@@ -136,7 +120,8 @@ func (s *Service) handleBreakInTarget(log logger, cs *clientSession, payload []b
 
 	log.Info("pushed break-in to target",
 		"invader_player_id", cs.playerID, "target_player_id", req.GetPlayerId(),
-		"push_id", fmt.Sprintf("%#04x", breakInPushID), "payload_bytes", len(body))
+		"push_id", fmt.Sprintf("%#04x", breakInPushIDFor(req.GetType(), breakInRoleTarget)),
+		"type", req.GetType(), "payload_bytes", len(body))
 
 	return proto.Marshal(&ds2pb.RequestBreakInTargetResponse{})
 }
@@ -161,32 +146,48 @@ func (s *Service) handleRejectBreakInTarget(log logger, cs *clientSession, paylo
 // that floor, while still being non-zero.
 const debugPhantomTargetID = 1
 
-// breakInRejectPushID is the alias used for the rejection push.
+// Push alias layout, CONFIRMED at the instruction level in both v1.00 and v1.10.
 //
-// PROBABLY WRONG, and worth understanding why. The sixteen aliases sit in four
-// groups of four, each group being four aliases of ONE message type, and group 3
-// (0x3B9 0x3BA 0x3BC 0x3BB) is the BreakInTarget group — 0x3B9 is confirmed live.
-// So 0x3BA is another BreakInTarget alias, and sending it as a rejection likely
-// tells the invader's client "here is another invasion" rather than "you were
-// refused".
+//	opcode = breakInPushBase + 4*mode + role
 //
-// The rejection push must lead one of the other groups: 0x3BD, 0x3C1 or 0x3C5.
-// DSO_BREAKIN_REJECT_PUSH_ID overrides this so all three can be tried in one
-// session, and DSO_DEBUG_FORCE_BREAKIN_REJECT makes every orb use trigger the
-// path so the test does not depend on provoking a real refusal.
-const breakInRejectPushID = breakInPushID + 1
+// The sixteen aliases are NOT four aliases per message type. Each manager is
+// instantiated once per gameplay mode, and every instance registers the same
+// message types at a different quartet — so a "group" holds one of every type,
+// for one mode. The shared callback re-derives the role from opcode-0x3B9 with
+// the bitmasks 0x1111 (target), 0x2222 (reject), 0x4444 (allow).
+//
+// Getting this wrong cost three live test cycles: 0x3BD, 0x3C1 and 0x3C5 were
+// tried as rejections and all ignored, because they are TARGET pushes for modes
+// 1, 2 and 3. An invader naturally discards those.
+//
+// mode is the BreakInType from the request: RedEyeOrb=0, BlueEyeOrb=2.
+const breakInPushBase = 0x03B9
 
-// rejectPushID is the alias actually sent, honouring the override.
-func (s *Service) rejectPushID() int32 {
+// Roles within a mode's quartet. Role 3 exists numerically but has no handler —
+// the callback has no 0x8888 branch, so a "remove" push is silently discarded on
+// every one of the sixteen ids.
+const (
+	breakInRoleTarget = 0
+	breakInRoleReject = 1
+	breakInRoleAllow  = 2
+)
+
+// breakInPushIDFor returns the alias for a role within an invasion type.
+func breakInPushIDFor(mode ds2pb.BreakInType, role int) int32 {
+	return int32(breakInPushBase + 4*int(mode) + role)
+}
+
+// rejectPushID is the alias actually sent, honouring the debug override.
+func (s *Service) rejectPushID(mode ds2pb.BreakInType) int32 {
 	if v := s.srv.Config.BreakInRejectPushID; v != 0 {
 		return int32(v)
 	}
-	return breakInRejectPushID
+	return breakInPushIDFor(mode, breakInRoleReject)
 }
 
 // pushBreakInRejected tells an invader their attempt failed. Caller holds s.mu.
 func (s *Service) pushBreakInRejected(log logger, invader *clientSession, hostID uint32) {
-	pushID := s.rejectPushID()
+	pushID := s.rejectPushID(invader.breakInType)
 	body, err := proto.Marshal(&ds2pb.PushRequestRejectBreakInTarget{
 		PushMessageId: ds2pb.PushMessageId(pushID).Enum(),
 		PlayerId:      proto.Int64(int64(hostID)),
