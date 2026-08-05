@@ -46,14 +46,33 @@ const (
 )
 
 // visitorPushIDFor returns the alias for a role within a covenant.
+// visitorModes is how many covenants the block covers: nine aliases over three
+// roles. VisitorType_None (-1) and VisitorType_3 both fall outside it.
+const visitorModes = 3
+
 func visitorPushIDFor(mode ds2pb.VisitorType, role int) int32 {
 	m := int(mode)
-	if m < 0 {
-		// VisitorType_None; nothing sensible to derive, so fall back to mode 0
-		// rather than computing an id below the block.
+	if m < 0 || m >= visitorModes {
+		// Clamp rather than compute out of the block.
+		//
+		// VisitorType_None is -1 and VisitorType_3 is 3, and the block is only
+		// nine aliases wide — so type 3 would produce 0x3D2..0x3D4, past the end.
+		// That is not merely a dead id: 0x3D2 is RequestGetBreakInTargetList's
+		// opcode, so a push sent there would collide with an unrelated message
+		// rather than being quietly dropped.
+		//
+		// Only types 0-2 (BlueSentinels, BellKeepers, Rat) have ever been seen on
+		// the wire. If a type 3 visit ever appears this will send a mode-0 push,
+		// which is wrong but harmless, and the log line below is the signal to
+		// come back and work out what the fourth covenant actually is.
 		m = 0
 	}
 	return int32(visitorPushBase + 3*m + role)
+}
+
+// visitorModeInRange reports whether a VisitorType maps onto the alias block.
+func visitorModeInRange(mode ds2pb.VisitorType) bool {
+	return int(mode) >= 0 && int(mode) < visitorModes
 }
 
 // handleGetVisitorList offers candidate worlds to visit.
@@ -106,6 +125,12 @@ func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]
 		return nil, fmt.Errorf("parse RequestVisit: %w", err)
 	}
 	targetID := uint32(req.GetPlayerId())
+
+	if !visitorModeInRange(req.GetType()) {
+		log.Warn("visit with a covenant outside the push-alias block; "+
+			"falling back to mode 0 — capture this",
+			"player_id", cs.playerID, "type", req.GetType())
+	}
 
 	target, live := s.sessionForPlayerLocked(targetID)
 	if !live {

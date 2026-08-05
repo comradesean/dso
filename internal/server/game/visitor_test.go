@@ -153,3 +153,45 @@ func TestVisitToOfflineTargetRejects(t *testing.T) {
 		t.Error("no reply to RequestVisit; the client would retry and block other UI")
 	}
 }
+
+// TestVisitorAliasesStayInsideTheBlock — VisitorType_3 exists in the schema and
+// is one past the block, which is only nine aliases wide.
+//
+// This is not a harmless dead id: 0x03D2 is RequestGetBreakInTargetList's opcode,
+// so an unclamped push would collide with an unrelated message rather than being
+// dropped.
+func TestVisitorAliasesStayInsideTheBlock(t *testing.T) {
+	types := []ds2pb.VisitorType{
+		ds2pb.VisitorType_VisitorType_None,
+		ds2pb.VisitorType_VisitorType_BlueSentinels,
+		ds2pb.VisitorType_VisitorType_BellKeepers,
+		ds2pb.VisitorType_VisitorType_Rat,
+		ds2pb.VisitorType_VisitorType_3,
+	}
+	for _, vt := range types {
+		for role := 0; role <= 2; role++ {
+			got := visitorPushIDFor(vt, role)
+			if got < 0x03C9 || got > 0x03D1 {
+				t.Errorf("visitorPushIDFor(%v, %d) = %#04x, outside 0x03C9-0x03D1",
+					vt, role, got)
+			}
+		}
+	}
+	// The three real covenants must still map to distinct triples.
+	seen := map[int32]ds2pb.VisitorType{}
+	for _, vt := range []ds2pb.VisitorType{
+		ds2pb.VisitorType_VisitorType_BlueSentinels,
+		ds2pb.VisitorType_VisitorType_BellKeepers,
+		ds2pb.VisitorType_VisitorType_Rat,
+	} {
+		id := visitorPushIDFor(vt, visitorRoleVisit)
+		if prev, dup := seen[id]; dup {
+			t.Errorf("%v and %v share visit push %#04x", prev, vt, id)
+		}
+		seen[id] = vt
+	}
+	// And the one confirmed live must not move.
+	if got := visitorPushIDFor(ds2pb.VisitorType_VisitorType_BellKeepers, visitorRoleVisit); got != 0x03CC {
+		t.Errorf("Bell Keeper visit push = %#04x, want 0x03CC (confirmed live)", got)
+	}
+}
