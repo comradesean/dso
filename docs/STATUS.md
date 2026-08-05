@@ -1,11 +1,14 @@
-# Status — 2026-08-05
+# Status — 2026-08-05 (updated)
 
 Where the project actually is, what is proven versus assumed, and what to pick up next.
 Complements `RECOVERED_PLAN.md`, which is the original plan and is now partly overtaken.
 
 ## Headline
 
-**A real Dark Souls 2 PS3 client (BLUS41045) reaches in-game play against this server.**
+**Two real Dark Souls 2 PS3 clients on separate machines play together against this server.**
+
+They see each other's blood messages, rate them and receive live notifications, and
+summon signs broker successfully host-to-summoner.
 
 Login, the four-stage auth handshake, and the reliable-UDP game session all work end to end
 against retail hardware under RPCS3. That clears **M1** and its stretch goal **CP4** as defined
@@ -17,24 +20,26 @@ stretch.
 
 | Area | State | Evidence |
 |---|---|---|
-| Login service (TCP) | Working | Byte-verified against the console |
-| Auth handshake, 4 stages (TCP) | Working | Byte-verified; full handshake |
+| Login service (TCP) | Working | Byte-verified; address fix needed for a second machine |
+| Auth handshake, 4 stages (TCP) | Working | Byte-verified |
 | AES-CWC cipher | Working | Tag matches the console byte-for-byte |
 | `Frpg2GameServerInfo` (56-byte PS3 struct) | Working | Client opens its UDP session |
-| Reliable-UDP session | Working | Reaches Established with a real client |
-| Boot: login → announcements → character slot | Working | Client reaches in-game |
-| Blood messages (6 opcodes) | Implemented | Unit-tested; **not yet driven by the console** |
-| Ghosts (create, list) | Implemented | **Not yet confirmed in-game** |
-| Player status / character uploads | Recorded | Accepted by the client; nothing consumes them |
-
-Six opcodes have been driven by a real console: `0x0386`, `0x03A8`, `0x03B2`, `0x03B6`,
-`0x03B8`, `0x03EC`.
+| Reliable-UDP session | Working | Established with real clients |
+| Boot: login → announcements → character slot | Working | Clients reach in-game |
+| **Server→client pushes** | **Working** | Rating notification delivered live to the author |
+| Blood messages (6 opcodes) | Working | Placed, listed, rated cross-client, persisted |
+| Bloodstains (3 opcodes) | Working | In-game, memory-only |
+| Ghosts (create, list) | Working | In-game, memory-only |
+| Summon signs (6 opcodes) | Working | Brokering confirmed host↔summoner |
+| Persistence (SQLite) | Working | Blood messages survive restart |
+| Player status / character uploads | Recorded | Accepted; nothing consumes them yet |
 
 ## Not built
 
-Signs/summoning, invasions, visitors, quick match, ranking, telemetry, Mirror Knight, and all
-server→client **pushes**. Nothing is persisted — player ids, character ids, messages and ghosts
-are per-run and in memory.
+Invasions (BreakIn), visitors, quick match, ranking, telemetry, Mirror Knight.
+
+Player ids and character ids are still per-run and in memory, which is the same id-reuse hazard
+described below waiting to happen once anything caches them.
 
 ## Things that cost real time, recorded so they are not re-learned
 
@@ -74,10 +79,10 @@ port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
 
 ## Open questions
 
-- **Push transport is unresolved on PS3.** The PC model is opcode `0x0320` with
-  `msg_index 0xFFFFFFFF`, disambiguated by the first protobuf field. Decompilation could not
-  establish whether the PS3 dispatcher keys on the transport header or a parsed field. Nothing
-  should be built on the PC model until one push has been driven end to end.
+- **~~Push transport~~ RESOLVED.** The PC model — opcode `0x0320`, `msg_index 0xFFFFFFFF`,
+  identity in the first protobuf field — is **correct on PS3**, proven by a rating notification
+  arriving live and by summon brokering working. Decompilation could not settle this; only a
+  live test could.
 - **Push alias blocks are unmapped.** BreakIn registers 16 handlers for 4 message types,
   Visitor 9 for 3, QuickMatch 8 for 4. Which alias means which is unknown; static analysis
   cannot separate them. One live invasion capture would resolve all sixteen.
@@ -85,15 +90,29 @@ port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
 - **The UDP `msg_index` byte order** looks big-endian where TCP is little-endian. It round-trips
   correctly because the server echoes the same bytes, so it is cosmetic — until something
   depends on ordering.
-- **The login reply may have the same ASCII-vs-binary address bug** the 56-byte struct had: a
-  client was observed dialling the auth server at `0.0.0.0:50000`, correct port and zero
-  address, rescued only by RPCS3 redirecting it. **This would fail outright on real hardware**
-  and should be fixed before touching a real PS3.
+- **~~Login reply address bug~~ FIXED.** It was the same class as the 56-byte struct: the PS3
+  client parses `RequestQueryLoginServerInfoResponse` as all-varint fields with no string, so
+  our protobuf string was skipped and the address stayed zero. A second machine could not
+  connect at all; the first only worked because RPCS3 rescues `0.0.0.0` to `127.0.0.1`.
+
+## The id-reuse trap, which has bitten once
+
+Clients cache state keyed by **server-assigned ids, across sessions**. Reusing an id makes a
+client apply stale state to new content.
+
+This surfaced when blood messages moved to SQLite and numbering restarted at 1: a fresh message
+was handed an id a client had already rated, so the client greyed out its rate option for a
+message it had never seen — and never sent the evaluate at all. It looked exactly like a server
+bug.
+
+Message and sign ids now start at 100000 and never repeat. **Player and character ids do not yet
+have this protection.**
 
 ## Suggested next steps
 
-1. Confirm blood messages and ghosts actually work in-game — both are implemented but only
-   unit-tested.
-2. Fix the login-reply address bug above; it is the one known blocker for real hardware.
-3. Drive an invasion to resolve the BreakIn push aliases, which unblocks all matchmaking work.
-4. Persistence, so messages and characters survive a restart.
+1. Invasions (BreakIn). The blocker is that the client registers **sixteen** push aliases at
+   `0x03B9`–`0x03C8` for four message types, and static analysis cannot say which is which. One
+   live invasion capture resolves all sixteen at once.
+2. Visitors and quick match, which follow the same brokering shape as signs.
+3. Persist players and characters, both for continuity and to close the id-reuse hazard.
+4. Consume the player status blob, which is what every matchmaking filter needs.
