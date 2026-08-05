@@ -57,6 +57,20 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// firstMessageID is where blood-message ids start.
+//
+// Ids must NEVER be reused, and not merely within one database: clients cache
+// evaluation state by message id across sessions, so handing a fresh message an
+// id a client has already rated makes it grey out the rate option for a message
+// it has never seen. That is exactly what happened when this store replaced an
+// in-memory one and numbering restarted at 1.
+//
+// AUTOINCREMENT (as opposed to a plain INTEGER PRIMARY KEY) guarantees ids are
+// never reused within this database even after deletes. Starting well above the
+// small ids any earlier in-memory run handed out keeps us clear of what existing
+// clients already remember.
+const firstMessageID = 100000
+
 // migrate creates the schema. Safe to run on every start.
 func (s *Store) migrate(ctx context.Context) error {
 	const schema = `
@@ -78,6 +92,21 @@ CREATE INDEX IF NOT EXISTS idx_blood_messages_area_cell
 `
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
+	}
+
+	// Push the id sequence past the low range, once, without disturbing a
+	// database that has already issued higher ids. sqlite_sequence holds the
+	// highest id ever used for an AUTOINCREMENT table.
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO sqlite_sequence(name, seq) SELECT 'blood_messages', ?
+		   WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'blood_messages')`,
+		firstMessageID-1); err != nil {
+		return fmt.Errorf("store: seed message id sequence: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sqlite_sequence SET seq = ? WHERE name = 'blood_messages' AND seq < ?`,
+		firstMessageID-1, firstMessageID-1); err != nil {
+		return fmt.Errorf("store: raise message id sequence: %w", err)
 	}
 	return nil
 }

@@ -200,3 +200,64 @@ func TestPersistsAcrossReopen(t *testing.T) {
 		t.Fatalf("listing after reopen returned %d messages, want 1", len(found))
 	}
 }
+
+// TestMessageIDsStartHighAndNeverReuse guards an invariant that is invisible
+// server-side but very visible in-game: clients cache evaluation state by message
+// id ACROSS SESSIONS. If a fresh message is handed an id a client has already
+// rated, that client greys out the rate option for a message it has never seen.
+//
+// This regressed once already, when this store replaced an in-memory one and
+// numbering restarted at 1.
+func TestMessageIDsStartHighAndNeverReuse(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "ids.db")
+
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := s.AddBloodMessage(ctx, &BloodMessage{
+		PlayerID: 1, AreaID: 1, CellID: 1, Data: []byte{1}, AccountID: "a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first < firstMessageID {
+		t.Errorf("first id is %d; want >= %d so it cannot collide with ids a client already cached",
+			first, firstMessageID)
+	}
+
+	// Deleting must not free the id for reuse.
+	if err := s.RemoveBloodMessage(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.AddBloodMessage(ctx, &BloodMessage{
+		PlayerID: 1, AreaID: 1, CellID: 1, Data: []byte{2}, AccountID: "a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == first {
+		t.Errorf("id %d reused after delete; clients would treat a new message as one they already rated", second)
+	}
+
+	// Nor may a restart rewind the sequence.
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	third, err := s2.AddBloodMessage(ctx, &BloodMessage{
+		PlayerID: 1, AreaID: 1, CellID: 1, Data: []byte{3}, AccountID: "a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third <= second {
+		t.Errorf("id went backwards across a restart: %d after %d", third, second)
+	}
+}
