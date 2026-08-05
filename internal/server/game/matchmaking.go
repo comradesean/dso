@@ -174,6 +174,11 @@ func (p matchProfile) effectiveCovenant() uint32 {
 }
 
 // DS2 covenant ids as they appear in PlayerStatus.covenant.
+//
+// Rat King (5) and Bell Keepers (6) are CONFIRMED on the wire — both were read
+// off live status blobs on 2026-08-05 for players known to be in those covenants.
+// The rest of the list is unverified and would only show up as a covenant-gated
+// pool never activating.
 const (
 	covenantNone               uint32 = 0
 	covenantHeirsOfTheSun      uint32 = 1
@@ -200,21 +205,20 @@ var (
 		101950: true, // Belfry Sol
 	}
 	ratCells = map[uint32]bool{
-		// CONFIRMED LIVE: this is the cell every rat poll carried during the
-		// successful summon on 2026-08-05, and it is also the only rat constant
-		// the reference server carries.
+		// Both CONFIRMED LIVE on 2026-08-05, each read straight off the wire.
+		103410: true, // Grave of Saints    (m10_34) -- summons confirmed working
+		103320: true, // Doors of Pharros   (m10_33) -- captured on entry
+
+		// Having both settles a labelling conflict rather than just adding a
+		// constant. The reference server carries only 103410 and calls it Doors
+		// of Pharros; our capture puts Pharros at 103320 and pairs 103410 with
+		// area id 10340000 = m10_34 = Grave of Saints. The reference's label is
+		// wrong. Its VALUE was right, which is why nothing broke.
 		//
-		// The LABEL is uncertain even though the value is not. The reference
-		// calls it Doors of Pharros, but the area id alongside it on our wire
-		// was 10340000 = m10_34, which maps to Grave of Saints. The two rat
-		// zones are m10_33 and m10_34 and the naming disagrees; the value is
-		// what matters and it is corroborated twice.
-		103410: true,
-		// The OTHER rat zone's cell is unknown. An earlier version guessed
-		// 103130 here, which is wrong -- the 1031 prefix is m10_31, Heide's
-		// Tower of Flame, nowhere near a rat. Guessing a second one would only
-		// risk making an unrelated area rat-summonable, so it is left out until
-		// a capture supplies it.
+		// An earlier version of this map also guessed 103130 for the second
+		// zone. That was wrong -- the 1031 prefix is m10_31, Heide's Tower of
+		// Flame -- and it is a good illustration of why these are only added
+		// from captures now.
 	}
 )
 
