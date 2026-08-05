@@ -43,8 +43,9 @@ const (
 type Service struct {
 	srv *core.Server
 
-	mu       sync.Mutex
-	sessions map[string]*clientSession // keyed by remote address
+	mu        sync.Mutex
+	sessions  map[string]*clientSession // keyed by remote address
+	playerSeq uint32                    // hands out player ids
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -55,6 +56,12 @@ type clientSession struct {
 	conn      *rudp.MessageConn
 	lastSeen  time.Time
 	lastState rudp.State
+
+	// Identity, populated by RequestWaitForUserLogin.
+	accountID string
+	playerID  uint32
+	// characterID is the slot assigned by RequestUpdateLoginPlayerCharacter.
+	characterID uint32
 }
 
 // New creates a game service bound to the given server.
@@ -197,13 +204,29 @@ func (s *Service) drain(log logger, cs *clientSession) {
 		if !ok {
 			return
 		}
-		// No handlers yet: log the message so the DS2 boot/player-data set can
-		// be built from real captures rather than guessed at.
-		log.Info("game message", "type", msg.Type, "index", msg.Index,
-			"payload_bytes", len(msg.Payload))
+		log.Info("game message", "type", fmt.Sprintf("%#04x", msg.Type),
+			"index", msg.Index, "payload_bytes", len(msg.Payload))
 		if s.srv.Config.DebugRaw && len(msg.Payload) > 0 {
 			log.Info("hexdump\n" + hex.Dump(msg.Payload))
 		}
+
+		reply, err := s.handleMessage(log, cs, msg.Type, msg.Payload)
+		if err != nil {
+			log.Warn("game: message handler failed",
+				"type", fmt.Sprintf("%#04x", msg.Type), "err", err)
+			continue
+		}
+		if reply == nil {
+			// No handler yet. Staying silent is deliberate: the client tolerates
+			// an unanswered message better than a malformed reply, and the
+			// hexdump above is what the remaining handlers get built from.
+			log.Info("game: no handler, not replying",
+				"type", fmt.Sprintf("%#04x", msg.Type))
+			continue
+		}
+		cs.conn.SendReply(msg, reply)
+		log.Info("game reply sent", "type", fmt.Sprintf("%#04x", msg.Type),
+			"payload_bytes", len(reply))
 	}
 }
 
