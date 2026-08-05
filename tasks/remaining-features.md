@@ -8,7 +8,7 @@ Derived from `docs/protocol-map-ps3.md` (decompilation-derived, authoritative fo
 cross-referenced against `ref/ds3os`, and against what `internal/server/game/boot.go` actually
 dispatches.
 
-**53 of 95 live opcodes are implemented.** Everything below is present in the retail client and
+**57 of 95 live opcodes are implemented.** Everything below is present in the retail client and
 currently unanswered. An unanswered request/response opcode is not harmless: the client retries
 silently and **will not open other online UI while one is outstanding**, which is how several
 "broken menu" symptoms were eventually explained.
@@ -128,7 +128,7 @@ would be rejected outright.
 
 Not yet confirmed in-game: needs two clients at Belfry Sol.
 
-## 7. Power stone ranking
+## 7. ~~Power stone ranking~~ — DONE (2026-08-05)
 
 | Opcode | Message |
 |---|---|
@@ -137,7 +137,20 @@ Not yet confirmed in-game: needs two clients at Belfry Sol.
 | `0x03F5` | `RequestGetPowerStoneMyRanking` |
 | `0x03F8` | `RequestGetPowerStoneRankingRecordCount` |
 
-ds3os `DS2_RankingManager`, 8 handlers. Needs a persisted ranking table; otherwise self-contained.
+Implemented in `internal/server/game/ranking.go`, persisted in `power_stone_rankings`.
+
+Ranks are **derived on read** rather than stored, so they cannot go stale against the scores they
+describe — the reference keeps them as columns and has to maintain them. `serial_rank` is a
+unique 1-based position; `rank` is a competition rank where ties share a value.
+
+The client's `offset` is **1-based**, matching the reference. The submission carries an
+*increment*, not a total, and is bounded — the board is persistent, so an unvalidated increment
+would let one modified client pin the top of it permanently.
+
+**Keyed by `character_id`, which the protocol dictates** (`RequestGetPowerStoneMyRanking` looks up
+by character alone). Since character ids are still per-run and in memory, a reused id would
+inherit a previous character's score. That is the id-reuse hazard again, and persisting
+characters is the fix.
 
 ## 8. Pushes we never send
 

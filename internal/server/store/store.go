@@ -97,6 +97,22 @@ CREATE TABLE IF NOT EXISTS counters (
     name  TEXT    PRIMARY KEY,
     value INTEGER NOT NULL DEFAULT 0
 );
+
+-- Power-stone leaderboard. One row per character; the client submits score
+-- increments and an opaque blob it renders itself.
+--
+-- Ranks are NOT stored. They are derived on read, so they cannot go stale
+-- against the scores they describe — the reference keeps them as columns and has
+-- to maintain them.
+CREATE TABLE IF NOT EXISTS power_stone_rankings (
+    character_id INTEGER PRIMARY KEY,
+    player_id    INTEGER NOT NULL,
+    score        INTEGER NOT NULL DEFAULT 0,
+    data         BLOB    NOT NULL,
+    updated_at   INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_power_stone_score
+    ON power_stone_rankings(score DESC);
 `
 	if _, err := s.db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
@@ -260,4 +276,108 @@ func (s *Store) Counter(ctx context.Context, name string) (int64, error) {
 		return 0, fmt.Errorf("store: read counter %q: %w", name, err)
 	}
 	return value, nil
+}
+
+// PowerStoneRanking is one leaderboard row, with its ranks derived at read time.
+type PowerStoneRanking struct {
+	CharacterID uint32
+	PlayerID    uint32
+	Score       int64
+	Data        []byte
+	// SerialRank is the unique 1-based position in the board.
+	SerialRank uint32
+	// Rank is the competition rank: tied scores share it, so two players on the
+	// same score are both "2nd" and the next is 4th.
+	Rank uint32
+}
+
+// rankingSelect derives both rank flavours in one pass. Ordering by score then
+// character id keeps SerialRank stable and deterministic across equal scores;
+// Rank deliberately orders by score alone so ties genuinely tie.
+const rankingSelect = `
+SELECT character_id, player_id, score, data,
+       ROW_NUMBER() OVER (ORDER BY score DESC, character_id ASC) AS serial_rank,
+       RANK()       OVER (ORDER BY score DESC)                   AS rank
+  FROM power_stone_rankings`
+
+// AddPowerStoneScore applies a score increment for a character and returns the
+// new total. The blob is replaced wholesale — it is the client's own rendering of
+// the entry and only the latest matters.
+func (s *Store) AddPowerStoneScore(ctx context.Context, characterID, playerID uint32, increment int64, data []byte) (int64, error) {
+	var score int64
+	err := s.db.QueryRowContext(ctx,
+		`INSERT INTO power_stone_rankings(character_id, player_id, score, data)
+		   VALUES(?, ?, ?, ?)
+		 ON CONFLICT(character_id) DO UPDATE SET
+		   score      = score + excluded.score,
+		   player_id  = excluded.player_id,
+		   data       = excluded.data,
+		   updated_at = unixepoch()
+		 RETURNING score`,
+		characterID, playerID, increment, data).Scan(&score)
+	if err != nil {
+		return 0, fmt.Errorf("store: add power stone score for character %d: %w", characterID, err)
+	}
+	return score, nil
+}
+
+// PowerStoneRankings returns a page of the board. offset is 1-based, matching
+// what the client sends.
+func (s *Store) PowerStoneRankings(ctx context.Context, offset, count uint32) ([]*PowerStoneRanking, error) {
+	if offset > 0 {
+		offset--
+	}
+	rows, err := s.db.QueryContext(ctx,
+		rankingSelect+` ORDER BY serial_rank ASC LIMIT ? OFFSET ?`, count, offset)
+	if err != nil {
+		return nil, fmt.Errorf("store: list power stone rankings: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*PowerStoneRanking
+	for rows.Next() {
+		r, err := scanRanking(rows)
+		if err != nil {
+			return nil, fmt.Errorf("store: scan power stone ranking: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// PowerStoneRankingFor returns one character's entry, or false if it has none.
+func (s *Store) PowerStoneRankingFor(ctx context.Context, characterID uint32) (*PowerStoneRanking, bool, error) {
+	// The ranks come from the window over the whole board, so the filter has to
+	// be applied outside it — filtering first would rank the character against
+	// itself and always return 1.
+	row := s.db.QueryRowContext(ctx,
+		`SELECT character_id, player_id, score, data, serial_rank, rank
+		   FROM (`+rankingSelect+`) WHERE character_id = ?`, characterID)
+	r, err := scanRanking(row)
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("store: get power stone ranking %d: %w", characterID, err)
+	}
+	return r, true, nil
+}
+
+// PowerStoneRankingCount is the number of entries on the board.
+func (s *Store) PowerStoneRankingCount(ctx context.Context) (uint32, error) {
+	var n uint32
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM power_stone_rankings`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("store: count power stone rankings: %w", err)
+	}
+	return n, nil
+}
+
+func scanRanking(sc scanner) (*PowerStoneRanking, error) {
+	var r PowerStoneRanking
+	if err := sc.Scan(&r.CharacterID, &r.PlayerID, &r.Score, &r.Data,
+		&r.SerialRank, &r.Rank); err != nil {
+		return nil, err
+	}
+	return &r, nil
 }

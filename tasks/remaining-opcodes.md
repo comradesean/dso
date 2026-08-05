@@ -4,7 +4,7 @@ Computed from `docs/protocol-map-ps3.md` (decompilation-derived, authoritative f
 against what `internal/server/game/` actually dispatches or sends. Not from the PC map, and not
 from `ref/ds3os` — both describe messages this client does not contain.
 
-**53 opcodes are dispatched or emitted.** What follows is everything else, by category.
+**57 opcodes are dispatched or emitted.** What follows is everything else, by category.
 
 A note on counting: three subsystems register many more push opcodes than they have message
 types (BreakIn 16 for 4, Visitor 9 for 3, QuickMatch 8 for 4). Those extra values are *aliases of
@@ -13,7 +13,7 @@ from real gaps.
 
 ---
 
-## A. Real features not built — 12 opcodes
+## A. Real features not built — 8 opcodes
 
 ### A1. Quick match — 6 request/response + 8 push aliases
 
@@ -33,19 +33,10 @@ introduces two players and steps out.
 
 Reference: ds3os `DS2_QuickMatchManager`, 12 handlers / 382 lines.
 
-### A2. Power-stone ranking — 4 request/response
+### ~~A2. Power-stone ranking~~ — DONE (2026-08-05)
 
-Leaderboards. Entirely self-contained; the only new requirement is a persisted ranking table,
-which the existing SQLite store makes cheap.
-
-| Opcode | Message | Summary |
-|---|---|---|
-| `0x03F3` | `RequestRegisterPowerStoneData` | Submit a score |
-| `0x03F4` | `RequestGetPowerStoneRanking` | Read the leaderboard |
-| `0x03F5` | `RequestGetPowerStoneMyRanking` | Read the caller's own placement |
-| `0x03F8` | `RequestGetPowerStoneRankingRecordCount` | Total entries, for paging |
-
-Reference: ds3os `DS2_RankingManager`, 8 handlers.
+All four implemented in `internal/server/game/ranking.go`, persisted in `power_stone_rankings`.
+Ranks derived on read; `offset` is 1-based; submissions are increments and are bounded.
 
 ### A3. Player-character reads — 2 request/response
 
@@ -135,10 +126,9 @@ also asserts every dispatched opcode appears as present in the PS3 map.
 
 ## Suggested order
 
-1. **Power-stone ranking** — self-contained, no new concepts, just a table.
-2. **Persistence for players/characters**, then the two character reads. This unblocks
+1. **Persistence for players/characters**, then the two character reads. This unblocks
    matchmaking filters too, since nothing currently consumes the status blob.
-3. **Quick match** — needs the match-session concept, which would also let
+2. **Quick match** — needs the match-session concept, which would also let
    `PushRequestRemoveVisitor` be sent properly.
-4. **Verify the unverified push ids** with live tests: a declined invasion, and a visit. Both are
+3. **Verify the unverified push ids** with live tests: a declined invasion, and a visit. Both are
    minutes of testing and would retire real ambiguity.

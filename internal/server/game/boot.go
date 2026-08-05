@@ -141,6 +141,15 @@ func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payloa
 	case opRequestNotifyKillPlayer:
 		return s.handleNotifyKillPlayer(log, cs, payload)
 
+	case opRequestRegisterPowerStoneData:
+		return s.handleRegisterPowerStoneData(log, cs, payload)
+	case opRequestGetPowerStoneRanking:
+		return s.handleGetPowerStoneRanking(log, cs, payload)
+	case opRequestGetPowerStoneMyRanking:
+		return s.handleGetPowerStoneMyRanking(log, cs, payload)
+	case opRequestGetPowerStoneRankingRecordCoun:
+		return s.handleGetPowerStoneRankingRecordCount(log, cs, payload)
+
 	case opRequestSendMessageToPlayers:
 		return s.handleSendMessageToPlayers(log, cs, payload)
 
