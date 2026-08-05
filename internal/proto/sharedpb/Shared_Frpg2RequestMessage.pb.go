@@ -33,9 +33,18 @@ const (
 
 // First message sent to the login server, used to request
 // the port and server_ip to authenticate over.
+// LOCAL DIVERGENCE FROM THE REFERENCE SCHEMA
+// The fields FromSoftware named `steam_id` / `player_steam_id` are renamed here
+// to `psn_id` / `player_psn_id`. This project targets Dark Souls 2 on PS3, where
+// that field carries the PSN online ID; the Steam naming is an artifact of the
+// reference having been reversed from the PC build.
+//
+// This is a NAME change only. Field numbers and wire types are untouched, so the
+// wire format is identical and captures remain comparable with the reference.
+// Everything else in this file is kept pristine for diffing against ref/ds3so.
 type RequestQueryLoginServerInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SteamId       *string                `protobuf:"bytes,1,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,1,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	F2            *string                `protobuf:"bytes,2,opt,name=f2" json:"f2,omitempty"`
 	AppVersion    *uint64                `protobuf:"varint,3,req,name=app_version,json=appVersion" json:"app_version,omitempty"` // app version without the period and -1. eg. app ver 1.13 = 112
 	unknownFields protoimpl.UnknownFields
@@ -72,9 +81,9 @@ func (*RequestQueryLoginServerInfo) Descriptor() ([]byte, []int) {
 	return file_Shared_Frpg2RequestMessage_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RequestQueryLoginServerInfo) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *RequestQueryLoginServerInfo) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -272,7 +281,7 @@ func (*RequestHandshakeResponse) Descriptor() ([]byte, []int) {
 type GetServiceStatus struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *int64                 `protobuf:"varint,1,req,name=id" json:"id,omitempty"`
-	SteamId       *string                `protobuf:"bytes,2,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,2,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	Unknown_1     *string                `protobuf:"bytes,3,opt,name=unknown_1,json=unknown1" json:"unknown_1,omitempty"`
 	AppVersion    *int64                 `protobuf:"varint,4,req,name=app_version,json=appVersion" json:"app_version,omitempty"` // 1.15 = 114 (zero indexed)
 	unknownFields protoimpl.UnknownFields
@@ -316,9 +325,9 @@ func (x *GetServiceStatus) GetId() int64 {
 	return 0
 }
 
-func (x *GetServiceStatus) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *GetServiceStatus) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -381,7 +390,7 @@ func (*GetServiceStatusForXboxOne) Descriptor() ([]byte, []int) {
 type GetServiceStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            *int64                 `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	SteamId       *string                `protobuf:"bytes,2,opt,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,2,opt,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	Unknown_1     *int64                 `protobuf:"varint,3,opt,name=unknown_1,json=unknown1" json:"unknown_1,omitempty"`
 	AppVersion    *int64                 `protobuf:"varint,4,opt,name=app_version,json=appVersion" json:"app_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -425,9 +434,9 @@ func (x *GetServiceStatusResponse) GetId() int64 {
 	return 0
 }
 
-func (x *GetServiceStatusResponse) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *GetServiceStatusResponse) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -450,9 +459,9 @@ var File_Shared_Frpg2RequestMessage_proto protoreflect.FileDescriptor
 
 const file_Shared_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\n" +
-	" Shared_Frpg2RequestMessage.proto\x12\x1aShared_Frpg2RequestMessage\"i\n" +
-	"\x1bRequestQueryLoginServerInfo\x12\x19\n" +
-	"\bsteam_id\x18\x01 \x02(\tR\asteamId\x12\x0e\n" +
+	" Shared_Frpg2RequestMessage.proto\x12\x1aShared_Frpg2RequestMessage\"e\n" +
+	"\x1bRequestQueryLoginServerInfo\x12\x15\n" +
+	"\x06psn_id\x18\x01 \x02(\tR\x05psnId\x12\x0e\n" +
 	"\x02f2\x18\x02 \x01(\tR\x02f2\x12\x1f\n" +
 	"\vapp_version\x18\x03 \x02(\x04R\n" +
 	"appVersion\"V\n" +
@@ -462,17 +471,17 @@ const file_Shared_Frpg2RequestMessage_proto_rawDesc = "" +
 	"%RequestQueryLoginServerInfoForXboxOne\"2\n" +
 	"\x10RequestHandshake\x12\x1e\n" +
 	"\vaes_cwc_key\x18\x01 \x02(\fR\taesCwcKey\"\x1a\n" +
-	"\x18RequestHandshakeResponse\"{\n" +
+	"\x18RequestHandshakeResponse\"w\n" +
 	"\x10GetServiceStatus\x12\x0e\n" +
-	"\x02id\x18\x01 \x02(\x03R\x02id\x12\x19\n" +
-	"\bsteam_id\x18\x02 \x02(\tR\asteamId\x12\x1b\n" +
+	"\x02id\x18\x01 \x02(\x03R\x02id\x12\x15\n" +
+	"\x06psn_id\x18\x02 \x02(\tR\x05psnId\x12\x1b\n" +
 	"\tunknown_1\x18\x03 \x01(\tR\bunknown1\x12\x1f\n" +
 	"\vapp_version\x18\x04 \x02(\x03R\n" +
 	"appVersion\"\x1c\n" +
-	"\x1aGetServiceStatusForXboxOne\"\x83\x01\n" +
+	"\x1aGetServiceStatusForXboxOne\"\x7f\n" +
 	"\x18GetServiceStatusResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x19\n" +
-	"\bsteam_id\x18\x02 \x01(\tR\asteamId\x12\x1b\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x15\n" +
+	"\x06psn_id\x18\x02 \x01(\tR\x05psnId\x12\x1b\n" +
 	"\tunknown_1\x18\x03 \x01(\x03R\bunknown1\x12\x1f\n" +
 	"\vapp_version\x18\x04 \x01(\x03R\n" +
 	"appVersionB\xf8\x01\n" +

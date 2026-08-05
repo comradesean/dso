@@ -38,6 +38,15 @@ const (
 //
 // The message-id thats received on the reliable udp message layer is always 0x0320, and the first
 // field is read to disambiguate the actual message.
+// LOCAL DIVERGENCE FROM THE REFERENCE SCHEMA
+// The fields FromSoftware named `steam_id` / `player_steam_id` are renamed here
+// to `psn_id` / `player_psn_id`. This project targets Dark Souls 2 on PS3, where
+// that field carries the PSN online ID; the Steam naming is an artifact of the
+// reference having been reversed from the PC build.
+//
+// This is a NAME change only. Field numbers and wire types are untouched, so the
+// wire format is identical and captures remain comparable with the reference.
+// Everything else in this file is kept pristine for diffing against ref/ds3so.
 type PushMessageId int32
 
 const (
@@ -502,7 +511,7 @@ func (*EmptyResponse) Descriptor() ([]byte, []int) {
 
 type RequestWaitForUserLogin struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SteamId       *string                `protobuf:"bytes,1,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,1,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	Unknown_1     *uint32                `protobuf:"varint,2,req,name=unknown_1,json=unknown1" json:"unknown_1,omitempty"` //1 // one of these is going to be the profile index
 	Unknown_2     *uint32                `protobuf:"varint,3,req,name=unknown_2,json=unknown2" json:"unknown_2,omitempty"` //0
 	Unknown_3     *uint32                `protobuf:"varint,4,req,name=unknown_3,json=unknown3" json:"unknown_3,omitempty"` //1
@@ -543,9 +552,9 @@ func (*RequestWaitForUserLogin) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *RequestWaitForUserLogin) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *RequestWaitForUserLogin) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -594,7 +603,7 @@ func (x *RequestWaitForUserLogin) GetUnknown_6() uint32 {
 
 type RequestWaitForUserLoginResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SteamId       *string                `protobuf:"bytes,1,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,1,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	PlayerId      *uint32                `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -630,9 +639,9 @@ func (*RequestWaitForUserLoginResponse) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *RequestWaitForUserLoginResponse) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *RequestWaitForUserLoginResponse) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -1563,7 +1572,7 @@ type BloodMessageData struct {
 	MessageId     *uint32                `protobuf:"varint,3,req,name=message_id,json=messageId" json:"message_id,omitempty"`
 	Good          *uint32                `protobuf:"varint,4,req,name=good" json:"good,omitempty"`
 	MessageData   []byte                 `protobuf:"bytes,5,req,name=message_data,json=messageData" json:"message_data,omitempty"`
-	PlayerSteamId *string                `protobuf:"bytes,6,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,6,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	CellId        *uint32                `protobuf:"varint,7,req,name=cell_id,json=cellId" json:"cell_id,omitempty"`
 	Unknown_8     *string                `protobuf:"bytes,8,opt,name=unknown_8,json=unknown8" json:"unknown_8,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1635,9 +1644,9 @@ func (x *BloodMessageData) GetMessageData() []byte {
 	return nil
 }
 
-func (x *BloodMessageData) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *BloodMessageData) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -2345,7 +2354,7 @@ type PushRequestEvaluateBloodMessage struct {
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *uint32                `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"` // Might be cell id
 	MessageId     *uint32                `protobuf:"varint,3,req,name=message_id,json=messageId" json:"message_id,omitempty"`
-	PlayerSteamId *string                `protobuf:"bytes,4,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,4,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2401,9 +2410,9 @@ func (x *PushRequestEvaluateBloodMessage) GetMessageId() uint32 {
 	return 0
 }
 
-func (x *PushRequestEvaluateBloodMessage) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestEvaluateBloodMessage) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -4170,7 +4179,7 @@ type PushRequestSummonSign struct {
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`            // 290333, 1705594, 2514885
 	SignId        *int64                 `protobuf:"varint,3,req,name=sign_id,json=signId" json:"sign_id,omitempty"`                  // 178362284, 178361321, 178358629, 178358887
 	PlayerStruct  []byte                 `protobuf:"bytes,4,req,name=player_struct,json=playerStruct" json:"player_struct,omitempty"` //
-	PlayerSteamId *string                `protobuf:"bytes,5,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,5,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4233,9 +4242,9 @@ func (x *PushRequestSummonSign) GetPlayerStruct() []byte {
 	return nil
 }
 
-func (x *PushRequestSummonSign) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestSummonSign) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -4350,7 +4359,7 @@ type PushRequestRejectSign struct {
 	// Based on ghidra, investigate further.
 	SignInfo      *SignInfo      `protobuf:"bytes,2,req,name=sign_info,json=signInfo" json:"sign_info,omitempty"`
 	Error         *SummonErrorId `protobuf:"varint,3,req,name=error,enum=DS2_Frpg2RequestMessage.SummonErrorId" json:"error,omitempty"`
-	PlayerSteamId *string        `protobuf:"bytes,4,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string        `protobuf:"bytes,4,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4406,9 +4415,9 @@ func (x *PushRequestRejectSign) GetError() SummonErrorId {
 	return SummonErrorId_SummonErrorId_NoLongerBeSummonable
 }
 
-func (x *PushRequestRejectSign) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestRejectSign) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -4418,7 +4427,7 @@ type PushRequestRemoveSign struct {
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
 	SignId        *int64                 `protobuf:"varint,3,req,name=sign_id,json=signId" json:"sign_id,omitempty"`
-	PlayerSteamId *string                `protobuf:"bytes,4,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,4,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4474,9 +4483,9 @@ func (x *PushRequestRemoveSign) GetSignId() int64 {
 	return 0
 }
 
-func (x *PushRequestRemoveSign) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestRemoveSign) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -5167,7 +5176,7 @@ type SignData struct {
 	OnlineAreaId      *int64                 `protobuf:"varint,2,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"` // 10310000, 10100000, 10180000, 10190000, 10160000
 	MatchingParameter *MatchingParameter     `protobuf:"bytes,3,req,name=matching_parameter,json=matchingParameter" json:"matching_parameter,omitempty"`
 	PlayerStruct      []byte                 `protobuf:"bytes,4,req,name=player_struct,json=playerStruct" json:"player_struct,omitempty"`
-	PlayerSteamId     *string                `protobuf:"bytes,5,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId       *string                `protobuf:"bytes,5,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	CellId            *int64                 `protobuf:"varint,6,req,name=cell_id,json=cellId" json:"cell_id,omitempty"`                                             // 8387584, 16777216, 4290772987, 4286579709, 4290772992, 4290774013, 4290774014, 4286577658
 	SignType          *SignType              `protobuf:"varint,7,req,name=sign_type,json=signType,enum=DS2_Frpg2RequestMessage.SignType" json:"sign_type,omitempty"` // 3, 1, 0, 6
 	unknownFields     protoimpl.UnknownFields
@@ -5232,9 +5241,9 @@ func (x *SignData) GetPlayerStruct() []byte {
 	return nil
 }
 
-func (x *SignData) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *SignData) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -5347,7 +5356,7 @@ type PushRequestRejectMirrorKnightSign struct {
 	// Based on ghidra, investigate further.
 	SignInfo      *SignInfo      `protobuf:"bytes,2,req,name=sign_info,json=signInfo" json:"sign_info,omitempty"`
 	Error         *SummonErrorId `protobuf:"varint,3,req,name=error,enum=DS2_Frpg2RequestMessage.SummonErrorId" json:"error,omitempty"`
-	PlayerSteamId *string        `protobuf:"bytes,4,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string        `protobuf:"bytes,4,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5403,9 +5412,9 @@ func (x *PushRequestRejectMirrorKnightSign) GetError() SummonErrorId {
 	return SummonErrorId_SummonErrorId_NoLongerBeSummonable
 }
 
-func (x *PushRequestRejectMirrorKnightSign) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestRejectMirrorKnightSign) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -5415,7 +5424,7 @@ type PushRequestRemoveMirrorKnightSign struct {
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
 	SignId        *int64                 `protobuf:"varint,3,req,name=sign_id,json=signId" json:"sign_id,omitempty"`
-	PlayerSteamId *string                `protobuf:"bytes,4,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,4,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5471,9 +5480,9 @@ func (x *PushRequestRemoveMirrorKnightSign) GetSignId() int64 {
 	return 0
 }
 
-func (x *PushRequestRemoveMirrorKnightSign) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestRemoveMirrorKnightSign) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -5484,7 +5493,7 @@ type PushRequestSummonMirrorKnightSign struct {
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
 	SignId        *int64                 `protobuf:"varint,3,req,name=sign_id,json=signId" json:"sign_id,omitempty"`
 	PlayerStruct  []byte                 `protobuf:"bytes,4,req,name=player_struct,json=playerStruct" json:"player_struct,omitempty"`
-	PlayerSteamId *string                `protobuf:"bytes,5,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,5,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5547,9 +5556,9 @@ func (x *PushRequestSummonMirrorKnightSign) GetPlayerStruct() []byte {
 	return nil
 }
 
-func (x *PushRequestSummonMirrorKnightSign) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestSummonMirrorKnightSign) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -6110,7 +6119,7 @@ func (*RequestUpdateMirrorKnightSignResponse) Descriptor() ([]byte, []int) {
 type BreakInTargetData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PlayerId      *uint32                `protobuf:"varint,1,req,name=player_id,json=playerId" json:"player_id,omitempty"`
-	SteamId       *string                `protobuf:"bytes,2,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,2,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6152,9 +6161,9 @@ func (x *BreakInTargetData) GetPlayerId() uint32 {
 	return 0
 }
 
-func (x *BreakInTargetData) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *BreakInTargetData) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -6231,7 +6240,7 @@ type PushRequestBreakInTarget struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *uint32                `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
-	SteamId       *string                `protobuf:"bytes,3,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,3,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	Type          *BreakInType           `protobuf:"varint,4,req,name=type,enum=DS2_Frpg2RequestMessage.BreakInType" json:"type,omitempty"`
 	OnlineAreaId  *uint32                `protobuf:"varint,5,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"` // 10190000
 	CellId        *uint32                `protobuf:"varint,6,req,name=cell_id,json=cellId" json:"cell_id,omitempty"`                     // 101910
@@ -6283,9 +6292,9 @@ func (x *PushRequestBreakInTarget) GetPlayerId() uint32 {
 	return 0
 }
 
-func (x *PushRequestBreakInTarget) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *PushRequestBreakInTarget) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -6316,7 +6325,7 @@ type PushRequestRejectBreakInTarget struct {
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
 	Unknown_3     *int64                 `protobuf:"varint,3,req,name=unknown_3,json=unknown3" json:"unknown_3,omitempty"`
-	SteamId       *string                `protobuf:"bytes,4,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string                `protobuf:"bytes,4,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	Unknown_5     *int64                 `protobuf:"varint,5,req,name=unknown_5,json=unknown5" json:"unknown_5,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -6373,9 +6382,9 @@ func (x *PushRequestRejectBreakInTarget) GetUnknown_3() int64 {
 	return 0
 }
 
-func (x *PushRequestRejectBreakInTarget) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *PushRequestRejectBreakInTarget) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -7046,7 +7055,7 @@ func (*RequestCreateGhostDataResponse) Descriptor() ([]byte, []int) {
 type VisitorData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PlayerId      *int64                 `protobuf:"varint,1,req,name=player_id,json=playerId" json:"player_id,omitempty"` // 290333
-	PlayerSteamId *string                `protobuf:"bytes,2,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,2,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7088,9 +7097,9 @@ func (x *VisitorData) GetPlayerId() int64 {
 	return 0
 }
 
-func (x *VisitorData) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *VisitorData) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -7243,7 +7252,7 @@ type PushRequestRemoveVisitor struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"` // 290333
-	PlayerSteamId *string                `protobuf:"bytes,3,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,3,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	Type          *VisitorType           `protobuf:"varint,4,req,name=type,enum=DS2_Frpg2RequestMessage.VisitorType" json:"type,omitempty"` // 2, 1
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -7293,9 +7302,9 @@ func (x *PushRequestRemoveVisitor) GetPlayerId() int64 {
 	return 0
 }
 
-func (x *PushRequestRemoveVisitor) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestRemoveVisitor) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -7537,7 +7546,7 @@ type PushRequestRejectVisit struct {
 	PushMessageId *PushMessageId `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *int64         `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
 	Unknown_3     *int64         `protobuf:"varint,3,req,name=unknown_3,json=unknown3" json:"unknown_3,omitempty"` // reason?
-	SteamId       *string        `protobuf:"bytes,4,req,name=steam_id,json=steamId" json:"steam_id,omitempty"`
+	PsnId         *string        `protobuf:"bytes,4,req,name=psn_id,json=psnId" json:"psn_id,omitempty"`
 	Type          *VisitorType   `protobuf:"varint,5,req,name=type,enum=DS2_Frpg2RequestMessage.VisitorType" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -7594,9 +7603,9 @@ func (x *PushRequestRejectVisit) GetUnknown_3() int64 {
 	return 0
 }
 
-func (x *PushRequestRejectVisit) GetSteamId() string {
-	if x != nil && x.SteamId != nil {
-		return *x.SteamId
+func (x *PushRequestRejectVisit) GetPsnId() string {
+	if x != nil && x.PsnId != nil {
+		return *x.PsnId
 	}
 	return ""
 }
@@ -7612,7 +7621,7 @@ type PushRequestVisit struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"` // 290333
-	PlayerSteamId *string                `protobuf:"bytes,3,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,3,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	PlayerStruct  []byte                 `protobuf:"bytes,4,req,name=player_struct,json=playerStruct" json:"player_struct,omitempty"`
 	Type          *VisitorType           `protobuf:"varint,5,req,name=type,enum=DS2_Frpg2RequestMessage.VisitorType" json:"type,omitempty"` // 1, 2
 	OnlineAreaId  *int64                 `protobuf:"varint,6,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"`    // 10160000, 10340000
@@ -7665,9 +7674,9 @@ func (x *PushRequestVisit) GetPlayerId() int64 {
 	return 0
 }
 
-func (x *PushRequestVisit) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestVisit) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -8664,7 +8673,7 @@ type PushRequestJoinQuickMatch struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"` // 290333
-	PlayerSteamId *string                `protobuf:"bytes,3,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,3,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	OnlineAreaId  *int64                 `protobuf:"varint,4,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"`           // 10230000, 10310000
 	CellId        *int64                 `protobuf:"varint,5,req,name=cell_id,json=cellId" json:"cell_id,omitempty"`                               // 102350, 103140
 	Mode          *QuickMatchGameMode    `protobuf:"varint,6,req,name=mode,enum=DS2_Frpg2RequestMessage.QuickMatchGameMode" json:"mode,omitempty"` // 1, 0
@@ -8716,9 +8725,9 @@ func (x *PushRequestJoinQuickMatch) GetPlayerId() int64 {
 	return 0
 }
 
-func (x *PushRequestJoinQuickMatch) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestJoinQuickMatch) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -8749,7 +8758,7 @@ type PushRequestRejectQuickMatch struct {
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
 	// Guessing this all base on ghidra, can't get this to occur in game.
 	PlayerId      *int64              `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`
-	PlayerSteamId *string             `protobuf:"bytes,3,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string             `protobuf:"bytes,3,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	OnlineAreaId  *int64              `protobuf:"varint,4,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"`
 	CellId        *int64              `protobuf:"varint,5,req,name=cell_id,json=cellId" json:"cell_id,omitempty"`
 	Mode          *QuickMatchGameMode `protobuf:"varint,6,req,name=mode,enum=DS2_Frpg2RequestMessage.QuickMatchGameMode" json:"mode,omitempty"`
@@ -8802,9 +8811,9 @@ func (x *PushRequestRejectQuickMatch) GetPlayerId() int64 {
 	return 0
 }
 
-func (x *PushRequestRejectQuickMatch) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestRejectQuickMatch) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -8843,7 +8852,7 @@ type PushRequestRemoveQuickMatch struct {
 	PlayerId      *int64                 `protobuf:"varint,2,req,name=player_id,json=playerId" json:"player_id,omitempty"`               // 287420
 	OnlineAreaId  *int64                 `protobuf:"varint,3,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"` // 10230000, 10310000
 	CellId        *int64                 `protobuf:"varint,4,req,name=cell_id,json=cellId" json:"cell_id,omitempty"`                     // 102350, 103140
-	PlayerSteamId *string                `protobuf:"bytes,5,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId   *string                `protobuf:"bytes,5,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	Mode          *QuickMatchGameMode    `protobuf:"varint,6,req,name=mode,enum=DS2_Frpg2RequestMessage.QuickMatchGameMode" json:"mode,omitempty"` // 1, 0
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -8907,9 +8916,9 @@ func (x *PushRequestRemoveQuickMatch) GetCellId() int64 {
 	return 0
 }
 
-func (x *PushRequestRemoveQuickMatch) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *PushRequestRemoveQuickMatch) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -8927,7 +8936,7 @@ type QuickMatchData struct {
 	OnlineAreaId      *int64                 `protobuf:"varint,2,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"`
 	CellId            *int64                 `protobuf:"varint,3,req,name=cell_id,json=cellId" json:"cell_id,omitempty"`
 	MatchingParameter *MatchingParameter     `protobuf:"bytes,4,req,name=matching_parameter,json=matchingParameter" json:"matching_parameter,omitempty"`
-	PlayerSteamId     *string                `protobuf:"bytes,5,req,name=player_steam_id,json=playerSteamId" json:"player_steam_id,omitempty"`
+	PlayerPsnId       *string                `protobuf:"bytes,5,req,name=player_psn_id,json=playerPsnId" json:"player_psn_id,omitempty"`
 	Mode              *QuickMatchGameMode    `protobuf:"varint,6,opt,name=mode,enum=DS2_Frpg2RequestMessage.QuickMatchGameMode" json:"mode,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
@@ -8991,9 +9000,9 @@ func (x *QuickMatchData) GetMatchingParameter() *MatchingParameter {
 	return nil
 }
 
-func (x *QuickMatchData) GetPlayerSteamId() string {
-	if x != nil && x.PlayerSteamId != nil {
-		return *x.PlayerSteamId
+func (x *QuickMatchData) GetPlayerPsnId() string {
+	if x != nil && x.PlayerPsnId != nil {
+		return *x.PlayerPsnId
 	}
 	return ""
 }
@@ -11479,17 +11488,17 @@ var File_DS2_Frpg2RequestMessage_proto protoreflect.FileDescriptor
 const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\n" +
 	"\x1dDS2_Frpg2RequestMessage.proto\x12\x17DS2_Frpg2RequestMessage\x1a\x19DS2_Frpg2PlayerData.proto\"\x0f\n" +
-	"\rEmptyResponse\"\xe2\x01\n" +
-	"\x17RequestWaitForUserLogin\x12\x19\n" +
-	"\bsteam_id\x18\x01 \x02(\tR\asteamId\x12\x1b\n" +
+	"\rEmptyResponse\"\xde\x01\n" +
+	"\x17RequestWaitForUserLogin\x12\x15\n" +
+	"\x06psn_id\x18\x01 \x02(\tR\x05psnId\x12\x1b\n" +
 	"\tunknown_1\x18\x02 \x02(\rR\bunknown1\x12\x1b\n" +
 	"\tunknown_2\x18\x03 \x02(\rR\bunknown2\x12\x1b\n" +
 	"\tunknown_3\x18\x04 \x02(\rR\bunknown3\x12\x1b\n" +
 	"\tunknown_4\x18\x05 \x02(\rR\bunknown4\x12\x1b\n" +
 	"\tunknown_5\x18\x06 \x01(\rR\bunknown5\x12\x1b\n" +
-	"\tunknown_6\x18\a \x01(\rR\bunknown6\"Y\n" +
-	"\x1fRequestWaitForUserLoginResponse\x12\x19\n" +
-	"\bsteam_id\x18\x01 \x02(\tR\asteamId\x12\x1b\n" +
+	"\tunknown_6\x18\a \x01(\rR\bunknown6\"U\n" +
+	"\x1fRequestWaitForUserLoginResponse\x12\x15\n" +
+	"\x06psn_id\x18\x01 \x02(\tR\x05psnId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\rR\bplayerId\"m\n" +
 	"\x18PlayerStatusUploadConfig\x12(\n" +
 	"\x10player_data_mask\x18\x01 \x03(\rR\x0eplayerDataMask\x12'\n" +
@@ -11542,15 +11551,15 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"&RequestGetLoginPlayerCharacterResponse\x12\x1b\n" +
 	"\tplayer_id\x18\x01 \x02(\x03R\bplayerId\x12!\n" +
 	"\fcharacter_id\x18\x02 \x02(\rR\vcharacterId\x12%\n" +
-	"\x0echaracter_data\x18\x03 \x02(\fR\rcharacterData\"\x86\x02\n" +
+	"\x0echaracter_data\x18\x03 \x02(\fR\rcharacterData\"\x82\x02\n" +
 	"\x10BloodMessageData\x12\x1b\n" +
 	"\tplayer_id\x18\x01 \x02(\rR\bplayerId\x12!\n" +
 	"\fcharacter_id\x18\x02 \x02(\rR\vcharacterId\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x03 \x02(\rR\tmessageId\x12\x12\n" +
 	"\x04good\x18\x04 \x02(\rR\x04good\x12!\n" +
-	"\fmessage_data\x18\x05 \x02(\fR\vmessageData\x12&\n" +
-	"\x0fplayer_steam_id\x18\x06 \x02(\tR\rplayerSteamId\x12\x17\n" +
+	"\fmessage_data\x18\x05 \x02(\fR\vmessageData\x12\"\n" +
+	"\rplayer_psn_id\x18\x06 \x02(\tR\vplayerPsnId\x12\x17\n" +
 	"\acell_id\x18\a \x02(\rR\x06cellId\x12\x1b\n" +
 	"\tunknown_8\x18\b \x01(\tR\bunknown8\"p\n" +
 	"\x19BloodMessageCellLimitData\x12\x17\n" +
@@ -11600,13 +11609,13 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"(RequestGetBloodMessageEvaluationResponse\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x01 \x02(\x03R\tmessageId\x12\x16\n" +
-	"\x06rating\x18\x02 \x02(\x03R\x06rating\"\xd5\x01\n" +
+	"\x06rating\x18\x02 \x02(\x03R\x06rating\"\xd1\x01\n" +
 	"\x1fPushRequestEvaluateBloodMessage\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\rR\bplayerId\x12\x1d\n" +
 	"\n" +
-	"message_id\x18\x03 \x02(\rR\tmessageId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x04 \x02(\tR\rplayerSteamId\"\x98\x01\n" +
+	"message_id\x18\x03 \x02(\rR\tmessageId\x12\"\n" +
+	"\rplayer_psn_id\x18\x04 \x02(\tR\vplayerPsnId\"\x98\x01\n" +
 	"\x1eRequestGetAreaBloodMessageList\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\rR\fonlineAreaId\x12\x14\n" +
 	"\x05count\x18\x02 \x02(\rR\x05count\x12\x1c\n" +
@@ -11736,29 +11745,29 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	" \x02(\rR\tunknown10\x12,\n" +
 	"\x12name_engraved_ring\x18\v \x02(\rR\x10nameEngravedRing\x12\x1f\n" +
 	"\vsoul_memory\x18\f \x02(\rR\n" +
-	"soulMemory\"\xea\x01\n" +
+	"soulMemory\"\xe6\x01\n" +
 	"\x15PushRequestSummonSign\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\x17\n" +
 	"\asign_id\x18\x03 \x02(\x03R\x06signId\x12#\n" +
-	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x12&\n" +
-	"\x0fplayer_steam_id\x18\x05 \x02(\tR\rplayerSteamId\"\xb7\x01\n" +
+	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x12\"\n" +
+	"\rplayer_psn_id\x18\x05 \x02(\tR\vplayerPsnId\"\xb7\x01\n" +
 	"\x11RequestSummonSign\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\x03R\fonlineAreaId\x12>\n" +
 	"\tsign_info\x18\x02 \x02(\v2!.DS2_Frpg2RequestMessage.SignInfoR\bsignInfo\x12#\n" +
 	"\rplayer_struct\x18\x03 \x02(\fR\fplayerStruct\x12\x17\n" +
 	"\acell_id\x18\x04 \x02(\x03R\x06cellId\"\x1b\n" +
-	"\x19RequestSummonSignResponse\"\x8d\x02\n" +
+	"\x19RequestSummonSignResponse\"\x89\x02\n" +
 	"\x15PushRequestRejectSign\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12>\n" +
 	"\tsign_info\x18\x02 \x02(\v2!.DS2_Frpg2RequestMessage.SignInfoR\bsignInfo\x12<\n" +
-	"\x05error\x18\x03 \x02(\x0e2&.DS2_Frpg2RequestMessage.SummonErrorIdR\x05error\x12&\n" +
-	"\x0fplayer_steam_id\x18\x04 \x02(\tR\rplayerSteamId\"\xc5\x01\n" +
+	"\x05error\x18\x03 \x02(\x0e2&.DS2_Frpg2RequestMessage.SummonErrorIdR\x05error\x12\"\n" +
+	"\rplayer_psn_id\x18\x04 \x02(\tR\vplayerPsnId\"\xc1\x01\n" +
 	"\x15PushRequestRemoveSign\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\x17\n" +
-	"\asign_id\x18\x03 \x02(\x03R\x06signId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x04 \x02(\tR\rplayerSteamId\"\xef\x01\n" +
+	"\asign_id\x18\x03 \x02(\x03R\x06signId\x12\"\n" +
+	"\rplayer_psn_id\x18\x04 \x02(\tR\vplayerPsnId\"\xef\x01\n" +
 	"\x11RequestCreateSign\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\rR\fonlineAreaId\x12Y\n" +
 	"\x12matching_parameter\x18\x02 \x02(\v2*.DS2_Frpg2RequestMessage.MatchingParameterR\x11matchingParameter\x12#\n" +
@@ -11802,13 +11811,13 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\tmax_signs\x18\x03 \x01(\rR\bmaxSigns\"@\n" +
 	"\bSignInfo\x12\x1b\n" +
 	"\tplayer_id\x18\x01 \x02(\rR\bplayerId\x12\x17\n" +
-	"\asign_id\x18\x02 \x02(\rR\x06signId\"\xf1\x02\n" +
+	"\asign_id\x18\x02 \x02(\rR\x06signId\"\xed\x02\n" +
 	"\bSignData\x12>\n" +
 	"\tsign_info\x18\x01 \x02(\v2!.DS2_Frpg2RequestMessage.SignInfoR\bsignInfo\x12$\n" +
 	"\x0eonline_area_id\x18\x02 \x02(\x03R\fonlineAreaId\x12Y\n" +
 	"\x12matching_parameter\x18\x03 \x02(\v2*.DS2_Frpg2RequestMessage.MatchingParameterR\x11matchingParameter\x12#\n" +
-	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x12&\n" +
-	"\x0fplayer_steam_id\x18\x05 \x02(\tR\rplayerSteamId\x12\x17\n" +
+	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x12\"\n" +
+	"\rplayer_psn_id\x18\x05 \x02(\tR\vplayerPsnId\x12\x17\n" +
 	"\acell_id\x18\x06 \x02(\x03R\x06cellId\x12>\n" +
 	"\tsign_type\x18\a \x02(\x0e2!.DS2_Frpg2RequestMessage.SignTypeR\bsignType\"x\n" +
 	"\x1bRequestGetRightMatchingArea\x12Y\n" +
@@ -11820,23 +11829,23 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\x0eonline_area_id\x18\x01 \x02(\rR\fonlineAreaId\x12\x1e\n" +
 	"\n" +
 	"population\x18\x02 \x02(\rR\n" +
-	"population\"\x99\x02\n" +
+	"population\"\x95\x02\n" +
 	"!PushRequestRejectMirrorKnightSign\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12>\n" +
 	"\tsign_info\x18\x02 \x02(\v2!.DS2_Frpg2RequestMessage.SignInfoR\bsignInfo\x12<\n" +
-	"\x05error\x18\x03 \x02(\x0e2&.DS2_Frpg2RequestMessage.SummonErrorIdR\x05error\x12&\n" +
-	"\x0fplayer_steam_id\x18\x04 \x02(\tR\rplayerSteamId\"\xd1\x01\n" +
+	"\x05error\x18\x03 \x02(\x0e2&.DS2_Frpg2RequestMessage.SummonErrorIdR\x05error\x12\"\n" +
+	"\rplayer_psn_id\x18\x04 \x02(\tR\vplayerPsnId\"\xcd\x01\n" +
 	"!PushRequestRemoveMirrorKnightSign\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\x17\n" +
-	"\asign_id\x18\x03 \x02(\x03R\x06signId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x04 \x02(\tR\rplayerSteamId\"\xf6\x01\n" +
+	"\asign_id\x18\x03 \x02(\x03R\x06signId\x12\"\n" +
+	"\rplayer_psn_id\x18\x04 \x02(\tR\vplayerPsnId\"\xf2\x01\n" +
 	"!PushRequestSummonMirrorKnightSign\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\x17\n" +
 	"\asign_id\x18\x03 \x02(\x03R\x06signId\x12#\n" +
-	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x12&\n" +
-	"\x0fplayer_steam_id\x18\x05 \x02(\tR\rplayerSteamId\"\x8e\x01\n" +
+	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x12\"\n" +
+	"\rplayer_psn_id\x18\x05 \x02(\tR\vplayerPsnId\"\x8e\x01\n" +
 	"\x1dRequestCreateMirrorKnightSign\x12Y\n" +
 	"\x12matching_parameter\x18\x01 \x02(\v2*.DS2_Frpg2RequestMessage.MatchingParameterR\x11matchingParameter\x12\x12\n" +
 	"\x04data\x18\x02 \x02(\fR\x04data\"@\n" +
@@ -11863,27 +11872,27 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"%RequestSummonMirrorKnightSignResponse\"8\n" +
 	"\x1dRequestUpdateMirrorKnightSign\x12\x17\n" +
 	"\asign_id\x18\x01 \x02(\x03R\x06signId\"'\n" +
-	"%RequestUpdateMirrorKnightSignResponse\"K\n" +
+	"%RequestUpdateMirrorKnightSignResponse\"G\n" +
 	"\x11BreakInTargetData\x12\x1b\n" +
-	"\tplayer_id\x18\x01 \x02(\rR\bplayerId\x12\x19\n" +
-	"\bsteam_id\x18\x02 \x02(\tR\asteamId\"\xce\x01\n" +
+	"\tplayer_id\x18\x01 \x02(\rR\bplayerId\x12\x15\n" +
+	"\x06psn_id\x18\x02 \x02(\tR\x05psnId\"\xce\x01\n" +
 	"\x1dPushRequestAllowBreakInTarget\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\rR\bplayerId\x12#\n" +
 	"\rplayer_struct\x18\x03 \x02(\fR\fplayerStruct\x12\x1b\n" +
-	"\tunknown_4\x18\x04 \x02(\rR\bunknown4\"\x9b\x02\n" +
+	"\tunknown_4\x18\x04 \x02(\rR\bunknown4\"\x97\x02\n" +
 	"\x18PushRequestBreakInTarget\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
-	"\tplayer_id\x18\x02 \x02(\rR\bplayerId\x12\x19\n" +
-	"\bsteam_id\x18\x03 \x02(\tR\asteamId\x128\n" +
+	"\tplayer_id\x18\x02 \x02(\rR\bplayerId\x12\x15\n" +
+	"\x06psn_id\x18\x03 \x02(\tR\x05psnId\x128\n" +
 	"\x04type\x18\x04 \x02(\x0e2$.DS2_Frpg2RequestMessage.BreakInTypeR\x04type\x12$\n" +
 	"\x0eonline_area_id\x18\x05 \x02(\rR\fonlineAreaId\x12\x17\n" +
-	"\acell_id\x18\x06 \x02(\rR\x06cellId\"\xe2\x01\n" +
+	"\acell_id\x18\x06 \x02(\rR\x06cellId\"\xde\x01\n" +
 	"\x1ePushRequestRejectBreakInTarget\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\x1b\n" +
-	"\tunknown_3\x18\x03 \x02(\x03R\bunknown3\x12\x19\n" +
-	"\bsteam_id\x18\x04 \x02(\tR\asteamId\x12\x1b\n" +
+	"\tunknown_3\x18\x03 \x02(\x03R\bunknown3\x12\x15\n" +
+	"\x06psn_id\x18\x04 \x02(\tR\x05psnId\x12\x1b\n" +
 	"\tunknown_5\x18\x05 \x02(\x03R\bunknown5\" \n" +
 	"\x1ePushRequestRemoveBreakInTarget\"\xac\x01\n" +
 	"\x14RequestBreakInTarget\x12$\n" +
@@ -11927,10 +11936,10 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\x0eonline_area_id\x18\x01 \x02(\rR\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x02 \x02(\rR\x06cellId\x12\x12\n" +
 	"\x04data\x18\x03 \x02(\fR\x04data\" \n" +
-	"\x1eRequestCreateGhostDataResponse\"R\n" +
+	"\x1eRequestCreateGhostDataResponse\"N\n" +
 	"\vVisitorData\x12\x1b\n" +
-	"\tplayer_id\x18\x01 \x02(\x03R\bplayerId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x02 \x02(\tR\rplayerSteamId\"\xa5\x02\n" +
+	"\tplayer_id\x18\x01 \x02(\x03R\bplayerId\x12\"\n" +
+	"\rplayer_psn_id\x18\x02 \x02(\tR\vplayerPsnId\"\xa5\x02\n" +
 	"\x15RequestGetVisitorList\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\x03R\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x02 \x02(\x03R\x06cellId\x12\x1f\n" +
@@ -11943,11 +11952,11 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\x0eonline_area_id\x18\x01 \x02(\x03R\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x02 \x02(\x03R\x06cellId\x12E\n" +
 	"\vtarget_data\x18\x03 \x03(\v2$.DS2_Frpg2RequestMessage.VisitorDataR\n" +
-	"targetData\"\xe9\x01\n" +
+	"targetData\"\xe5\x01\n" +
 	"\x18PushRequestRemoveVisitor\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
-	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x03 \x02(\tR\rplayerSteamId\x128\n" +
+	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\"\n" +
+	"\rplayer_psn_id\x18\x03 \x02(\tR\vplayerPsnId\x128\n" +
 	"\x04type\x18\x04 \x02(\x0e2$.DS2_Frpg2RequestMessage.VisitorTypeR\x04type\"\xc9\x01\n" +
 	"\fRequestVisit\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\x03R\fonlineAreaId\x12\x17\n" +
@@ -11962,17 +11971,17 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\x0eonline_area_id\x18\x03 \x02(\x03R\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x04 \x02(\x03R\x06cellId\x128\n" +
 	"\x04type\x18\x05 \x01(\x0e2$.DS2_Frpg2RequestMessage.VisitorTypeR\x04type\"\x1c\n" +
-	"\x1aRequestRejectVisitResponse\"\xf7\x01\n" +
+	"\x1aRequestRejectVisitResponse\"\xf3\x01\n" +
 	"\x16PushRequestRejectVisit\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\x1b\n" +
-	"\tunknown_3\x18\x03 \x02(\x03R\bunknown3\x12\x19\n" +
-	"\bsteam_id\x18\x04 \x02(\tR\asteamId\x128\n" +
-	"\x04type\x18\x05 \x02(\x0e2$.DS2_Frpg2RequestMessage.VisitorTypeR\x04type\"\xc5\x02\n" +
+	"\tunknown_3\x18\x03 \x02(\x03R\bunknown3\x12\x15\n" +
+	"\x06psn_id\x18\x04 \x02(\tR\x05psnId\x128\n" +
+	"\x04type\x18\x05 \x02(\x0e2$.DS2_Frpg2RequestMessage.VisitorTypeR\x04type\"\xc1\x02\n" +
 	"\x10PushRequestVisit\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
-	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x03 \x02(\tR\rplayerSteamId\x12#\n" +
+	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\"\n" +
+	"\rplayer_psn_id\x18\x03 \x02(\tR\vplayerPsnId\x12#\n" +
 	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x128\n" +
 	"\x04type\x18\x05 \x02(\x0e2$.DS2_Frpg2RequestMessage.VisitorTypeR\x04type\x12$\n" +
 	"\x0eonline_area_id\x18\x06 \x02(\x03R\fonlineAreaId\x12\x17\n" +
@@ -12020,35 +12029,35 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12$\n" +
 	"\x0eonline_area_id\x18\x03 \x02(\x03R\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x04 \x02(\x03R\x06cellId\x12\x17\n" +
-	"\afield_5\x18\x05 \x02(\fR\x06field5\"\xb0\x02\n" +
+	"\afield_5\x18\x05 \x02(\fR\x06field5\"\xac\x02\n" +
 	"\x19PushRequestJoinQuickMatch\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
-	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x03 \x02(\tR\rplayerSteamId\x12$\n" +
+	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\"\n" +
+	"\rplayer_psn_id\x18\x03 \x02(\tR\vplayerPsnId\x12$\n" +
 	"\x0eonline_area_id\x18\x04 \x02(\x03R\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x05 \x02(\x03R\x06cellId\x12?\n" +
-	"\x04mode\x18\x06 \x02(\x0e2+.DS2_Frpg2RequestMessage.QuickMatchGameModeR\x04mode\"\xcf\x02\n" +
+	"\x04mode\x18\x06 \x02(\x0e2+.DS2_Frpg2RequestMessage.QuickMatchGameModeR\x04mode\"\xcb\x02\n" +
 	"\x1bPushRequestRejectQuickMatch\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
-	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x03 \x02(\tR\rplayerSteamId\x12$\n" +
+	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12\"\n" +
+	"\rplayer_psn_id\x18\x03 \x02(\tR\vplayerPsnId\x12$\n" +
 	"\x0eonline_area_id\x18\x04 \x02(\x03R\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x05 \x02(\x03R\x06cellId\x12?\n" +
 	"\x04mode\x18\x06 \x02(\x0e2+.DS2_Frpg2RequestMessage.QuickMatchGameModeR\x04mode\x12\x1b\n" +
-	"\tunknown_7\x18\a \x02(\x03R\bunknown7\"\xb2\x02\n" +
+	"\tunknown_7\x18\a \x02(\x03R\bunknown7\"\xae\x02\n" +
 	"\x1bPushRequestRemoveQuickMatch\x12N\n" +
 	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x1b\n" +
 	"\tplayer_id\x18\x02 \x02(\x03R\bplayerId\x12$\n" +
 	"\x0eonline_area_id\x18\x03 \x02(\x03R\fonlineAreaId\x12\x17\n" +
-	"\acell_id\x18\x04 \x02(\x03R\x06cellId\x12&\n" +
-	"\x0fplayer_steam_id\x18\x05 \x02(\tR\rplayerSteamId\x12?\n" +
-	"\x04mode\x18\x06 \x02(\x0e2+.DS2_Frpg2RequestMessage.QuickMatchGameModeR\x04mode\"\xb0\x02\n" +
+	"\acell_id\x18\x04 \x02(\x03R\x06cellId\x12\"\n" +
+	"\rplayer_psn_id\x18\x05 \x02(\tR\vplayerPsnId\x12?\n" +
+	"\x04mode\x18\x06 \x02(\x0e2+.DS2_Frpg2RequestMessage.QuickMatchGameModeR\x04mode\"\xac\x02\n" +
 	"\x0eQuickMatchData\x12\x1b\n" +
 	"\tplayer_id\x18\x01 \x02(\x03R\bplayerId\x12$\n" +
 	"\x0eonline_area_id\x18\x02 \x02(\x03R\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x03 \x02(\x03R\x06cellId\x12Y\n" +
-	"\x12matching_parameter\x18\x04 \x02(\v2*.DS2_Frpg2RequestMessage.MatchingParameterR\x11matchingParameter\x12&\n" +
-	"\x0fplayer_steam_id\x18\x05 \x02(\tR\rplayerSteamId\x12?\n" +
+	"\x12matching_parameter\x18\x04 \x02(\v2*.DS2_Frpg2RequestMessage.MatchingParameterR\x11matchingParameter\x12\"\n" +
+	"\rplayer_psn_id\x18\x05 \x02(\tR\vplayerPsnId\x12?\n" +
 	"\x04mode\x18\x06 \x01(\x0e2+.DS2_Frpg2RequestMessage.QuickMatchGameModeR\x04mode\"\xb4\x01\n" +
 	"\x15RequestJoinQuickMatch\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\x03R\fonlineAreaId\x12\x17\n" +

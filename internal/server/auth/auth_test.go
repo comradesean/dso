@@ -73,7 +73,7 @@ func TestAuthCheckpoint2(t *testing.T) {
 	emu := client.Config{
 		LoginAddr:  net.JoinHostPort("127.0.0.1", strconv.Itoa(loginPort)),
 		PublicKey:  &priv.PublicKey,
-		SteamID:    "76561198000000000",
+		PSNID:      "76561198000000000",
 		AppVersion: 17039619,
 		Ticket:     []byte("fake-psn-ticket-bytes"),
 	}

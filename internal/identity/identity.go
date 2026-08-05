@@ -16,7 +16,7 @@ type Identity struct {
 }
 
 // Validator validates a platform ticket. hintID is the identity string the
-// client already supplied (e.g. the steam_id field), which some validators use
+// client already supplied (e.g. the psn_id field), which some validators use
 // as-is and others cross-check against the ticket.
 type Validator interface {
 	Validate(ctx context.Context, hintID string, ticket []byte) (Identity, error)

@@ -17,7 +17,7 @@ import (
 func main() {
 	loginAddr := flag.String("login-addr", "127.0.0.1:50050", "login server host:port")
 	pubKeyPath := flag.String("public-key", "data/keys/server.public.pem", "server public key PEM")
-	steamID := flag.String("steam-id", "0110000100000000", "identity string sent to the server")
+	psnID := flag.String("psn-id", "0110000100000000", "identity string sent to the server")
 	appVersion := flag.Uint64("app-version", 100, "app version reported to the server")
 	ticket := flag.String("ticket", "dev-ticket", "platform ticket bytes")
 	flag.Parse()
@@ -36,7 +36,7 @@ func main() {
 	emu := client.Config{
 		LoginAddr:  *loginAddr,
 		PublicKey:  pub,
-		SteamID:    *steamID,
+		PSNID:      *psnID,
 		AppVersion: *appVersion,
 		Ticket:     []byte(*ticket),
 	}

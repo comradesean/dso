@@ -21,6 +21,15 @@ import "DS2_Frpg2PlayerData.proto";
 //
 // The message-id thats received on the reliable udp message layer is always 0x0320, and the first
 // field is read to disambiguate the actual message.
+// LOCAL DIVERGENCE FROM THE REFERENCE SCHEMA
+// The fields FromSoftware named `steam_id` / `player_steam_id` are renamed here
+// to `psn_id` / `player_psn_id`. This project targets Dark Souls 2 on PS3, where
+// that field carries the PSN online ID; the Steam naming is an artifact of the
+// reference having been reversed from the PC build.
+//
+// This is a NAME change only. Field numbers and wire types are untouched, so the
+// wire format is identical and captures remain comparable with the reference.
+// Everything else in this file is kept pristine for diffing against ref/ds3so.
 enum PushMessageId {
 	PushID_PushRequestRemoveSign               = 0x039D; 
 	PushID_PushRequestSummonSign               = 0x039B; 
@@ -56,7 +65,7 @@ message EmptyResponse {
 // ------------------------------------------------------------------------------------------------------------
 
 message RequestWaitForUserLogin {
-	required string steam_id = 1;
+	required string psn_id = 1;
 	required uint32 unknown_1 = 2;	//1 // one of these is going to be the profile index
 	required uint32 unknown_2 = 3;	//0
 	required uint32 unknown_3 = 4;	//1
@@ -66,7 +75,7 @@ message RequestWaitForUserLogin {
 }
 
 message RequestWaitForUserLoginResponse {
-	required string steam_id = 1;
+	required string psn_id = 1;
 	required uint32 player_id = 2;
 }
 
@@ -177,7 +186,7 @@ message BloodMessageData {
 	required uint32 message_id = 3;
 	required uint32 good = 4;
 	required bytes message_data = 5;
-	required string player_steam_id = 6;
+	required string player_psn_id = 6;
 	required uint32 cell_id = 7;
 	optional string unknown_8 = 8;
 }
@@ -254,7 +263,7 @@ message PushRequestEvaluateBloodMessage {
     required PushMessageId push_message_id = 1;     
 	required uint32 player_id = 2;          // Might be cell id
 	required uint32 message_id = 3;
-	required string player_steam_id = 4;
+	required string player_psn_id = 4;
 }
 
 message RequestGetAreaBloodMessageList {
@@ -471,7 +480,7 @@ message PushRequestSummonSign {
 	required int64 player_id = 2; // 290333, 1705594, 2514885
 	required int64 sign_id = 3; // 178362284, 178361321, 178358629, 178358887
 	required bytes player_struct = 4; // 
-	required string player_steam_id = 5;
+	required string player_psn_id = 5;
 }
 
 message RequestSummonSign {
@@ -491,14 +500,14 @@ message PushRequestRejectSign {
     // Based on ghidra, investigate further.
     required SignInfo sign_info = 2;
     required SummonErrorId error = 3;
-    required string player_steam_id = 4;
+    required string player_psn_id = 4;
 }
 
 message PushRequestRemoveSign {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; 
 	required int64 sign_id = 3;         
-	required string player_steam_id = 4;
+	required string player_psn_id = 4;
 }
 
 message RequestCreateSign {
@@ -589,7 +598,7 @@ message SignData {
 	required int64 online_area_id = 2; // 10310000, 10100000, 10180000, 10190000, 10160000
 	required MatchingParameter matching_parameter = 3; 
 	required bytes player_struct = 4; 
-	required string player_steam_id = 5;
+	required string player_psn_id = 5;
 	required int64 cell_id = 6; // 8387584, 16777216, 4290772987, 4286579709, 4290772992, 4290774013, 4290774014, 4286577658
 	required SignType sign_type = 7; // 3, 1, 0, 6
 }
@@ -615,14 +624,14 @@ message PushRequestRejectMirrorKnightSign {
     // Based on ghidra, investigate further.
     required SignInfo sign_info = 2;
     required SummonErrorId error = 3;
-    required string player_steam_id = 4;
+    required string player_psn_id = 4;
 }
 
 message PushRequestRemoveMirrorKnightSign {
     required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; 
 	required int64 sign_id = 3;         
-	required string player_steam_id = 4;
+	required string player_psn_id = 4;
 }
 
 message PushRequestSummonMirrorKnightSign {
@@ -630,7 +639,7 @@ message PushRequestSummonMirrorKnightSign {
 	required int64 player_id = 2; 
 	required int64 sign_id = 3;
 	required bytes player_struct = 4;
-	required string player_steam_id = 5;
+	required string player_psn_id = 5;
 }
 
 message RequestCreateMirrorKnightSign {
@@ -700,7 +709,7 @@ enum BreakInType {
 
 message BreakInTargetData {
 	required uint32 player_id = 1;
-	required string steam_id = 2;
+	required string psn_id = 2;
 }
 
 message PushRequestAllowBreakInTarget {
@@ -713,7 +722,7 @@ message PushRequestAllowBreakInTarget {
 message PushRequestBreakInTarget {
 	required PushMessageId push_message_id = 1;
 	required uint32 player_id = 2;
-	required string steam_id = 3;
+	required string psn_id = 3;
 	required BreakInType type = 4;
 	required uint32 online_area_id = 5;     // 10190000
 	required uint32 cell_id = 6;            // 101910
@@ -723,7 +732,7 @@ message PushRequestRejectBreakInTarget {
 	required PushMessageId push_message_id = 1;
     required int64 player_id = 2;
     required int64 unknown_3 = 3;
-    required string steam_id = 4;
+    required string psn_id = 4;
     required int64 unknown_5 = 5;
 }
 
@@ -814,7 +823,7 @@ enum VisitorType {
 
 message VisitorData {
 	required int64 player_id = 1; // 290333
-	required string player_steam_id = 2;
+	required string player_psn_id = 2;
 }
 
 message RequestGetVisitorList {
@@ -835,7 +844,7 @@ message RequestGetVisitorListResponse {
 message PushRequestRemoveVisitor {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; // 290333
-	required string player_steam_id = 3;
+	required string player_psn_id = 3;
 	required VisitorType type = 4; // 2, 1
 }
 
@@ -868,14 +877,14 @@ message PushRequestRejectVisit {
 	required PushMessageId push_message_id = 1;
     required int64 player_id = 2;
     required int64 unknown_3 = 3; // reason?
-    required string steam_id = 4;
+    required string psn_id = 4;
     required VisitorType type = 5;
 }
 
 message PushRequestVisit {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; // 290333
-	required string player_steam_id = 3;
+	required string player_psn_id = 3;
 	required bytes player_struct = 4; 
 	required VisitorType type = 5; // 1, 2
 	required int64 online_area_id = 6; // 10160000, 10340000
@@ -1002,7 +1011,7 @@ message PushRequestAllowQuickMatch {
 message PushRequestJoinQuickMatch {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2;           // 290333
-	required string player_steam_id = 3;
+	required string player_psn_id = 3;
 	required int64 online_area_id = 4;      // 10230000, 10310000
 	required int64 cell_id = 5;             // 102350, 103140
 	required QuickMatchGameMode mode = 6;   // 1, 0
@@ -1013,7 +1022,7 @@ message PushRequestRejectQuickMatch {
 
     // Guessing this all base on ghidra, can't get this to occur in game.
 	required int64 player_id = 2;           
-	required string player_steam_id = 3;
+	required string player_psn_id = 3;
 	required int64 online_area_id = 4;      
 	required int64 cell_id = 5;             
 	required QuickMatchGameMode mode = 6;   
@@ -1025,7 +1034,7 @@ message PushRequestRemoveQuickMatch {
 	required int64 player_id = 2;       // 287420
 	required int64 online_area_id = 3;  // 10230000, 10310000
 	required int64 cell_id = 4;         // 102350, 103140
-	required string player_steam_id = 5;
+	required string player_psn_id = 5;
 	required QuickMatchGameMode mode = 6;   // 1, 0
 }
 
@@ -1034,7 +1043,7 @@ message QuickMatchData {
     required int64 online_area_id = 2;
     required int64 cell_id = 3;
     required MatchingParameter matching_parameter = 4;
-    required string player_steam_id = 5;
+    required string player_psn_id = 5;
     optional QuickMatchGameMode mode = 6;
 }
 

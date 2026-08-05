@@ -120,13 +120,13 @@ func (s *bloodMessageStore) inCells(areaID uint32, cells map[uint32]bool, limit 
 // toProto converts a stored message to its wire form.
 func (m *bloodMessage) toProto() *ds2pb.BloodMessageData {
 	return &ds2pb.BloodMessageData{
-		PlayerId:      proto.Uint32(m.playerID),
-		CharacterId:   proto.Uint32(m.characterID),
-		MessageId:     proto.Uint32(m.id),
-		Good:          proto.Uint32(uint32(max64(m.rating, 0))),
-		MessageData:   m.data,
-		PlayerSteamId: proto.String(m.accountID),
-		CellId:        proto.Uint32(m.cellID),
+		PlayerId:    proto.Uint32(m.playerID),
+		CharacterId: proto.Uint32(m.characterID),
+		MessageId:   proto.Uint32(m.id),
+		Good:        proto.Uint32(uint32(max64(m.rating, 0))),
+		MessageData: m.data,
+		PlayerPsnId: proto.String(m.accountID),
+		CellId:      proto.Uint32(m.cellID),
 	}
 }
 

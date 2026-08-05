@@ -66,7 +66,7 @@ type outPacket struct {
 // Session is one reliable-UDP connection (server or client role).
 type Session struct {
 	isClient bool
-	steamID  string
+	psnID    string
 	send     SendFunc
 	now      func() time.Time
 
@@ -107,10 +107,10 @@ func WithInitialSequence(v uint32) Option {
 	return func(s *Session) { s.sequenceIndex = v % maxAckValue }
 }
 
-func newSession(isClient bool, steamID string, send SendFunc, opts ...Option) *Session {
+func newSession(isClient bool, psnID string, send SendFunc, opts ...Option) *Session {
 	s := &Session{
 		isClient:      isClient,
-		steamID:       steamID,
+		psnID:         psnID,
 		send:          send,
 		now:           time.Now,
 		state:         StateListening,
@@ -128,8 +128,8 @@ func NewServerSession(send SendFunc, opts ...Option) *Session {
 }
 
 // NewClientSession creates a client-role session; call Connect to initiate.
-func NewClientSession(steamID string, send SendFunc, opts ...Option) *Session {
-	return newSession(true, steamID, send, opts...)
+func NewClientSession(psnID string, send SendFunc, opts ...Option) *Session {
+	return newSession(true, psnID, send, opts...)
 }
 
 func randSequence() uint32 {
@@ -214,7 +214,7 @@ func (s *Session) sendRaw(p packet) {
 	connPrefix := false
 	if p.opcode == OpSYN {
 		// Client SYN carries the connection prefix ahead of the packet.
-		b = append(initialData(s.steamID), b...)
+		b = append(initialData(s.psnID), b...)
 		connPrefix = true
 	}
 	if err := s.send(b, connPrefix); err != nil {

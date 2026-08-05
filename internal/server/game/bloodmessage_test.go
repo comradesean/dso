@@ -75,8 +75,8 @@ func TestBloodMessageRoundTrip(t *testing.T) {
 	if !bytes.Equal(got.GetMessageData(), body) {
 		t.Errorf("message_data: got %x, want %x (must be echoed verbatim)", got.GetMessageData(), body)
 	}
-	if got.GetPlayerSteamId() != "comradesean" {
-		t.Errorf("player_steam_id: got %q, want %q", got.GetPlayerSteamId(), "comradesean")
+	if got.GetPlayerPsnId() != "comradesean" {
+		t.Errorf("player_psn_id: got %q, want %q", got.GetPlayerPsnId(), "comradesean")
 	}
 	if got.GetCellId() != 7 {
 		t.Errorf("cell_id: got %d, want 7", got.GetCellId())

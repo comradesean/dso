@@ -19,8 +19,17 @@ package Shared_Frpg2RequestMessage;
 
 // First message sent to the login server, used to request
 // the port and server_ip to authenticate over.
+// LOCAL DIVERGENCE FROM THE REFERENCE SCHEMA
+// The fields FromSoftware named `steam_id` / `player_steam_id` are renamed here
+// to `psn_id` / `player_psn_id`. This project targets Dark Souls 2 on PS3, where
+// that field carries the PSN online ID; the Steam naming is an artifact of the
+// reference having been reversed from the PC build.
+//
+// This is a NAME change only. Field numbers and wire types are untouched, so the
+// wire format is identical and captures remain comparable with the reference.
+// Everything else in this file is kept pristine for diffing against ref/ds3so.
 message RequestQueryLoginServerInfo {
-    required string steam_id = 1;
+    required string psn_id = 1;
     optional string f2 = 2;
     required uint64 app_version = 3;                // app version without the period and -1. eg. app ver 1.13 = 112
 }
@@ -55,7 +64,7 @@ message RequestHandshakeResponse {
 // Presumably used for ensure we are connecting to a compatible server?
 message GetServiceStatus {
     required int64 id = 1;              
-    required string steam_id = 2;
+    required string psn_id = 2;
     optional string unknown_1 = 3;
     required int64 app_version = 4;     // 1.15 = 114 (zero indexed)
 }
@@ -72,7 +81,7 @@ message GetServiceStatusForXboxOne {
 // If we are on an older version of the game an empty response is sent back for this.
 message GetServiceStatusResponse {
     optional int64 id = 1;
-    optional string steam_id = 2;
+    optional string psn_id = 2;
     optional int64 unknown_1 = 3;
     optional int64 app_version = 4;
 }

@@ -77,7 +77,7 @@ func TestLoginCheckpoint1(t *testing.T) {
 	stream.SetCiphers(enc, dec)
 
 	req := &sharedpb.RequestQueryLoginServerInfo{
-		SteamId:    proto.String("76561198000000000"),
+		PsnId:      proto.String("76561198000000000"),
 		AppVersion: proto.Uint64(17039619),
 	}
 	body, err := proto.Marshal(req)

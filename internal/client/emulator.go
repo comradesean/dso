@@ -27,7 +27,7 @@ import (
 type Config struct {
 	LoginAddr   string // host:port of the login server
 	PublicKey   *rsa.PublicKey
-	SteamID     string
+	PSNID       string
 	AppVersion  uint64
 	Ticket      []byte // platform ticket bytes (any bytes for the noop validator)
 	DialTimeout time.Duration
@@ -75,7 +75,7 @@ func (c Config) login(ctx context.Context) (string, error) {
 	stream.SetCiphers(enc, dec)
 
 	req := &sharedpb.RequestQueryLoginServerInfo{
-		SteamId:    proto.String(c.SteamID),
+		PsnId:      proto.String(c.PSNID),
 		AppVersion: proto.Uint64(c.AppVersion),
 	}
 	body, err := proto.Marshal(req)
@@ -145,7 +145,7 @@ func (c Config) auth(ctx context.Context, addr string) (AuthResult, error) {
 	index++
 	ss := &sharedpb.GetServiceStatus{
 		Id:         proto.Int64(1),
-		SteamId:    proto.String(c.SteamID),
+		PsnId:      proto.String(c.PSNID),
 		AppVersion: proto.Int64(int64(c.AppVersion)),
 	}
 	if body, err = proto.Marshal(ss); err != nil {
@@ -181,7 +181,7 @@ func (c Config) auth(ctx context.Context, addr string) (AuthResult, error) {
 	ticketMsg := make([]byte, 0, 16+len(c.Ticket))
 	ticketMsg = append(ticketMsg, gameKey...)
 	ticketMsg = append(ticketMsg, c.Ticket...)
-	if err := stream.Send(message.Message{Type: message.SteamTicket, Index: index, Payload: ticketMsg}); err != nil {
+	if err := stream.Send(message.Message{Type: message.PSNTicket, Index: index, Payload: ticketMsg}); err != nil {
 		return AuthResult{}, err
 	}
 	infoReply, err := stream.Recv()

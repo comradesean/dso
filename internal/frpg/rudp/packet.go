@@ -118,7 +118,7 @@ func decodePacket(b []byte) (packet, error) {
 	return p, nil
 }
 
-// initialData builds the 35-byte connection prefix carrying the steam/player id
+// initialData builds the 35-byte connection prefix carrying the psn/player id
 // twice (17 bytes each plus a separating zero byte).
 func initialData(id string) []byte {
 	b := make([]byte, initialDataSize)

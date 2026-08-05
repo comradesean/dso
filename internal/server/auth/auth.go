@@ -85,7 +85,7 @@ func (s *Service) handle(ctx context.Context, conn net.Conn) {
 	}
 
 	// Stage 2: service status / version gate.
-	steamID, err := s.doServiceStatus(conn, stream, log)
+	psnID, err := s.doServiceStatus(conn, stream, log)
 	if err != nil {
 		logStageFailure(log, "service status failed", err)
 		return
@@ -99,7 +99,7 @@ func (s *Service) handle(ctx context.Context, conn net.Conn) {
 	}
 
 	// Stage 4: ticket + game server info.
-	if err := s.doSteamTicket(ctx, conn, stream, log, steamID, gameKey); err != nil {
+	if err := s.doPSNTicket(ctx, conn, stream, log, psnID, gameKey); err != nil {
 		logStageFailure(log, "ticket exchange failed", err)
 		return
 	}
@@ -182,11 +182,11 @@ func (s *Service) doServiceStatus(conn net.Conn, stream *message.Stream, log log
 		_ = stream.Send(message.Message{Type: message.Reply, Index: msg.Index})
 		return "", fmt.Errorf("unsupported app version %d", appVersion)
 	}
-	log.Info("service status", "steam_id", req.GetSteamId(), "app_version", appVersion)
+	log.Info("service status", "psn_id", req.GetPsnId(), "app_version", appVersion)
 
 	resp := &sharedpb.GetServiceStatusResponse{
 		Id:         proto.Int64(2),
-		SteamId:    proto.String(""),
+		PsnId:      proto.String(""),
 		Unknown_1:  proto.Int64(0),
 		AppVersion: proto.Int64(appVersion),
 	}
@@ -197,7 +197,7 @@ func (s *Service) doServiceStatus(conn net.Conn, stream *message.Stream, log log
 	if err := stream.Send(message.Message{Type: message.Reply, Index: msg.Index, Payload: body}); err != nil {
 		return "", err
 	}
-	return req.GetSteamId(), nil
+	return req.GetPsnId(), nil
 }
 
 func (s *Service) doKeyMaterial(conn net.Conn, stream *message.Stream, log logger) ([]byte, error) {
@@ -220,17 +220,17 @@ func (s *Service) doKeyMaterial(conn net.Conn, stream *message.Stream, log logge
 	return gameKey, nil
 }
 
-func (s *Service) doSteamTicket(ctx context.Context, conn net.Conn, stream *message.Stream, log logger, steamID string, gameKey []byte) error {
-	msg, err := s.recv(conn, stream, message.SteamTicket)
+func (s *Service) doPSNTicket(ctx context.Context, conn net.Conn, stream *message.Stream, log logger, psnID string, gameKey []byte) error {
+	msg, err := s.recv(conn, stream, message.PSNTicket)
 	if err != nil {
 		return err
 	}
 	if len(msg.Payload) < 16 {
-		return fmt.Errorf("steam ticket payload is %d bytes, want >= 16", len(msg.Payload))
+		return fmt.Errorf("psn ticket payload is %d bytes, want >= 16", len(msg.Payload))
 	}
 	ticket := msg.Payload[16:]
 
-	id, err := s.srv.Auth.Validate(ctx, steamID, ticket)
+	id, err := s.srv.Auth.Validate(ctx, psnID, ticket)
 	if err != nil {
 		return fmt.Errorf("ticket validation: %w", err)
 	}

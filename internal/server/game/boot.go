@@ -109,9 +109,10 @@ func (s *Service) handleWaitForUserLogin(log logger, cs *clientSession, payload 
 		return nil, fmt.Errorf("parse RequestWaitForUserLogin: %w", err)
 	}
 
-	// The field is named steam_id in the FromSoftware protos, but on PS3 it
-	// carries the PSN online ID. It is the platform account id either way.
-	accountID := req.GetSteamId()
+	// FromSoftware named this field steam_id in the PC protos; we have renamed it
+	// psn_id since this server targets PS3, where it carries the PSN online ID.
+	// The wire format is unchanged - only the name.
+	accountID := req.GetPsnId()
 	if accountID == "" {
 		return nil, fmt.Errorf("RequestWaitForUserLogin has an empty account id")
 	}
@@ -125,7 +126,7 @@ func (s *Service) handleWaitForUserLogin(log logger, cs *clientSession, payload 
 		"unknown_3", req.GetUnknown_3(), "unknown_4", req.GetUnknown_4())
 
 	resp := &ds2pb.RequestWaitForUserLoginResponse{
-		SteamId:  proto.String(accountID),
+		PsnId:    proto.String(accountID),
 		PlayerId: proto.Uint32(cs.playerID),
 	}
 	return proto.Marshal(resp)

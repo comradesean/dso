@@ -22,7 +22,7 @@ const (
 	Reply                       Type = 0x0
 	KeyMaterial                 Type = 0x1
 	GetServiceStatus            Type = 0x2
-	SteamTicket                 Type = 0x3
+	PSNTicket                   Type = 0x3
 	RequestQueryLoginServerInfo Type = 0x5
 	RequestHandshake            Type = 0x6
 )
@@ -35,8 +35,8 @@ func (t Type) String() string {
 		return "KeyMaterial"
 	case GetServiceStatus:
 		return "GetServiceStatus"
-	case SteamTicket:
-		return "SteamTicket"
+	case PSNTicket:
+		return "PSNTicket"
 	case RequestQueryLoginServerInfo:
 		return "RequestQueryLoginServerInfo"
 	case RequestHandshake:

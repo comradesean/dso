@@ -417,3 +417,144 @@ Since `Frpg2GameServerInfo` carries **ten trailing u32 transport params from off
 2. Same for a visit (`0x03C9`–`0x03D1`) and an arena match (`0x03E0`–`0x03E7`).
 3. Log what the client sends for `0x0387`/`0x0388`/`0x038A`/`0x0390` during boot — they fire early (the `0x0390` path is the `NRLoggingMessage` uploader, so it may be an opt-in telemetry channel you can safely stub).
 4. **Do not implement `0x03FA`, `0x03FB`, `0x03FC`, `0x03FD`, `0x03FF`, `0x0400`.** This client has no code for them.
+
+---
+
+## 10. `RequestQueryLoginServerInfoResponse` — PS3 wire format (decompiled)
+
+**This is a hard contradiction of the PC/SOTFS proto and it breaks LAN play if you follow the PC map.**
+
+The PC/DS3OS proto (`Shared_Frpg2RequestMessage.proto:29`) declares:
+
+```
+required int64  port      = 1;
+required string server_ip = 2;
+```
+
+**On BLUS41045 the message has three 32-bit VARINT fields and no string field at all.**
+
+### 10.1 Evidence chain
+
+**Class identification.** TOC-B slot `0x1D2C464` (`r2-11132`) holds `0x01C62DC8`, which is the
+`RequestQueryLoginServerInfoResponse` vtable (`GetTypeName` at vtable+8 → `0x1601F24`). That vptr is
+stored into the stack object at `r1+112` in function `0x166A59C` (`stw r0,112(r1)` @ `0x166ABD4`),
+which is then parsed by `bl 0x1655F68` @ `0x166AC0C`.
+
+**Parser.** vtable+32 = `0x15E0370` = `MergePartialFromCodedStream`. Its OPD descriptor
+(`0x1D0E0F8`) is referenced by **exactly one** vtable slot (`0x1C62DE8`), so there is no
+identical-code-folding ambiguity — this parser belongs solely to this class.
+
+```
+ 15e03f0:	54 80 e8 fe 	srwi    r0,r4,3         ; field number = tag >> 3
+ 15e03f4:	2f 80 00 02 	cmpwi   cr7,r0,2
+ 15e03f8:	41 9e 00 9c 	beq     cr7,0x15e0494   ; -> field 2
+ 15e03fc:	2f 80 00 03 	cmpwi   cr7,r0,3
+ 15e0400:	41 9e 01 94 	beq     cr7,0x15e0594   ; -> field 3
+ 15e0404:	2f 80 00 01 	cmpwi   cr7,r0,1
+ 15e0408:	54 80 07 7e 	clrlwi  r0,r4,29        ; wire type = tag & 7
+ 15e040c:	41 9e 01 9c 	beq     cr7,0x15e05a8   ; -> field 1
+ 15e0410:	2f 80 00 04 	cmpwi   cr7,r0,4        ; WIRETYPE_END_GROUP -> done
+ ...
+ 15e0420:	48 07 64 b9 	bl      0x16568d8       ; SkipField (everything else)
+```
+
+Every one of the three field arms begins with the same wire-type gate:
+
+```
+ 15e0494:	54 80 07 7e 	clrlwi  r0,r4,29        ; field 2
+ 15e0498:	2f 80 00 00 	cmpwi   cr7,r0,0        ; must be WIRETYPE_VARINT
+ 15e049c:	40 9e ff 74 	bne     cr7,0x15e0410   ; else -> SkipField
+```
+
+(identically at `0x15E0594` for field 3 and `0x15E05A8` for field 1).
+
+Storage is a **4-byte** `stw` into the message object, and the multi-byte path calls
+`ReadVarint32Fallback` (`0x1650E9C`), not the 64-bit variant — so these are **32-bit** varint
+fields, not `int64`:
+
+| Field | Member offset | Store | Has-bit |
+|---|---|---|---|
+| 1 | `msg+24` (`stw r0,0(r26)` @ `0x15E05DC`) | `stw` | `ori r0,r0,1` @ `0x15E05F0` |
+| 2 | `msg+28` (`stw r0,0(r28)` @ `0x15E04C8`) | `stw` | `ori r0,r0,2` @ `0x15E04DC` |
+| 3 | `msg+32` (`stw r0,0(r27)` @ `0x15E0534`) | `stw` | `ori r0,r0,4` @ `0x15E0548` |
+
+**Independent confirmation from the codegen's optimistic tag chain.** After parsing field 1 the
+generated code hardcodes the tag byte it expects next; after field 2 likewise:
+
+```
+ 15e0610:	2f 80 00 10 	cmpwi   cr7,r0,16       ; 0x10 = field 2, WIRETYPE_VARINT
+ 15e04fc:	2f 80 00 18 	cmpwi   cr7,r0,24       ; 0x18 = field 3, WIRETYPE_VARINT
+```
+
+If field 2 were a string, protoc would have emitted `0x12` here. It emits `0x10`.
+
+### 10.2 Consumer — which field is which, and byte order
+
+Immediately after a successful parse, function `0x166A59C`:
+
+```
+ 166ac9c:	81 21 00 88 	lwz     r9,136(r1)     ; msg+24  = field 1
+ 166aca4:	80 01 00 8c 	lwz     r0,140(r1)     ; msg+28  = field 2
+ 166aca8:	b1 3d 00 e4 	sth     r9,228(r29)    ; -> ctx+0xE4, truncated to u16
+ 166acac:	90 1d 00 e0 	stw     r0,224(r29)    ; -> ctx+0xE0, full u32
+```
+
+The login task (`0x166DC88`) then dials the auth server:
+
+```
+ 166eb90:	80 9f 00 e0 	lwz     r4,224(r31)    ; r4 = address (u32)
+ 166eb94:	a0 bf 00 e4 	lhz     r5,228(r31)    ; r5 = port (u16)
+ 166eb98:	4b ff 1a 11 	bl      0x16605a8      ; Connect(conn, addr, port)
+```
+
+and `MakeSockAddrIn` at `0x17C05E0` writes both **verbatim, with no byte swap**:
+
+```
+ 17c05e0:	39 20 00 00 	li      r9,0
+ 17c05e4:	38 00 00 02 	li      r0,2
+ 17c05e8:	91 23 00 00 	stw     r9,0(r3)
+ 17c05ec:	91 23 00 0c 	stw     r9,12(r3)
+ 17c05f0:	90 83 00 04 	stw     r4,4(r3)       ; sin_addr  <- r4, no htonl
+ 17c05f4:	98 03 00 01 	stb     r0,1(r3)       ; sin_family = AF_INET (BSD sockaddr_in)
+ 17c05f8:	b0 a3 00 02 	sth     r5,2(r3)       ; sin_port  <- r5, no htons
+ 17c05fc:	91 23 00 08 	stw     r9,8(r3)
+```
+
+There is no `htonl`/`htons` anywhere on this path, and the binary contains **zero** byte-reverse
+instructions (`stwbrx`/`lwbrx`/`sthbrx`/`lhbrx`) in the whole of `.text` (§6.6). Because PPC is
+big-endian and `sin_addr.s_addr` is network byte order, the numeric value must therefore be
+`(a<<24) | (b<<16) | (c<<8) | d`.
+
+### 10.3 The answer
+
+| Field | PC/SOTFS proto | **BLUS41045 (actual)** |
+|---|---|---|
+| 1 | `required int64 port` | `port` — **VARINT (wiretype 0), 32-bit**, client truncates to `u16` and uses it as `sin_port` verbatim (send plain host integer, e.g. `50000`) |
+| 2 | `required string server_ip` | **`server_ip` — VARINT (wiretype 0), 32-bit binary IP**, written straight into `sin_addr.s_addr`. `192.168.1.100` → **`0xC0A80164` = `3232235876`** |
+| 3 | *(absent)* | present, VARINT 32-bit, parsed into `msg+32`, **not consumed** by the login task — safe to omit |
+
+**Why the observed bug happens:** sending field 2 as a length-delimited string (tag `0x12`) fails the
+`wiretype == 0` gate at `0x15E0498`, falls through to `SkipField` (`0x16568D8`), and the member is
+left at its default `0` → `0.0.0.0`. Field 1 is unaffected, which is exactly why the port worked and
+the address didn't.
+
+**Correct payload** for port 50000 / 192.168.1.100 (fields ascending, which also takes the parser's
+fast path):
+
+```
+08 d0 86 03  10 e4 82 a0 85 0c
+^^ f1 varint 50000
+             ^^ f2 varint 3232235876 (0xC0A80164)
+```
+
+Emit field 2 as an **unsigned** 32-bit varint (5 bytes). A signed `int32` encoding of the same value
+would be 10 bytes; `ReadVarint32Fallback` truncates either to 32 bits so both parse, but unsigned is
+what the schema implies and is smaller.
+
+**Confidence: high.** Sole-owner parser (no code folding), explicit wire-type gates, hardcoded
+expected tag `0x10`, a matching 4-byte/2-byte consumer split, and a swap-free `MakeSockAddrIn`.
+The one thing not proven exhaustively is that `ctx+0xE0`/`ctx+0xE4` have no other writer; I found
+only `0x166ACAC`/`0x166ACA8` within the login module.
+
+Note this is the **same convention as the 56-byte `Frpg2GameServerInfo`** (binary `u32` IP at offset
+8, `u16` port at 12, no swap) — the PS3 client is consistent: **it never parses an IP as a string.**

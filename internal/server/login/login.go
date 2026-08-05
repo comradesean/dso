@@ -128,7 +128,7 @@ func (s *Service) handle(ctx context.Context, conn net.Conn) {
 			return
 		}
 		log.Info("directed client to auth server",
-			"steam_id", req.GetSteamId(), "app_version", req.GetAppVersion(),
+			"psn_id", req.GetPsnId(), "app_version", req.GetAppVersion(),
 			"auth_ip", serverIP, "auth_port", s.srv.Config.AuthPort)
 	}
 }

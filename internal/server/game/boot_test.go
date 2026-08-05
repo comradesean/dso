@@ -17,7 +17,7 @@ import (
 //
 // Decoded:
 //
-//	field 1 = "comradesean"  (PSN online ID, in the proto's steam_id slot)
+//	field 1 = "comradesean"  (PSN online ID)
 //	field 2 = 2, field 3 = 0, field 4 = 1, field 5 = 2
 //
 // Using the console's own bytes rather than a synthetic message is deliberate:
@@ -51,8 +51,8 @@ func TestHandleWaitForUserLoginFromCapture(t *testing.T) {
 	if err := proto.Unmarshal(reply, &resp); err != nil {
 		t.Fatalf("reply is not a valid RequestWaitForUserLoginResponse: %v", err)
 	}
-	if resp.GetSteamId() != "comradesean" {
-		t.Errorf("reply steam_id: got %q, want %q", resp.GetSteamId(), "comradesean")
+	if resp.GetPsnId() != "comradesean" {
+		t.Errorf("reply psn_id: got %q, want %q", resp.GetPsnId(), "comradesean")
 	}
 	if resp.GetPlayerId() != cs.playerID {
 		t.Errorf("reply player_id: got %d, want %d", resp.GetPlayerId(), cs.playerID)
@@ -86,7 +86,7 @@ func TestHandleWaitForUserLoginRejectsGarbage(t *testing.T) {
 	svc := &Service{}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	// Missing the required steam_id field.
+	// Missing the required psn_id field.
 	empty, err := proto.Marshal(&ds2pb.RequestWaitForUserLogin{})
 	if err == nil {
 		if _, err := svc.handleWaitForUserLogin(log, &clientSession{}, empty); err == nil {
