@@ -37,6 +37,7 @@ stretch.
 | World death counter (4 opcodes) | **Working** | Counts live in-game; persists across restarts |
 | Management text push (`0x0389`) | **Working** | Renders as the post-login banner, upper left |
 | HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
+| **Serving our own calibrations** | **Working** | Client applied our regulation_0107; save matches byte for byte |
 | Persistence (SQLite) | Working | Blood messages and counters survive restart |
 | Player status / character uploads | Recorded | Accepted; nothing consumes them yet |
 
@@ -82,6 +83,39 @@ rather than retrying in place.
 
 **Run the server from WSL, not Windows.** Windows cannot bind TCP on the LAN address for any
 port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
+
+## Delivering a calibration, end to end
+
+**This works.** A real client was moved from calibration 1.01 to 1.06 by serving our own payload,
+and the copy it stored is byte-identical to our `regulation_0107` (sha1 `1c672626`). The loop:
+
+1. `DSO_CALIBRATION_VERSION=NNNN` answers the hardcoded `contents_0101.bin` request with that
+   version's manifest.
+2. The client reads the regulation filename out of the manifest and fetches it by name.
+3. It stores the result in save data, **not** on `dev_hdd0`: slot `15USER.DAT` (1 MiB fixed),
+   backed up to `115USER.DAT`. Format is an 8-byte header (u32 compressed size, u32 uncompressed
+   size, both big-endian) followed by a raw zlib stream of the BND4.
+
+Three things that make it look broken when it is not:
+
+- **It only checks on a cold start from the dashboard**, or roughly every two hours online.
+  Re-entering online mode is not enough; the game must be relaunched.
+- **The commit needs a clean exit.** The game deletes `15USER.DAT` before writing the new one, so
+  a crash or a killed emulator leaves the slot empty and the old calibration in the backup. Both
+  earlier failures looked like "it didn't download" when the download had in fact completed.
+- **0104 reports the same version as 0101** (`00010100`), so applying it changes nothing visible
+  even though it alters seven params.
+
+Version stamps, read from BND4+24: disc `00010000`, 0101/0104 `00010100`, 0107 `00010600`,
+0110 `00010810`, 0114 `01001500`.
+
+**Known ceiling:** 0114 downloads in full and then crashes RPCS3 on a `BLUS41045_v01.00` install.
+It is an April 2015 payload in a different stamp format and expects a matching title update.
+Nothing is written when it fails, so the install survives.
+
+**Note for the event-item work:** `ItemLotParam2_SvrEvent.param` is byte-identical across
+0101-0113. Only 0114 adds lots, so no reachable calibration changes the chest on an un-updated
+game.
 
 ## Open questions
 
