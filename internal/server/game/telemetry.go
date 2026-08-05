@@ -110,12 +110,25 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 // would be the only evidence of what it actually is.
 //
 // On the "I can hear other players ringing bells" reports, which are real and go
-// back to 2014: players hear it ONLY during an invasion. That is because a Bell
-// Keeper phantom is summoned INTO the host's world, so the bell is ordinary
-// in-world audio carried peer-to-peer with the rest of the session — not a
-// broadcast. DS1's global bell was genuine world state sent to everyone; DS2 has
-// no equivalent, and the server having no bell channel is therefore not a gap.
-// Confirmed by a player hearing it mid-invasion and at no other time.
+// back to 2014, and which have to be reconciled with this opcode never firing:
+//
+// The leading explanation is GHOST REPLAY. Ghosts are recordings of another
+// player's actions, fetched via RequestGetGhostDataList and replayed locally with
+// no session between the two players — and the blob is opaque to us, so a bell
+// pull inside one would reach a listener without any bell-specific message ever
+// existing. That fits every part of the reports: heard without being invaded,
+// sounding unlike DS1's global toll, genuinely another player's action, and with
+// no identifiable trigger. It is INFERRED, not proven; proving it means decoding
+// a ghost blob.
+//
+// An earlier note here claimed the sound was peer-to-peer audio heard only while
+// a Bell Keeper phantom is in the host's world. That is true as far as it goes —
+// a phantom does hear the host's bell — but it cannot explain why the community
+// found the effect mysterious at all: anyone hearing it mid-invasion would know
+// exactly what it was. Ghost replay explains the puzzlement; presence does not.
+//
+// DS1's global bell was genuine world state broadcast to everyone. DS2 has no
+// such channel, so the absence of one here is not a missing feature either way.
 func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	// Not parsed: the message is a TODO in our schema, so parsing it would only
 	// assert a shape we have no evidence for. The bytes are the useful artefact.
