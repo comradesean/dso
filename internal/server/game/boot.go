@@ -67,6 +67,19 @@ func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, p
 	case opRequestGetGhostDataList:
 		return s.handleGetGhostDataList(log, cs, payload)
 
+	case opRequestCreateSign:
+		return s.handleCreateSign(log, cs, payload)
+	case opRequestUpdateSign:
+		return s.handleUpdateSign(log, cs, payload)
+	case opRequestRemoveSign:
+		return s.handleRemoveSign(log, cs, payload)
+	case opRequestGetSignList:
+		return s.handleGetSignList(log, cs, payload)
+	case opRequestSummonSign:
+		return s.handleSummonSign(log, cs, payload)
+	case opRequestRejectSign:
+		return s.handleRejectSign(log, cs, payload)
+
 	case opRequestUpdatePlayerStatus:
 		return s.handleUpdatePlayerStatus(log, cs, payload)
 	case opRequestUpdatePlayerCharacter:

@@ -56,6 +56,7 @@ type Service struct {
 	store       *store.Store
 	ghosts      *ghostStore
 	bloodstains *bloodstainStore
+	signs       *signStore
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -86,6 +87,7 @@ func New(srv *core.Server, st *store.Store) *Service {
 		store:       st,
 		ghosts:      newGhostStore(),
 		bloodstains: newBloodstainStore(),
+		signs:       newSignStore(),
 	}
 }
 
@@ -273,18 +275,30 @@ func (s *Service) pumpOnce() {
 		if now.Sub(cs.lastSeen) > sessionIdle {
 			s.srv.Logger.Info("game session idle, dropping", "service", "game", "peer", key,
 				"token", hex.EncodeToString(cs.token[:]))
-			delete(s.sessions, key)
+			s.dropSession(key, cs)
 			continue
 		}
 		if err := cs.sess.Pump(); err != nil {
 			s.srv.Logger.Warn("game: session pump failed", "service", "game", "peer", key, "err", err)
-			delete(s.sessions, key)
+			s.dropSession(key, cs)
 			continue
 		}
 		if st := cs.sess.State(); st == rudp.StateClosed {
 			s.srv.Logger.Info("game session closed", "service", "game", "peer", key)
-			delete(s.sessions, key)
+			s.dropSession(key, cs)
 		}
+	}
+}
+
+// dropSession removes a session and cleans up anything that referenced it.
+//
+// A departing host's summon signs must go with them: otherwise the sign lingers
+// in other players' worlds and summoning it fails in a way that looks like a
+// server bug rather than a player who logged off. Caller holds s.mu.
+func (s *Service) dropSession(key string, cs *clientSession) {
+	delete(s.sessions, key)
+	if cs.playerID != 0 {
+		s.dropSignsForPlayer(s.srv.Logger, cs.playerID)
 	}
 }
 
