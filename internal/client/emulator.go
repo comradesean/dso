@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/sstreight/dso/internal/crypto/frpgcipher"
@@ -87,11 +89,14 @@ func (c Config) login(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var resp sharedpb.RequestQueryLoginServerInfoResponse
-	if err := proto.Unmarshal(reply.Payload, &resp); err != nil {
+	// The PS3 client parses this reply as all-varint fields with no string; see
+	// internal/server/login/serverinfo.go for the disassembly evidence. Decode
+	// the same way so this emulator exercises the real wire format.
+	ip, port, err := parseServerInfoPS3(reply.Payload)
+	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s:%d", resp.GetServerIp(), resp.GetPort()), nil
+	return net.JoinHostPort(ip.String(), strconv.Itoa(int(port))), nil
 }
 
 // auth performs the four-step auth handshake.
@@ -171,7 +176,7 @@ func (c Config) auth(ctx context.Context, addr string) (AuthResult, error) {
 	}
 	gameKey := keyReply.Payload
 
-	// Step 4: ticket — send [gameKey(16) | ticket], receive the 184-byte info.
+	// Step 4: ticket — send [gameKey(16) | ticket], receive the 56-byte info.
 	index++
 	ticketMsg := make([]byte, 0, 16+len(c.Ticket))
 	ticketMsg = append(ticketMsg, gameKey...)
@@ -209,4 +214,39 @@ func parseGameServerInfo(buf, gameKey []byte) (AuthResult, error) {
 func dial(ctx context.Context, addr string, timeout time.Duration) (net.Conn, error) {
 	d := net.Dialer{Timeout: timeout}
 	return d.DialContext(ctx, "tcp", addr)
+}
+
+// parseServerInfoPS3 decodes the login reply's varint form: field 1 is the auth
+// port, field 2 the address packed as (a<<24)|(b<<16)|(c<<8)|d.
+func parseServerInfoPS3(b []byte) (netip.Addr, uint16, error) {
+	var port uint16
+	var ip uint32
+	var seen int
+	for len(b) > 0 {
+		num, typ, n := protowire.ConsumeTag(b)
+		if n < 0 {
+			return netip.Addr{}, 0, fmt.Errorf("login reply: bad tag")
+		}
+		b = b[n:]
+		if typ != protowire.VarintType {
+			return netip.Addr{}, 0, fmt.Errorf("login reply: field %d wiretype %d, want varint", num, typ)
+		}
+		v, n := protowire.ConsumeVarint(b)
+		if n < 0 {
+			return netip.Addr{}, 0, fmt.Errorf("login reply: bad varint for field %d", num)
+		}
+		b = b[n:]
+		switch num {
+		case 1:
+			port = uint16(v)
+			seen |= 1
+		case 2:
+			ip = uint32(v)
+			seen |= 2
+		}
+	}
+	if seen != 3 {
+		return netip.Addr{}, 0, fmt.Errorf("login reply: missing port or address")
+	}
+	return netip.AddrFrom4([4]byte{byte(ip >> 24), byte(ip >> 16), byte(ip >> 8), byte(ip)}), port, nil
 }

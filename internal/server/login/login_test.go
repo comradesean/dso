@@ -98,17 +98,18 @@ func TestLoginCheckpoint1(t *testing.T) {
 	if reply.Index != 42 {
 		t.Errorf("reply index = %d, want 42", reply.Index)
 	}
-	var resp sharedpb.RequestQueryLoginServerInfoResponse
-	if err := proto.Unmarshal(reply.Payload, &resp); err != nil {
+	// PS3 sends all-varint fields, not the schema's string; see serverinfo.go.
+	gotIP, gotPort, err := decodeServerInfoPS3(reply.Payload)
+	if err != nil {
 		t.Fatal(err)
 	}
 	// The client dials from 127.0.0.1 (loopback => private), so it must get the
 	// private advertise address.
-	if resp.GetServerIp() != "192.168.1.50" {
-		t.Errorf("server_ip = %q, want private address 192.168.1.50", resp.GetServerIp())
+	if gotIP.String() != "192.168.1.50" {
+		t.Errorf("server_ip = %q, want private address 192.168.1.50", gotIP)
 	}
-	if resp.GetPort() != 50000 {
-		t.Errorf("port = %d, want 50000", resp.GetPort())
+	if gotPort != 50000 {
+		t.Errorf("port = %d, want 50000", gotPort)
 	}
-	t.Logf("CP1 ok: directed to auth server %s:%d", resp.GetServerIp(), resp.GetPort())
+	t.Logf("CP1 ok: directed to auth server %s:%d", gotIP, gotPort)
 }

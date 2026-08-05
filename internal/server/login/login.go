@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/sstreight/dso/internal/config"
 	"github.com/sstreight/dso/internal/crypto/frpgcipher"
 	"github.com/sstreight/dso/internal/frpg/message"
 	"github.com/sstreight/dso/internal/netdebug"
@@ -105,13 +106,21 @@ func (s *Service) handle(ctx context.Context, conn net.Conn) {
 			serverIP = s.srv.AdvertisedAddressFor(peer)
 		}
 
-		resp := &sharedpb.RequestQueryLoginServerInfoResponse{
-			ServerIp: proto.String(serverIP),
-			Port:     proto.Int64(int64(s.srv.Config.AuthPort)),
+		// The PS3 client parses this message with all-varint fields and no
+		// string; see encodeServerInfoPS3 for the evidence. PC keeps the
+		// schema's string form.
+		var body []byte
+		if s.srv.Config.Platform == config.PlatformPS3 {
+			body, err = encodeServerInfoPS3(serverIP, uint16(s.srv.Config.AuthPort))
+		} else {
+			resp := &sharedpb.RequestQueryLoginServerInfoResponse{
+				ServerIp: proto.String(serverIP),
+				Port:     proto.Int64(int64(s.srv.Config.AuthPort)),
+			}
+			body, err = proto.Marshal(resp)
 		}
-		body, err := proto.Marshal(resp)
 		if err != nil {
-			log.Error("failed to marshal login response", "err", err)
+			log.Error("failed to build login response", "err", err)
 			return
 		}
 		if err := stream.Send(message.Message{Type: message.Reply, Index: msg.Index, Payload: body}); err != nil {
