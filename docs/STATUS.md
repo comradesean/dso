@@ -7,8 +7,9 @@ Complements `RECOVERED_PLAN.md`, which is the original plan and is now partly ov
 
 **Two real Dark Souls 2 PS3 clients on separate machines play together against this server.**
 
-They see each other's blood messages, rate them and receive live notifications, and
-summon signs broker successfully host-to-summoner.
+They see each other's blood messages, rate them and receive live notifications, summon
+signs broker host-to-summoner, and **invasions work end to end** — one player invaded
+the other successfully.
 
 Login, the four-stage auth handshake, and the reliable-UDP game session all work end to end
 against retail hardware under RPCS3. That clears **M1** and its stretch goal **CP4** as defined
@@ -31,12 +32,14 @@ stretch.
 | Bloodstains (3 opcodes) | Working | In-game, memory-only |
 | Ghosts (create, list) | Working | In-game, memory-only |
 | Summon signs (6 opcodes) | Working | Brokering confirmed host↔summoner |
+| Invasions (3 opcodes + relay) | Working | A real invasion completed between two clients |
+| Client-to-client relay (`0x0320`) | Working | Carries the host's "allow" back to the invader |
 | Persistence (SQLite) | Working | Blood messages survive restart |
 | Player status / character uploads | Recorded | Accepted; nothing consumes them yet |
 
 ## Not built
 
-Invasions (BreakIn), visitors, quick match, ranking, telemetry, Mirror Knight.
+Visitors, quick match, ranking, telemetry, Mirror Knight.
 
 Player ids and character ids are still per-run and in memory, which is the same id-reuse hazard
 described below waiting to happen once anything caches them.
@@ -83,9 +86,13 @@ port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
   identity in the first protobuf field — is **correct on PS3**, proven by a rating notification
   arriving live and by summon brokering working. Decompilation could not settle this; only a
   live test could.
-- **Push alias blocks are unmapped.** BreakIn registers 16 handlers for 4 message types,
-  Visitor 9 for 3, QuickMatch 8 for 4. Which alias means which is unknown; static analysis
-  cannot separate them. One live invasion capture would resolve all sixteen.
+- **Push alias blocks are PARTLY mapped.** BreakIn registers 16 handlers for 4 message types,
+  Visitor 9 for 3, QuickMatch 8 for 4, and static analysis cannot separate them. A live
+  invasion confirmed **`0x03B9` is the BreakIn-target push** (group 3 of the four registration
+  groups), so the guess was right first time. The other three BreakIn groups —
+  reject/allow/remove — remain unassigned, as do all the Visitor and QuickMatch aliases.
+  `pushBreakInRejected` assumes the next alias in sequence and is **unverified**; a declined
+  invasion may not notify the invader.
 - **Four opcodes are unidentified**: `0x0387`, `0x0388`, `0x038A`, `0x0390`.
 - **The UDP `msg_index` byte order** looks big-endian where TCP is little-endian. It round-trips
   correctly because the server echoes the same bytes, so it is cosmetic — until something
@@ -110,9 +117,10 @@ have this protection.**
 
 ## Suggested next steps
 
-1. Invasions (BreakIn). The blocker is that the client registers **sixteen** push aliases at
-   `0x03B9`–`0x03C8` for four message types, and static analysis cannot say which is which. One
-   live invasion capture resolves all sixteen at once.
-2. Visitors and quick match, which follow the same brokering shape as signs.
+1. Verify a *declined* invasion, which is the one BreakIn path still resting on an unverified
+   alias guess.
+2. Visitors and quick match, which follow the same brokering shape as signs and invasions. Their
+   push aliases are unmapped, but the invasion result suggests the lowest value in each
+   registration group is a reasonable first guess.
 3. Persist players and characters, both for continuity and to close the id-reuse hazard.
 4. Consume the player status blob, which is what every matchmaking filter needs.
