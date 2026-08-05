@@ -1,15 +1,36 @@
 Version: 1.2
 
-PPU-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:
-  "dso login key redirect":
+PPU-efd8e00902c586ebf88f5c97dcbdfe27bdce3bcc:
+
+  "dso key A @0x17FB338 (ds3os/PC login key)":
     Games:
       "DARK SOULS II":
         BLUS41045: [ All ]
     Author: "dso"
     Patch Version: "1.0"
     Notes: |
-      Replaces the login server RSA public key at 0x189AB48 with the dso server's
-      public key so the client's login/auth handshake targets this server.
-      Our PEM is 426 bytes; original field is 426 bytes.
+      Replaces ONLY the RSA public key at vaddr 0x17FB338 (file 0x17EB338).
+      2048-bit, e=3, modulus xSeDuBTm3Ayt... This is byte-identical to the key
+      ds3os searches for and overwrites on PC DS2, i.e. their login key.
+      Field is 426 bytes; our PEM is exactly 426, so it is a byte-for-byte swap.
+      NOTE: enabling this alone appeared to break the calibration step, which
+      suggests this key is also used to verify the calibration/regulation blob.
     Patch:
-      - [ bytes, 0x189AB48, "2d2d2d2d2d424547494e20525341205055424c4943204b45592d2d2d2d2d0a4d49494243414b434151454130586e74794b6a4d537337746f41326d6236785272354278494936364c7472774477624e723462576b314a4648357870726948760a6738307374756f2b37557172364837536257667856574d39644c5a36344c7236595a584a55496258522f3963393253496367452b744f6f33533174704577494c0a58576d6f69696a4a2f75774f6e30636f484b70325133574854577744684c315458694132325445546c6936583371644d576c73635a6d52484f726578417a66370a696d4757455455627171644e642f4e75705374354f67506d6752564a4b5258526d576a56495a664966756171416e55444a613030476e58426672436f452f422b0a76536941524c315966662f7977376b733172684270566645464c5630516e53546a44567376343134336e5052376e67624c4d4564686273493738727342414c4d0a56675062334c7a787a4d572f705349566357595a382b73626a57704b6e3076377351494241773d3d0a2d2d2d2d2d454e4420525341205055424c4943204b45592d2d2d2d2d0a" ]
+      - [ utf8, 0x17FB338, "-----BEGIN RSA PUBLIC KEY-----\nMIIBCAKCAQEA0XntyKjMSs7toA2mb6xRr5BxII66LtrwDwbNr4bWk1JFH5xpriHv\ng80stuo+7Uqr6H7SbWfxVWM9dLZ64Lr6YZXJUIbXR/9c92SIcgE+tOo3S1tpEwIL\nXWmoiijJ/uwOn0coHKp2Q3WHTWwDhL1TXiA22TETli6X3qdMWlscZmRHOrexAzf7\nimGWETUbqqdNd/NupSt5OgPmgRVJKRXRmWjVIZfIfuaqAnUDJa00GnXBfrCoE/B+\nvSiARL1Yff/yw7ks1rhBpVfEFLV0QnSTjDVsv4143nPR7ngbLMEdhbsI78rsBALM\nVgPb3LzxzMW/pSIVcWYZ8+sbjWpKn0v7sQIBAw==\n-----END RSA PUBLIC KEY-----\n" ]
+
+  "dso key B @0x189AB48":
+    Games:
+      "DARK SOULS II":
+        BLUS41045: [ All ]
+    Author: "dso"
+    Patch Version: "1.0"
+    Notes: |
+      Replaces ONLY the RSA public key at vaddr 0x189AB48 (file 0x188AB48).
+      2048-bit, e=3, modulus luKyYootlsum... A different key from the one at
+      0x17FB338 - not a duplicate.
+      Field is 426 bytes; our PEM is exactly 426, so it is a byte-for-byte swap.
+      NOTE: with only this enabled the game still reached the login service, but
+      the 256-byte RSA block did not decrypt with our private key - so this is
+      probably NOT the login key.
+    Patch:
+      - [ utf8, 0x189AB48, "-----BEGIN RSA PUBLIC KEY-----\nMIIBCAKCAQEA0XntyKjMSs7toA2mb6xRr5BxII66LtrwDwbNr4bWk1JFH5xpriHv\ng80stuo+7Uqr6H7SbWfxVWM9dLZ64Lr6YZXJUIbXR/9c92SIcgE+tOo3S1tpEwIL\nXWmoiijJ/uwOn0coHKp2Q3WHTWwDhL1TXiA22TETli6X3qdMWlscZmRHOrexAzf7\nimGWETUbqqdNd/NupSt5OgPmgRVJKRXRmWjVIZfIfuaqAnUDJa00GnXBfrCoE/B+\nvSiARL1Yff/yw7ks1rhBpVfEFLV0QnSTjDVsv4143nPR7ngbLMEdhbsI78rsBALM\nVgPb3LzxzMW/pSIVcWYZ8+sbjWpKn0v7sQIBAw==\n-----END RSA PUBLIC KEY-----\n" ]
