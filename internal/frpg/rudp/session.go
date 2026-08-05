@@ -40,8 +40,6 @@ func (s State) String() string {
 // Protocol constants (from the reference Frpg2ReliableUdpPacketStream).
 const (
 	maxAckValue        = 4096
-	maxAckTopQuart     = (maxAckValue / 4) * 3
-	maxAckBottomQuart  = (maxAckValue / 4) * 1
 	maxPacketsInFlight = 32
 
 	retransmitInterval      = 1000 * time.Millisecond
@@ -335,9 +333,7 @@ func (s *Session) handleDAT(p packet) {
 // handleAckLike updates the highest acknowledged local sequence, with the
 // reference's crude 12-bit overflow handling.
 func (s *Session) handleAckLike(inRemoteAck uint32) {
-	if s.sequenceIndexAcked > maxAckTopQuart && inRemoteAck < maxAckBottomQuart {
-		s.sequenceIndexAcked = inRemoteAck
-	} else if inRemoteAck > s.sequenceIndexAcked {
+	if seqNewer(inRemoteAck, s.sequenceIndexAcked) {
 		s.sequenceIndexAcked = inRemoteAck
 	}
 }
@@ -418,9 +414,7 @@ func (s *Session) handleOutgoing() {
 	// Trim acknowledged packets from the retransmit buffer.
 	kept := s.retransmitBuf[:0]
 	for _, op := range s.retransmitBuf {
-		local := op.pkt.local
-		acked := (local > maxAckTopQuart && s.sequenceIndexAcked < maxAckBottomQuart) || local <= s.sequenceIndexAcked
-		if !acked {
+		if !seqAtOrBefore(op.pkt.local, s.sequenceIndexAcked) {
 			kept = append(kept, op)
 		}
 	}
@@ -440,8 +434,7 @@ func (s *Session) handleOutgoing() {
 			}
 		}
 	} else {
-		recovered := (s.retransmitIndex > maxAckTopQuart && s.sequenceIndexAcked < maxAckBottomQuart) || s.sequenceIndexAcked >= s.retransmitIndex
-		if recovered {
+		if seqAtOrBefore(s.retransmitIndex, s.sequenceIndexAcked) {
 			s.isRetransmit = false
 		} else if now.Sub(s.retransmitTimer) > retransmitCycleInterval {
 			s.retransmitTimer = now

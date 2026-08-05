@@ -297,6 +297,18 @@ func (s *Service) pumpOnce() {
 	defer s.mu.Unlock()
 	now := time.Now()
 	for key, cs := range s.sessions {
+		// Keep the auth token alive for as long as its session is.
+		//
+		// The registry's short TTL exists to bound the gap between auth and first
+		// connect; it is not meant to expire a token someone is actively playing
+		// on. Once a session exists nothing looks the token up again, so it used
+		// to expire 30s in — harmless while the session held, but fatal the
+		// moment the session dropped for any reason. The client would reconnect,
+		// find its token gone, and be stuck on "unknown or expired auth token"
+		// until it backed out to the menu and re-authenticated. A recoverable
+		// network blip became a hard kick.
+		s.srv.Tokens.Lookup(cs.token)
+
 		if now.Sub(cs.lastSeen) > sessionIdle {
 			s.srv.Logger.Info("game session idle, dropping", "service", "game", "peer", key,
 				"token", hex.EncodeToString(cs.token[:]))

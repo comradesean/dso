@@ -161,6 +161,33 @@ selection is not in the regulation. Candidates are all server-side: an event fla
 unimplemented opcode (`RequestNotifyRingBell` `0x03EE` is suggestively named), or the
 `PlayerInfoUploadConfigPushMessage` push `0x038C` that we never send.
 
+## The random-disconnect bug, and what it really was
+
+Sessions were dying mid-fight with `rudp: connection died (max retransmits)` while the client was
+still actively sending messages seconds earlier. Two independent faults, both now fixed.
+
+**1. The ack comparison had a hole at the sequence wrap.** Sequence numbers are 12 bits and wrap
+at 4096; the comparison special-cased a wrap only when the current ack sat in the top quarter:
+
+```go
+if acked > topQuarter && incoming < bottomQuarter { accept }
+else if incoming > acked { accept }
+```
+
+If a single ack was lost near the boundary — acked stuck at, say, 3000, next observed ack 5 —
+*neither arm fired*. The ack was discarded, every packet then looked unacknowledged, and the
+session died on max retransmits about 32 seconds later (160 attempts × 200ms, not the 160s the
+constant name suggests). With 4096 sequence numbers and fragmented 1.5 KB ghost uploads, wraps are
+frequent, which is why this looked random. Replaced with ordinary modular comparison —
+`internal/frpg/rudp/sequence.go`, with wrap tests.
+
+**2. A dropped session was unrecoverable.** Auth tokens have a 30-second TTL refreshed on lookup,
+but an established session never looks its token up again — so the token expired 30s in. Harmless
+while the session held; fatal once it dropped, because the reconnecting client found its token
+gone and sat on `unknown or expired auth token` until it backed out and re-authenticated. The
+pump now refreshes the token for every live session, so a token lives exactly as long as its
+session.
+
 ## Open questions
 
 - **~~Push transport~~ RESOLVED.** The PC model — opcode `0x0320`, `msg_index 0xFFFFFFFF`,
