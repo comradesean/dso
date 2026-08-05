@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"google.golang.org/protobuf/proto"
@@ -18,13 +19,34 @@ const (
 	opRequestGetGhostDataList uint32 = 0x03B2
 )
 
+// firstGhostID keeps ghost ids clear of low numbers, for the same reason message
+// and sign ids do: the client caches by server-assigned id, and ghosts are
+// memory-only so numbering would otherwise restart at 1 on every server restart
+// and hand a fresh recording an id a client already believes it has.
+const firstGhostID = 100000
+
+// maxGhostsPerArea bounds how many recordings are kept for one area.
+//
+// Ghosts are transient by nature and the store was previously unbounded, so a
+// long session accumulated thousands and a listing returned an arbitrary handful
+// of mostly-stale ones. Keeping a recent window is both closer to the intent and
+// what makes a listing useful.
+const maxGhostsPerArea = 64
+
 // ghost is one recorded replay. data is the game's own opaque encoding of the
 // movement recording; the server stores and echoes it without interpreting it.
 type ghost struct {
-	id     uint32
-	areaID uint32
-	cellID uint32
-	data   []byte
+	id uint32
+	// ownerID is who recorded it. Needed so a player is not shown their own
+	// ghosts: they are the one thing guaranteed to tell them nothing, and with
+	// few players online they crowd out everyone else's.
+	ownerID uint32
+	areaID  uint32
+	cellID  uint32
+	data    []byte
+	// seq orders recordings so a listing can prefer recent ones rather than
+	// whatever Go's randomised map iteration happens to yield.
+	seq uint64
 }
 
 // ghostStore holds ghosts in memory.
@@ -34,39 +56,67 @@ type ghost struct {
 type ghostStore struct {
 	mu     sync.Mutex
 	nextID uint32
+	seq    uint64
 	byID   map[uint32]*ghost
 }
 
 func newGhostStore() *ghostStore {
-	return &ghostStore{byID: make(map[uint32]*ghost)}
+	return &ghostStore{nextID: firstGhostID - 1, byID: make(map[uint32]*ghost)}
 }
 
 func (s *ghostStore) add(g *ghost) uint32 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nextID++
+	s.seq++
 	g.id = s.nextID
+	g.seq = s.seq
 	s.byID[g.id] = g
+	s.evictLocked(g.areaID)
 	return g.id
+}
+
+// evictLocked drops the oldest recordings once an area exceeds its window.
+func (s *ghostStore) evictLocked(areaID uint32) {
+	var inArea []*ghost
+	for _, g := range s.byID {
+		if g.areaID == areaID {
+			inArea = append(inArea, g)
+		}
+	}
+	if len(inArea) <= maxGhostsPerArea {
+		return
+	}
+	sort.Slice(inArea, func(i, j int) bool { return inArea[i].seq < inArea[j].seq })
+	for _, g := range inArea[:len(inArea)-maxGhostsPerArea] {
+		delete(s.byID, g.id)
+	}
 }
 
 // inCells returns up to limit ghosts in the area, restricted to the requested
 // cells. An empty cells map means any cell in the area.
-func (s *ghostStore) inCells(areaID uint32, cells map[uint32]bool, limit int) []*ghost {
+// inCells returns up to limit ghosts in the area, restricted to the requested
+// cells and excluding the viewer's own. An empty cells map means any cell.
+//
+// Newest first. Map iteration in Go is randomised, so taking the first `limit`
+// hits previously returned an arbitrary sample of the whole store — which, with
+// few players and no eviction, was mostly the viewer's own stale recordings.
+func (s *ghostStore) inCells(areaID uint32, cells map[uint32]bool, excludePlayer uint32, limit int) []*ghost {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []*ghost
 	for _, g := range s.byID {
-		if g.areaID != areaID {
+		if g.areaID != areaID || g.ownerID == excludePlayer {
 			continue
 		}
 		if len(cells) > 0 && !cells[g.cellID] {
 			continue
 		}
 		out = append(out, g)
-		if limit > 0 && len(out) >= limit {
-			break
-		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].seq > out[j].seq })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
 	}
 	return out
 }
@@ -78,9 +128,10 @@ func (s *Service) handleCreateGhostData(log logger, cs *clientSession, payload [
 	}
 
 	g := &ghost{
-		areaID: req.GetOnlineAreaId(),
-		cellID: req.GetCellId(),
-		data:   append([]byte(nil), req.GetData()...),
+		ownerID: cs.playerID,
+		areaID:  req.GetOnlineAreaId(),
+		cellID:  req.GetCellId(),
+		data:    append([]byte(nil), req.GetData()...),
 	}
 	id := s.ghosts.add(g)
 
@@ -103,7 +154,7 @@ func (s *Service) handleGetGhostDataList(log logger, cs *clientSession, payload 
 	for _, a := range req.GetSearchAreas() {
 		cells[a.GetCellId()] = true
 	}
-	found := s.ghosts.inCells(req.GetOnlineAreaId(), cells, int(req.GetMaxGhosts()))
+	found := s.ghosts.inCells(req.GetOnlineAreaId(), cells, cs.playerID, int(req.GetMaxGhosts()))
 
 	items := make([]*ds2pb.GhostData, 0, len(found))
 	for _, g := range found {
