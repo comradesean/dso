@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"encoding/hex"
 	"io"
 	"log/slog"
@@ -11,7 +12,24 @@ import (
 	"github.com/sstreight/dso/internal/config"
 	"github.com/sstreight/dso/internal/proto/ds2pb"
 	"github.com/sstreight/dso/internal/server/core"
+	"github.com/sstreight/dso/internal/server/store"
 )
+
+// bootService builds a service with a real store. Login now allocates a
+// persisted player id, so a storeless Service cannot get through it.
+func bootService(t *testing.T) (*Service, logger) {
+	t.Helper()
+	st, err := store.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return &Service{
+		srv:   &core.Server{Config: config.Default(), Logger: log},
+		store: st,
+	}, log
+}
 
 // capturedWaitForUserLogin is the real payload a Dark Souls 2 PS3 client
 // (BLUS41045) sent as its first game-service message on 2026-08-05, immediately
@@ -33,8 +51,7 @@ func TestHandleWaitForUserLoginFromCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := &Service{srv: &core.Server{Config: config.Default(), Logger: log}}
+	svc, log := bootService(t)
 	cs := &clientSession{}
 
 	reply, err := svc.handleWaitForUserLogin(log, cs, payload)
@@ -63,30 +80,72 @@ func TestHandleWaitForUserLoginFromCapture(t *testing.T) {
 
 // TestPlayerIDsAreDistinct guards against every client being handed the same id,
 // which would silently break anything keyed by player.
-func TestPlayerIDsAreDistinct(t *testing.T) {
+// TestPlayerIDIsStablePerAccount replaces an earlier test that asserted repeated
+// logins get *distinct* ids. That was right when ids were a per-run counter and
+// is wrong now: player ids appear in blood messages, signs and the leaderboard,
+// and other clients cache them, so the same account must keep the same id.
+func TestPlayerIDIsStablePerAccount(t *testing.T) {
 	payload, err := hex.DecodeString(capturedWaitForUserLogin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := &Service{srv: &core.Server{Config: config.Default(), Logger: log}}
+	svc, log := bootService(t)
 
-	seen := map[uint32]bool{}
+	var first uint32
 	for i := 0; i < 5; i++ {
 		cs := &clientSession{}
 		if _, err := svc.handleWaitForUserLogin(log, cs, payload); err != nil {
 			t.Fatal(err)
 		}
-		if seen[cs.playerID] {
-			t.Fatalf("player id %d handed out twice", cs.playerID)
+		if i == 0 {
+			first = cs.playerID
+			if first < 100000 {
+				t.Errorf("player id %d is below the reserved floor; clients cache "+
+					"these across sessions and low ids collide with earlier runs", first)
+			}
+			continue
 		}
-		seen[cs.playerID] = true
+		if cs.playerID != first {
+			t.Fatalf("login %d gave player id %d, want the stable %d for the same account",
+				i, cs.playerID, first)
+		}
+	}
+}
+
+// TestDifferentAccountsGetDifferentIDs is the other half: stability must not
+// collapse two accounts onto one id.
+func TestDifferentAccountsGetDifferentIDs(t *testing.T) {
+	svc, log := bootService(t)
+
+	id := func(account string) uint32 {
+		raw, err := proto.Marshal(&ds2pb.RequestWaitForUserLogin{
+			PsnId:     proto.String(account),
+			Unknown_1: proto.Uint32(2),
+			Unknown_2: proto.Uint32(0),
+			Unknown_3: proto.Uint32(1),
+			Unknown_4: proto.Uint32(2),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		cs := &clientSession{}
+		if _, err := svc.handleWaitForUserLogin(log, cs, raw); err != nil {
+			t.Fatal(err)
+		}
+		return cs.playerID
+	}
+
+	a, b := id("comradesean"), id("mgnomad2")
+	if a == b {
+		t.Fatalf("two accounts share player id %d", a)
+	}
+	if again := id("comradesean"); again != a {
+		t.Errorf("first account's id changed from %d to %d", a, again)
 	}
 }
 
 func TestHandleWaitForUserLoginRejectsGarbage(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := &Service{srv: &core.Server{Config: config.Default(), Logger: log}}
+	svc, log := bootService(t)
 
 	// Missing the required psn_id field.
 	empty, err := proto.Marshal(&ds2pb.RequestWaitForUserLogin{})

@@ -4,7 +4,7 @@ Computed from `docs/protocol-map-ps3.md` (decompilation-derived, authoritative f
 against what `internal/server/game/` actually dispatches or sends. Not from the PC map, and not
 from `ref/ds3os` — both describe messages this client does not contain.
 
-**57 opcodes are dispatched or emitted.** What follows is everything else, by category.
+**59 opcodes are dispatched or emitted.** What follows is everything else, by category.
 
 A note on counting: three subsystems register many more push opcodes than they have message
 types (BreakIn 16 for 4, Visitor 9 for 3, QuickMatch 8 for 4). Those extra values are *aliases of
@@ -13,7 +13,7 @@ from real gaps.
 
 ---
 
-## A. Real features not built — 8 opcodes
+## A. Real features not built — 6 opcodes
 
 ### A1. Quick match — 6 request/response + 8 push aliases
 
@@ -38,20 +38,11 @@ Reference: ds3os `DS2_QuickMatchManager`, 12 handlers / 382 lines.
 All four implemented in `internal/server/game/ranking.go`, persisted in `power_stone_rankings`.
 Ranks derived on read; `offset` is 1-based; submissions are increments and are bounded.
 
-### A3. Player-character reads — 2 request/response
+### ~~A3. Player-character reads + persistence~~ — DONE (2026-08-05)
 
-| Opcode | Message | Summary |
-|---|---|---|
-| `0x03A9` | `RequestGetPlayerCharacter` | Fetch one character's public data |
-| `0x03B5` | `RequestGetPlayerCharacterList` | Fetch several |
-
-We already *accept* `RequestUpdatePlayerCharacter` (`0x03A8`) and `RequestUpdatePlayerStatus`
-(`0x03B8`) and discard both, so the write side exists and the read side has nothing to read.
-
-**Blocked on persistence, and that is the real work.** Player and character ids are still
-per-run and in memory. The moment another client caches a character id, the id-reuse hazard
-becomes live — the same class of bug that once made a fresh blood message show as already-rated.
-Persist players and characters with never-reused ids first; the two handlers are trivial after.
+Both implemented, and players/characters/status are now persisted. Player ids are stable per PSN
+account across restarts; characters are keyed `(player_id, character_id)` because `character_id`
+is the client's local slot number.
 
 Note the PC map is wrong here: it puts `RequestGetPlayerCharacterList` at `0x03A1`, which on PS3
 is `RequestGetMirrorKnightSignList`.
@@ -130,5 +121,8 @@ also asserts every dispatched opcode appears as present in the PS3 map.
    matchmaking filters too, since nothing currently consumes the status blob.
 2. **Quick match** — needs the match-session concept, which would also let
    `PushRequestRemoveVisitor` be sent properly.
-3. **Verify the unverified push ids** with live tests: a declined invasion, and a visit. Both are
+2. **Verify the unverified push ids** with live tests: a declined invasion, and a visit. Both are
    minutes of testing and would retire real ambiguity.
+3. **Consume the status blob** for matchmaking filters — soul memory, area and covenant all
+   arrive in it and are now persisted, but nothing reads them, so every listing still offers
+   every online player.

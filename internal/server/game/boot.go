@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
@@ -19,13 +20,6 @@ const (
 	opRequestWaitForUserLogin       uint32 = 0x0386
 	opRequestGetAnnounceMessageList uint32 = 0x03EC
 )
-
-// nextPlayerID hands out player ids. Ids are per-run and not persisted; a store
-// lands with the rest of the player-data work.
-func (s *Service) nextPlayerID() uint32 {
-	s.playerSeq++
-	return s.playerSeq
-}
 
 // handleMessage dispatches one decoded game message.
 //
@@ -169,6 +163,10 @@ func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payloa
 
 	case opRequestGetLoginPlayerCharacter:
 		return s.handleGetLoginPlayerCharacter(log, cs, payload)
+	case opRequestGetPlayerCharacter:
+		return s.handleGetPlayerCharacter(log, cs, payload)
+	case opRequestGetPlayerCharacterList:
+		return s.handleGetPlayerCharacterList(log, cs, payload)
 
 	case opServerPing:
 		return s.handleServerPing(log, cs, payload)
@@ -247,7 +245,15 @@ func (s *Service) handleWaitForUserLogin(log logger, cs *clientSession, payload 
 	}
 
 	cs.accountID = accountID
-	cs.playerID = s.nextPlayerID()
+	// Persisted and stable: the same PSN account always gets the same player id.
+	// Player ids appear in blood messages, signs and the leaderboard, and other
+	// clients cache them — a per-run id would make all of that point at the wrong
+	// person after a restart.
+	playerID, err := s.store.PlayerID(context.Background(), accountID)
+	if err != nil {
+		return nil, err
+	}
+	cs.playerID = playerID
 
 	log.Info("player logged in to game service",
 		"account_id", accountID, "player_id", cs.playerID,

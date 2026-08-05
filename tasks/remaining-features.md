@@ -8,7 +8,7 @@ Derived from `docs/protocol-map-ps3.md` (decompilation-derived, authoritative fo
 cross-referenced against `ref/ds3os`, and against what `internal/server/game/boot.go` actually
 dispatches.
 
-**57 of 95 live opcodes are implemented.** Everything below is present in the retail client and
+**59 of 95 live opcodes are implemented.** Everything below is present in the retail client and
 currently unanswered. An unanswered request/response opcode is not harmless: the client retries
 silently and **will not open other online UI while one is outstanding**, which is how several
 "broken menu" symptoms were eventually explained.
@@ -56,19 +56,29 @@ client-supplied counts.
 candidate for the event-item chest trigger (see `tasks/calibration-reverse-engineering.md`).
 Log its full payload before deciding what it does.
 
-## 3. Player characters  — needed before anything reads other players
+## 3. ~~Player characters + persistence~~ — DONE (2026-08-05)
 
 | Opcode | Message | Kind |
 |---|---|---|
 | `0x03A9` | `RequestGetPlayerCharacter` | R/R |
 | `0x03B5` | `RequestGetPlayerCharacterList` | R/R |
 
-We already accept `RequestUpdatePlayerCharacter` (`0x03A8`) and `RequestUpdatePlayerStatus`
-(`0x03B8`) and discard both. ds3os's `DS2_PlayerDataManager` (10 handlers) is the reference.
+Players and characters are now persisted, and **player ids are stable per PSN account** across
+restarts. That retires the id-reuse hazard for players: ids are `AUTOINCREMENT` from 100000, so
+they are never reused even after deletes, and the same account always resolves to the same id.
 
-**Blocked on persistence.** Players and characters are still per-run and in memory, and the
-id-reuse hazard documented in `docs/STATUS.md` becomes real the moment another client caches a
-character id. Persist these first.
+`character_id` is the **client's local slot number**, not a global id — every player has a
+character 1 — so characters are keyed `(player_id, character_id)`. Finding that also fixed a live
+bug in the leaderboard, which had been keyed on `character_id` alone and would have merged every
+player's first character into one board entry.
+
+Slot allocation now consults the store as well as the ids the client volunteers: the client only
+knows its own local slots, so allocating from that alone could hand back an id already recorded
+for this player and silently merge two characters.
+
+`RequestGetPlayerCharacterList`'s response message has no fields at all, so an empty reply is the
+complete answer. Its request shape reads more like an update than a query and is logged in full
+pending a capture.
 
 ## 4. ~~Visitors~~ — DONE (2026-08-05), push ids UNVERIFIED
 

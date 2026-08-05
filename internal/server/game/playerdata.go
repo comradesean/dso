@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
@@ -19,13 +20,13 @@ const (
 // play as. This is the "Initializing online mode..." step.
 //
 // The client sends character_id = 0 to mean "allocate one for me", along with the
-// ids it already holds locally. We pick the lowest positive id it is not already
-// using. A non-zero id means the client is re-asserting a slot it already has, so
-// it is echoed back unchanged.
+// ids it already holds locally. We pick the lowest positive id that neither the
+// client nor the store already has. A non-zero id means the client is
+// re-asserting a slot it already has, so it is echoed back unchanged.
 //
-// Ids are per-session and not persisted; once there is a store, allocation must
-// also avoid ids already recorded for this account rather than only the ones the
-// client volunteers.
+// Consulting the store matters: the client only volunteers the slots it knows
+// about, so allocating from that alone would hand out an id already recorded for
+// this player on another console and silently merge two characters.
 func (s *Service) handleUpdateLoginPlayerCharacter(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestUpdateLoginPlayerCharacter
 	if err := proto.Unmarshal(payload, &req); err != nil {
@@ -34,7 +35,11 @@ func (s *Service) handleUpdateLoginPlayerCharacter(log logger, cs *clientSession
 
 	characterID := req.GetCharacterId()
 	if characterID == 0 {
-		characterID = lowestFreeCharacterID(req.GetLocalCharacterIds())
+		known, err := s.store.CharacterIDs(context.Background(), cs.playerID)
+		if err != nil {
+			return nil, err
+		}
+		characterID = lowestFreeCharacterID(append(known, req.GetLocalCharacterIds()...))
 		log.Info("allocated character id",
 			"player_id", cs.playerID, "character_id", characterID,
 			"local_character_ids", req.GetLocalCharacterIds())
@@ -80,12 +85,19 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 		return nil, fmt.Errorf("parse RequestUpdatePlayerStatus: %w", err)
 	}
 	cs.status = append(cs.status[:0], req.GetStatus()...)
+	if cs.characterID != 0 {
+		if err := s.store.SaveCharacterStatus(context.Background(),
+			cs.playerID, cs.characterID, req.GetStatus()); err != nil {
+			return nil, err
+		}
+	}
 	log.Debug("player status updated",
-		"player_id", cs.playerID, "status_bytes", len(cs.status))
+		"player_id", cs.playerID, "character_id", cs.characterID,
+		"status_bytes", len(cs.status))
 	return nil, nil
 }
 
-// handleUpdatePlayerCharacter records the opaque character save blob.
+// handleUpdatePlayerCharacter persists the opaque character save blob.
 //
 // Stored verbatim and never interpreted, as the reference does. Returns no reply
 // for the same reason as handleUpdatePlayerStatus.
@@ -93,6 +105,10 @@ func (s *Service) handleUpdatePlayerCharacter(log logger, cs *clientSession, pay
 	var req ds2pb.RequestUpdatePlayerCharacter
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestUpdatePlayerCharacter: %w", err)
+	}
+	if err := s.store.SaveCharacterData(context.Background(),
+		cs.playerID, req.GetCharacterId(), req.GetCharacterData()); err != nil {
+		return nil, err
 	}
 	log.Debug("player character updated",
 		"player_id", cs.playerID, "character_id", req.GetCharacterId(),
@@ -104,20 +120,86 @@ func (s *Service) handleUpdatePlayerCharacter(log logger, cs *clientSession, pay
 const opRequestGetLoginPlayerCharacter uint32 = 0x03B3
 
 // handleGetLoginPlayerCharacter returns a player's current character blob.
-//
-// Character data is not persisted yet, so this replies with the requested ids and
-// an empty blob rather than staying silent: an unanswered request/response stalls
-// whatever UI is waiting on it, which is worse than an empty answer.
 func (s *Service) handleGetLoginPlayerCharacter(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestGetLoginPlayerCharacter
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestGetLoginPlayerCharacter: %w", err)
 	}
+	targetID := uint32(req.GetPlayerId())
+	characterID := cs.characterID
+	data := []byte{}
+
+	// The blob belongs to whichever player was asked about, which is not always
+	// the caller — the client asks about others too.
+	if c, ok, err := s.store.GetCharacter(context.Background(), targetID, characterID); err != nil {
+		return nil, err
+	} else if ok {
+		data = c.Data
+	}
+
 	log.Debug("login player character requested",
-		"player_id", cs.playerID, "for_player_id", req.GetPlayerId())
+		"player_id", cs.playerID, "for_player_id", targetID,
+		"character_id", characterID, "data_bytes", len(data))
 	return proto.Marshal(&ds2pb.RequestGetLoginPlayerCharacterResponse{
 		PlayerId:      proto.Int64(req.GetPlayerId()),
-		CharacterId:   proto.Uint32(cs.characterID),
-		CharacterData: []byte{},
+		CharacterId:   proto.Uint32(characterID),
+		CharacterData: data,
 	})
+}
+
+// Character reads. Both are request/response and were going unanswered.
+const (
+	opRequestGetPlayerCharacter     uint32 = 0x03A9
+	opRequestGetPlayerCharacterList uint32 = 0x03B5
+)
+
+// handleGetPlayerCharacter returns one character's saved blob.
+//
+// All three response fields are `required`, so a character we have never seen
+// still gets a complete reply with an empty blob rather than silence — an
+// unanswered request/response stalls whatever UI is waiting on it, and the client
+// will not open other online UI while one is outstanding.
+func (s *Service) handleGetPlayerCharacter(log logger, cs *clientSession, payload []byte) ([]byte, error) {
+	var req ds2pb.RequestGetPlayerCharacter
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		return nil, fmt.Errorf("parse RequestGetPlayerCharacter: %w", err)
+	}
+
+	data := []byte{}
+	c, ok, err := s.store.GetCharacter(context.Background(), req.GetPlayerId(), req.GetCharacterId())
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		data = c.Data
+	}
+
+	log.Debug("player character requested",
+		"by_player_id", cs.playerID, "for_player_id", req.GetPlayerId(),
+		"character_id", req.GetCharacterId(), "found", ok, "data_bytes", len(data))
+
+	return proto.Marshal(&ds2pb.RequestGetPlayerCharacterResponse{
+		PlayerId:      proto.Uint32(req.GetPlayerId()),
+		CharacterId:   proto.Uint32(req.GetCharacterId()),
+		CharacterData: data,
+	})
+}
+
+// handleGetPlayerCharacterList answers the character-list request.
+//
+// Its response message is defined with NO fields at all, so an empty reply is the
+// complete answer. The request's own shape (player_id, character_id, and a
+// character_data blob) reads more like an update than a query, and the field is
+// even misspelled `charatcer_id` in the schema — but with nothing to return, none
+// of that changes what we send. Logged in full so a capture can settle what the
+// client actually means by it.
+func (s *Service) handleGetPlayerCharacterList(log logger, cs *clientSession, payload []byte) ([]byte, error) {
+	var req ds2pb.RequestGetPlayerCharacterList
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		return nil, fmt.Errorf("parse RequestGetPlayerCharacterList: %w", err)
+	}
+	log.Info("player character list requested",
+		"by_player_id", cs.playerID, "for_player_id", req.GetPlayerId(),
+		"character_id", req.GetCharatcerId(), "data_bytes", len(req.GetCharacterData()))
+	return proto.Marshal(&ds2pb.RequestGetPlayerCharacterListResponse{})
 }

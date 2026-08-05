@@ -59,12 +59,11 @@ func clampScore(v int64) uint32 {
 
 // handleRegisterPowerStoneData records a score submission.
 //
-// NOTE ON IDENTITY: the board is keyed by character_id, which is what the
-// protocol dictates — RequestGetPowerStoneMyRanking looks up by character alone.
-// Character ids are currently per-run and in memory, so a reused id would inherit
-// a previous character's score. That is the id-reuse hazard in docs/STATUS.md,
-// and persisting characters with never-reused ids is the fix; until then a
-// server restart can mis-attribute a board entry.
+// The board is keyed by (player_id, character_id). RequestGetPowerStoneMyRanking
+// names only a character, but character_id is the client's local slot number —
+// every player has a character 1 — so the caller's player id supplies the rest of
+// the key, which is what the reference does too. Keying on character_id alone
+// would merge every player's first character into one board entry.
 func (s *Service) handleRegisterPowerStoneData(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestRegisterPowerStoneData
 	if err := proto.Unmarshal(payload, &req); err != nil {
@@ -79,7 +78,7 @@ func (s *Service) handleRegisterPowerStoneData(log logger, cs *clientSession, pa
 	}
 
 	total, err := s.store.AddPowerStoneScore(context.Background(),
-		req.GetCharacterId(), cs.playerID, inc, req.GetData())
+		cs.playerID, req.GetCharacterId(), inc, req.GetData())
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +133,10 @@ func (s *Service) handleGetPowerStoneMyRanking(log logger, cs *clientSession, pa
 		return nil, fmt.Errorf("parse RequestGetPowerStoneMyRanking: %w", err)
 	}
 
-	r, found, err := s.store.PowerStoneRankingFor(context.Background(), req.GetCharacterId())
+	// Keyed by the caller's player id as well as the character: character_id is
+	// the client's local slot number, so every player has a character 1.
+	r, found, err := s.store.PowerStoneRankingFor(context.Background(),
+		cs.playerID, req.GetCharacterId())
 	if err != nil {
 		return nil, err
 	}

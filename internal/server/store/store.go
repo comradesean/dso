@@ -14,6 +14,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -71,6 +72,10 @@ func (s *Store) Close() error { return s.db.Close() }
 // clients already remember.
 const firstMessageID = 100000
 
+// firstPlayerID keeps player ids clear of low numbers, for the same reason
+// message ids start high: clients cache state keyed by server-assigned id.
+const firstPlayerID = 100000
+
 // migrate creates the schema. Safe to run on every start.
 func (s *Store) migrate(ctx context.Context) error {
 	const schema = `
@@ -98,18 +103,47 @@ CREATE TABLE IF NOT EXISTS counters (
     value INTEGER NOT NULL DEFAULT 0
 );
 
--- Power-stone leaderboard. One row per character; the client submits score
--- increments and an opaque blob it renders itself.
+-- Players, keyed by the PSN account id the client logs in with.
+--
+-- The point of persisting these is a STABLE player id: the same account gets the
+-- same id across restarts, so anything another client cached about it stays
+-- valid. Ids are AUTOINCREMENT so they are never reused even after deletes, and
+-- start high for the same reason message ids do.
+CREATE TABLE IF NOT EXISTS players (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT    NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    last_seen  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+-- Characters. character_id is the CLIENT'S local slot number (1, 2, 3...), not a
+-- global id, so it is only meaningful alongside its player — hence the composite
+-- key. Every protocol message that names a character names its player too.
+CREATE TABLE IF NOT EXISTS characters (
+    player_id    INTEGER NOT NULL,
+    character_id INTEGER NOT NULL,
+    data         BLOB    NOT NULL DEFAULT x'',
+    status       BLOB    NOT NULL DEFAULT x'',
+    updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (player_id, character_id)
+);
+
+-- Power-stone leaderboard, one row per character.
+--
+-- Keyed by (player_id, character_id) for the reason above: character_id alone is
+-- a per-player slot, so keying on it would merge every player's character 1 into
+-- a single board entry.
 --
 -- Ranks are NOT stored. They are derived on read, so they cannot go stale
 -- against the scores they describe — the reference keeps them as columns and has
 -- to maintain them.
 CREATE TABLE IF NOT EXISTS power_stone_rankings (
-    character_id INTEGER PRIMARY KEY,
     player_id    INTEGER NOT NULL,
+    character_id INTEGER NOT NULL,
     score        INTEGER NOT NULL DEFAULT 0,
     data         BLOB    NOT NULL,
-    updated_at   INTEGER NOT NULL DEFAULT (unixepoch())
+    updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (player_id, character_id)
 );
 CREATE INDEX IF NOT EXISTS idx_power_stone_score
     ON power_stone_rankings(score DESC);
@@ -131,6 +165,62 @@ CREATE INDEX IF NOT EXISTS idx_power_stone_score
 		`UPDATE sqlite_sequence SET seq = ? WHERE name = 'blood_messages' AND seq < ?`,
 		firstMessageID-1, firstMessageID-1); err != nil {
 		return fmt.Errorf("store: raise message id sequence: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO sqlite_sequence(name, seq) SELECT 'players', ?
+		   WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'players')`,
+		firstPlayerID-1); err != nil {
+		return fmt.Errorf("store: seed player id sequence: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sqlite_sequence SET seq = ? WHERE name = 'players' AND seq < ?`,
+		firstPlayerID-1, firstPlayerID-1); err != nil {
+		return fmt.Errorf("store: raise player id sequence: %w", err)
+	}
+	return s.migratePowerStoneKey(ctx)
+}
+
+// migratePowerStoneKey rebuilds the leaderboard if it still carries the original
+// character_id-only primary key.
+//
+// That key was wrong: character_id is the client's local slot number, so every
+// player has a character 1 and they all collided onto one row. CREATE TABLE IF
+// NOT EXISTS cannot fix an existing table, and inserts against the old shape fail
+// outright once the code expects a composite key — so the table is rebuilt,
+// carrying its rows across rather than dropping them.
+func (s *Store) migratePowerStoneKey(ctx context.Context) error {
+	var ddl string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'power_stone_rankings'`).
+		Scan(&ddl)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("store: inspect power_stone_rankings: %w", err)
+	}
+	if !strings.Contains(ddl, "character_id INTEGER PRIMARY KEY") {
+		return nil
+	}
+
+	// The index belongs to the old table and goes with it, so it is recreated.
+	const rebuild = `
+ALTER TABLE power_stone_rankings RENAME TO power_stone_rankings_old;
+CREATE TABLE power_stone_rankings (
+    player_id    INTEGER NOT NULL,
+    character_id INTEGER NOT NULL,
+    score        INTEGER NOT NULL DEFAULT 0,
+    data         BLOB    NOT NULL,
+    updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (player_id, character_id)
+);
+INSERT INTO power_stone_rankings(player_id, character_id, score, data, updated_at)
+    SELECT player_id, character_id, score, data, updated_at FROM power_stone_rankings_old;
+DROP TABLE power_stone_rankings_old;
+CREATE INDEX IF NOT EXISTS idx_power_stone_score ON power_stone_rankings(score DESC);
+`
+	if _, err := s.db.ExecContext(ctx, rebuild); err != nil {
+		return fmt.Errorf("store: rebuild power_stone_rankings key: %w", err)
 	}
 	return nil
 }
@@ -296,25 +386,24 @@ type PowerStoneRanking struct {
 // Rank deliberately orders by score alone so ties genuinely tie.
 const rankingSelect = `
 SELECT character_id, player_id, score, data,
-       ROW_NUMBER() OVER (ORDER BY score DESC, character_id ASC) AS serial_rank,
-       RANK()       OVER (ORDER BY score DESC)                   AS rank
+       ROW_NUMBER() OVER (ORDER BY score DESC, player_id ASC, character_id ASC) AS serial_rank,
+       RANK()       OVER (ORDER BY score DESC)                                  AS rank
   FROM power_stone_rankings`
 
 // AddPowerStoneScore applies a score increment for a character and returns the
 // new total. The blob is replaced wholesale — it is the client's own rendering of
 // the entry and only the latest matters.
-func (s *Store) AddPowerStoneScore(ctx context.Context, characterID, playerID uint32, increment int64, data []byte) (int64, error) {
+func (s *Store) AddPowerStoneScore(ctx context.Context, playerID, characterID uint32, increment int64, data []byte) (int64, error) {
 	var score int64
 	err := s.db.QueryRowContext(ctx,
-		`INSERT INTO power_stone_rankings(character_id, player_id, score, data)
+		`INSERT INTO power_stone_rankings(player_id, character_id, score, data)
 		   VALUES(?, ?, ?, ?)
-		 ON CONFLICT(character_id) DO UPDATE SET
+		 ON CONFLICT(player_id, character_id) DO UPDATE SET
 		   score      = score + excluded.score,
-		   player_id  = excluded.player_id,
 		   data       = excluded.data,
 		   updated_at = unixepoch()
 		 RETURNING score`,
-		characterID, playerID, increment, data).Scan(&score)
+		playerID, characterID, increment, data).Scan(&score)
 	if err != nil {
 		return 0, fmt.Errorf("store: add power stone score for character %d: %w", characterID, err)
 	}
@@ -346,19 +435,21 @@ func (s *Store) PowerStoneRankings(ctx context.Context, offset, count uint32) ([
 }
 
 // PowerStoneRankingFor returns one character's entry, or false if it has none.
-func (s *Store) PowerStoneRankingFor(ctx context.Context, characterID uint32) (*PowerStoneRanking, bool, error) {
+func (s *Store) PowerStoneRankingFor(ctx context.Context, playerID, characterID uint32) (*PowerStoneRanking, bool, error) {
 	// The ranks come from the window over the whole board, so the filter has to
 	// be applied outside it — filtering first would rank the character against
 	// itself and always return 1.
 	row := s.db.QueryRowContext(ctx,
 		`SELECT character_id, player_id, score, data, serial_rank, rank
-		   FROM (`+rankingSelect+`) WHERE character_id = ?`, characterID)
+		   FROM (`+rankingSelect+`) WHERE player_id = ? AND character_id = ?`,
+		playerID, characterID)
 	r, err := scanRanking(row)
 	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("store: get power stone ranking %d: %w", characterID, err)
+		return nil, false, fmt.Errorf("store: get power stone ranking %d/%d: %w",
+			playerID, characterID, err)
 	}
 	return r, true, nil
 }
@@ -380,4 +471,98 @@ func scanRanking(sc scanner) (*PowerStoneRanking, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// Character is one persisted character slot.
+type Character struct {
+	PlayerID    uint32
+	CharacterID uint32
+	Data        []byte
+	Status      []byte
+}
+
+// PlayerID returns the stable id for an account, creating it on first sight.
+//
+// The same PSN account always gets the same id, which is the whole point: player
+// ids appear in blood messages, signs and the leaderboard, and other clients
+// cache them. Handing an account a new id every restart would make all of that
+// stale state point at the wrong person.
+func (s *Store) PlayerID(ctx context.Context, accountID string) (uint32, error) {
+	if accountID == "" {
+		return 0, fmt.Errorf("store: player id for empty account")
+	}
+	// ON CONFLICT DO UPDATE rather than DO NOTHING: an unchanged row still needs
+	// to RETURN its id, and DO NOTHING returns no row at all.
+	var id uint32
+	err := s.db.QueryRowContext(ctx,
+		`INSERT INTO players(account_id) VALUES(?)
+		   ON CONFLICT(account_id) DO UPDATE SET last_seen = unixepoch()
+		 RETURNING id`, accountID).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("store: player id for %q: %w", accountID, err)
+	}
+	return id, nil
+}
+
+// SaveCharacterData records a character's opaque save blob, leaving its status
+// untouched. The two arrive on different opcodes at different rates.
+func (s *Store) SaveCharacterData(ctx context.Context, playerID, characterID uint32, data []byte) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO characters(player_id, character_id, data) VALUES(?, ?, ?)
+		   ON CONFLICT(player_id, character_id) DO UPDATE SET
+		     data = excluded.data, updated_at = unixepoch()`,
+		playerID, characterID, data)
+	if err != nil {
+		return fmt.Errorf("store: save character %d/%d: %w", playerID, characterID, err)
+	}
+	return nil
+}
+
+// SaveCharacterStatus records the periodic status blob that drives matchmaking.
+func (s *Store) SaveCharacterStatus(ctx context.Context, playerID, characterID uint32, status []byte) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO characters(player_id, character_id, status) VALUES(?, ?, ?)
+		   ON CONFLICT(player_id, character_id) DO UPDATE SET
+		     status = excluded.status, updated_at = unixepoch()`,
+		playerID, characterID, status)
+	if err != nil {
+		return fmt.Errorf("store: save status %d/%d: %w", playerID, characterID, err)
+	}
+	return nil
+}
+
+// GetCharacter returns one character, or false if the player has no such slot.
+func (s *Store) GetCharacter(ctx context.Context, playerID, characterID uint32) (*Character, bool, error) {
+	var c Character
+	err := s.db.QueryRowContext(ctx,
+		`SELECT player_id, character_id, data, status FROM characters
+		   WHERE player_id = ? AND character_id = ?`, playerID, characterID).
+		Scan(&c.PlayerID, &c.CharacterID, &c.Data, &c.Status)
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("store: get character %d/%d: %w", playerID, characterID, err)
+	}
+	return &c, true, nil
+}
+
+// CharacterIDs returns every slot a player has, ascending.
+func (s *Store) CharacterIDs(ctx context.Context, playerID uint32) ([]uint32, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT character_id FROM characters WHERE player_id = ? ORDER BY character_id`, playerID)
+	if err != nil {
+		return nil, fmt.Errorf("store: list characters for %d: %w", playerID, err)
+	}
+	defer rows.Close()
+
+	var out []uint32
+	for rows.Next() {
+		var id uint32
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("store: scan character id: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

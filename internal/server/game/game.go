@@ -44,11 +44,10 @@ const (
 type Service struct {
 	srv *core.Server
 
-	mu        sync.Mutex
-	sessions  map[string]*clientSession // keyed by remote address
-	playerSeq uint32                    // hands out player ids
+	mu       sync.Mutex
+	sessions map[string]*clientSession // keyed by remote address
 
-	// store persists blood messages. Ghosts and bloodstains stay in memory: they
+	// store persists blood messages, players, characters and the leaderboard. Ghosts and bloodstains stay in memory: they
 	// are high-volume and disposable, and the reference keeps them memory-only by
 	// default too. Each has its own lock, so none of these may be touched while
 	// holding s.mu... except the store, whose calls are short and serialized by
