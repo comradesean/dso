@@ -38,7 +38,7 @@ stretch.
 | World death counter (4 opcodes) | **Working** | Counts live in-game; persists across restarts |
 | Management text push (`0x0389`) | **Working** | Renders as the post-login banner, upper left |
 | HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
-| Mirror Knight (7 opcodes) | Implemented | Unit-tested; needs two clients at King's Passage |
+| Mirror Knight (7 opcodes) | **Working** | Confirmed live: a real squire was summoned and returned |
 | Visitors (3 opcodes) | Implemented | Unit-tested; **push ids unverified** |
 | Duelling arenas (6 opcodes) | Implemented | Unit-tested; push ids well-evidenced |
 | Champion's Tablet ranking (4 opcodes) | Implemented | Unit-tested; persisted |
@@ -111,9 +111,15 @@ all in this client.
 message is unanswered; it silently retries instead. The Message menu appeared broken purely
 because an unanswered `RequestCreateGhostData` was outstanding.
 
-**A server restart invalidates every auth token.** The registry is in-memory, so a client mid-session
-will spin on `unknown or expired auth token`. Back out to the menu and re-enter online mode
-rather than retrying in place.
+**A server restart invalidates every auth token.** The registry is in-memory, so a client
+mid-session will spin on `unknown or expired auth token`. Back out to the menu and re-enter
+online mode rather than retrying in place.
+
+This is worse than an inconvenience during testing: it drops **both** clients at once, and from
+the game it looks like a crash in whatever feature happened to be running. It cost a false bug
+report against Mirror Knight — the summon had worked perfectly two minutes earlier and a deploy
+landed underneath the players. **Use `./restart.sh`**, which refuses to restart while any client
+has been active in the last 90 seconds (`--force` to override, `--check` to just look).
 
 **Run the server from WSL, not Windows.** Windows cannot bind TCP on the LAN address for any
 port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.

@@ -41,7 +41,7 @@ func (s *Service) handleNotifyJoinSession(log logger, cs *clientSession, payload
 		return nil, fmt.Errorf("parse RequestNotifyJoinSession: %w", err)
 	}
 	log.Info("session joined", "player_id", cs.playerID,
-		"field_1", req.GetField_1(), "field_2", req.GetField_2(),
+		"peer_player_id", req.GetField_1(), "session_kind", req.GetField_2(),
 		"field_3", req.GetField_3(), "field_4", req.GetField_4())
 	return nil, nil
 }
@@ -53,7 +53,7 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 		return nil, fmt.Errorf("parse RequestNotifyLeaveSession: %w", err)
 	}
 	log.Info("session left", "player_id", cs.playerID,
-		"field_1", req.GetField_1(), "field_2", req.GetField_2(),
+		"peer_player_id", req.GetField_1(), "session_kind", req.GetField_2(),
 		"field_3", req.GetField_3(), "field_4", req.GetField_4())
 	return nil, nil
 }
@@ -61,16 +61,24 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 // handleNotifyJoinGuestPlayer records a guest (summon or invader) arriving in the
 // sender's world.
 //
-// field_9 is an opaque blob and field_7 looks like an area id, but neither is
-// confirmed; both are logged rather than interpreted so a capture can settle it.
+// Two fields were decoded from live captures on 2026-08-05, by comparing this
+// message against RequestNotifyJoinSession sent by the other party for the same
+// event — the two are symmetric:
+//
+//	field_1  the PEER's player id (the guest here, the host in JoinSession)
+//	field_7  the online area id, confirmed by matching the sign's own area
+//	field_2  the session kind: 5 for an ordinary summon sign, 9 for a Mirror
+//	         Knight squire. Other values not yet observed.
+//
+// field_9 remains an opaque blob and is logged by length only.
 func (s *Service) handleNotifyJoinGuestPlayer(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestNotifyJoinGuestPlayer
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestNotifyJoinGuestPlayer: %w", err)
 	}
 	log.Info("guest player joined", "host_player_id", cs.playerID,
-		"field_1", req.GetField_1(), "field_2", req.GetField_2(),
-		"maybe_area_id", req.GetField_7(), "blob_bytes", len(req.GetField_9()))
+		"guest_player_id", req.GetField_1(), "session_kind", req.GetField_2(),
+		"area_id", req.GetField_7(), "blob_bytes", len(req.GetField_9()))
 	return nil, nil
 }
 
@@ -81,7 +89,7 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 		return nil, fmt.Errorf("parse RequestNotifyLeaveGuestPlayer: %w", err)
 	}
 	log.Info("guest player left", "host_player_id", cs.playerID,
-		"field_1", req.GetField_1(), "field_2", req.GetField_2())
+		"guest_player_id", req.GetField_1(), "session_kind", req.GetField_2())
 	return nil, nil
 }
 
