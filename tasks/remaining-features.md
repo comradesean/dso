@@ -4,7 +4,7 @@ Derived from `docs/protocol-map-ps3.md` (decompilation-derived, authoritative fo
 cross-referenced against `ref/ds3os`, and against what `internal/server/game/boot.go` actually
 dispatches.
 
-**33 of 95 live opcodes are implemented.** Everything below is present in the retail client and
+**53 of 95 live opcodes are implemented.** Everything below is present in the retail client and
 currently unanswered. An unanswered request/response opcode is not harmless: the client retries
 silently and **will not open other online UI while one is outstanding**, which is how several
 "broken menu" symptoms were eventually explained.
@@ -22,9 +22,13 @@ Ordering below is roughly by value-for-effort.
 | `0x038F` | `RequestMeasureDownloadBandwidth` | R/R |
 | `0x03B7` | `RequestBenchmarkThroughput` | R/R |
 
-ds3os answers the bandwidth pair with a fixed-size payload and treats ping as a liveness echo.
-Worth doing first: tiny, and an unanswered `ServerPing` is a plausible cause of the periodic
-disconnects that have not been investigated.
+Implemented in `internal/server/game/connection.go`. **ds3os does not implement any of these for
+DS2**, so there was no reference to copy — but all eight messages involved (request and response)
+are defined with no fields at all, so an empty reply is the complete answer rather than a stub.
+
+An unanswered `ServerPing` remains a plausible cause of the periodic disconnects that have never
+been investigated; now that it is answered, that hypothesis is testable by simply leaving a
+client connected.
 
 ## 2. ~~Telemetry notifies~~ — DONE (2026-08-05)
 
@@ -40,8 +44,9 @@ pollute the "no handler" log that is our main discovery signal.
 | `0x03F7` | `RequestNotifyBuyItem` |
 | `0x03F9` | `RequestNotifyDisconnectSession` |
 
-`RequestNotifyKillEnemy` and `RequestNotifyBuyItem` are the same shape as the death counter and
-should reuse the `counters` table.
+Implemented in `internal/server/game/telemetry.go`. `RequestNotifyKillEnemy` and
+`RequestNotifyBuyItem` feed the `counters` table alongside the death counter, reusing its clamp on
+client-supplied counts.
 
 **`RequestNotifyRingBell` (`0x03EE`) deserves attention beyond logging** — it is the best-named
 candidate for the event-item chest trigger (see `tasks/calibration-reverse-engineering.md`).

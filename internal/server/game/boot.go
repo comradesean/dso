@@ -144,6 +144,13 @@ func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payloa
 	case opRequestSendMessageToPlayers:
 		return s.handleSendMessageToPlayers(log, cs, payload)
 
+	case opRequestGetVisitorList:
+		return s.handleGetVisitorList(log, cs, payload)
+	case opRequestVisit:
+		return s.handleVisit(log, cs, payload)
+	case opRequestRejectVisit:
+		return s.handleRejectVisit(log, cs, payload)
+
 	case opRequestGetBreakInTargetList:
 		return s.handleGetBreakInTargetList(log, cs, payload)
 	case opRequestBreakInTarget:
