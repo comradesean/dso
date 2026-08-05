@@ -37,19 +37,19 @@ var managementTextTimestamp = &ds2datapb.DateTime{
 
 // sendManagementText pushes the configured server text to one client.
 //
-// This is the only free-text server->client channel in the entire DS2 game
-// protocol: across the whole schema the sole free-text string fields are
-// AnnounceMessageData's header/message and this one. Every other string is a PSN
-// id, and blood messages are word-ID templates. It is therefore the only
-// candidate for the Majula obelisk text, whose offline reading is "the letters
-// are worn beyond recognition".
+// CONFIRMED LIVE (2026-08-05): this renders as the banner in the UPPER LEFT of
+// the screen, immediately after login. It is NOT the Majula obelisk. The binary
+// could not settle this — the listener is stored at manager+72 but the code
+// installing it was never found — and only a real console answered it.
 //
-// WHERE IT RENDERS IS UNVERIFIED. The client stores a listener for this push at
-// manager+72 (zeroed in the constructor at 0x1587B08), but the code that installs
-// that listener was not found, so the binary does not tell us whether this draws
-// on the monument, in a popup, or somewhere else. The first live test settles it
-// — and if the text appears somewhere other than the obelisk, that is the answer
-// rather than a failure.
+// The obelisk turned out to be a different mechanism entirely: its text is string
+// id 100 in regulation<Language>.fmg inside the regulation archive, changed by
+// shipping a new regulation rather than by any push. See docs/STATUS.md.
+//
+// This is still the only free-text server->client channel in the DS2 protocol:
+// across the whole schema the sole free-text strings are AnnounceMessageData's
+// header/message and this one. Everything else is a PSN id, and blood messages
+// are word-ID templates.
 //
 // All five fields are genuinely required: IsInitialized at 0x162A6F8 masks the
 // has-bits with 0x1F and demands all five, and recursively validates the

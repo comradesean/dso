@@ -35,7 +35,7 @@ stretch.
 | Invasions (3 opcodes + relay) | Working | A real invasion completed between two clients |
 | Client-to-client relay (`0x0320`) | Working | Carries the host's "allow" back to the invader |
 | World death counter (4 opcodes) | Implemented | Unit-tested; not yet confirmed in-game |
-| Management text push (`0x0389`) | Implemented | Unit-tested; render surface unverified |
+| Management text push (`0x0389`) | **Working** | Renders as the post-login banner, upper left |
 | HTTP bootstrap (manifest + payload) | Working | Both files served and length-verified live |
 | Persistence (SQLite) | Working | Blood messages and counters survive restart |
 | Player status / character uploads | Recorded | Accepted; nothing consumes them yet |
@@ -97,12 +97,18 @@ port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
   `pushBreakInRejected` assumes the next alias in sequence and is **unverified**; a declined
   invasion may not notify the invader.
 - **Four opcodes are unidentified**: `0x0387`, `0x0388`, `0x038A`, `0x0390`.
-- **Where `ManagementTextMessage` renders is unknown.** Push `0x0389` is confirmed at the
-  instruction level (dispatcher `0x158C138` special-cases it by value; handler `0x1587F60` builds
-  the message), and it is the *only* free-text server->client channel in the whole protocol. But
-  the code installing its listener (stored at manager+72) was never found, so the binary does not
-  say whether it draws on the Majula obelisk, in a popup, or nowhere. A live test settles it; text
-  appearing somewhere unexpected is an answer, not a failure.
+- **~~Where `ManagementTextMessage` renders~~ RESOLVED.** Push `0x0389` draws the **banner in the
+  upper left, immediately after login** — confirmed live on 2026-08-05. It is NOT the obelisk.
+  Static analysis could not reach this: the listener sits at manager+72 but the code installing it
+  was never found. Second time a live test beat decompilation, after the push transport itself.
+- **~~The Majula obelisk~~ SOLVED, and it is not a push at all.** Its text is **string id 100 in
+  `regulation<Language>.fmg`**, one of eleven per-language files inside the regulation archive,
+  each holding exactly that one string. English reads "The letters are worn beyond recognition.";
+  every language ships its own. That explains the Portuguese release shipping a different line —
+  it is a localized game-data string, not server text. To change it the server must deliver a
+  modified regulation, which makes the `0x038B` regulation push the route to the obelisk *and*
+  to the event items. The string is byte-identical across all ten published calibrations, so
+  FromSoftware never actually used it in these payloads.
 - **The `0x038B` regulation push parses but may not apply.** Confirmed: the client special-cases
   it, constructs `RegulationFileUpdatePushMessage` and calls `ParseFromArray`. Unproven: that
   anything downstream consumes it — no param reload or file write was reached. Its
