@@ -114,9 +114,38 @@ request refused at 18:20:44 was accepted at 18:21:05, and a rat summon refused 1
 target sat at a bonfire succeeded within one poll of them walking away.
 
 **The covenant auto-summon is a client poll on a fixed ~20.5s timer.** It re-asks for as long as
-the crest is equipped, and because `handleGetVisitorList` filters on nothing we return the same
-target every time — so an ineligible target is re-offered indefinitely. A reject-cooldown on the
-`(visitor, host)` pair would cut the noise; see the matchmaking-filter gap below.
+the crest is equipped, so an ineligible target used to be re-offered indefinitely — the player saw
+"summoning failed" every twenty seconds. Fixed by matchmaking filters, below.
+
+## 4b. Matchmaking filters — DONE, awaiting live test (2026-08-05)
+
+`internal/server/game/matchmaking.go`. Target lists are no longer "every online player".
+
+The data was arriving all along: the `AllStatus` blob on the status heartbeat (`0x03B8`) is
+**ordinary protobuf, not an opaque payload** — it was simply never parsed. It carries soul memory,
+covenant, the equipped covenant seals, and `online_activity_area_id`.
+
+**`online_activity_area_id` is the field that matters.** It is 0 whenever the player is not
+somewhere the game hosts sessions — resting at a bonfire is the case we hit — and becomes the cell
+id when they are. That single field explains the rat summon that failed 15 consecutive times and
+then succeeded with no server change: the target was at a bonfire, then walked into the trap zone.
+
+**The visitor "pool" is a property of the target, and the Rat King one is inverted.** You are
+rat-summonable precisely because you are *not* a rat, which the in-game text states outright.
+Getting this backwards would break the mode entirely, so it is pinned by test.
+
+Two pieces are **not** verified against the PS3 client and are the first suspects if matching gets
+too strict:
+
+- the 44-band soul memory tier table, which is reference-derived (it is matchmaking policy the
+  client never sees, so it cannot be recovered from the binary or from two test accounts)
+- the belfry and rat cell ids
+
+Rat's tier window is authoritative, from the covenant description: **1 tier below to 3 above**.
+Others default to same-tier-only. `DSO_MATCHMAKING_FILTERS=0` disables the lot.
+
+**Not yet applied to sign lists, break-in targets or quick match** — deliberately. Those work
+today, their ranges are unknown, and a wrong filter there would break confirmed features.
 
 Historical note on how they were chosen: Nine aliases across `0x03C9`-`0x03D1` for three message
 types. We send `0x03CF`/`0x03D0`/`0x03D1`, which is better supported than a guess: the PC protos

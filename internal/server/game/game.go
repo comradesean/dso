@@ -81,9 +81,14 @@ type clientSession struct {
 	playerID  uint32
 	// characterID is the slot assigned by RequestUpdateLoginPlayerCharacter.
 	characterID uint32
-	// status is the latest opaque AllStatus blob from RequestUpdatePlayerStatus;
-	// matchmaking filters will read soul memory and area out of it.
+	// status is the latest AllStatus blob from RequestUpdatePlayerStatus, kept
+	// verbatim because we decode only a fraction of it.
 	status []byte
+	// profile is that blob reduced to the fields matchmaking needs, refreshed on
+	// every status update. Zero until the first one arrives, which is why the
+	// filters treat an unknown profile as unmatchable rather than as a wildcard:
+	// a player we know nothing about is exactly who we should not be offering.
+	profile matchProfile
 
 	// areaID is where the player currently is, learned from whichever polling
 	// request last carried an online_area_id. The status blob presumably holds it

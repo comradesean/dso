@@ -8,6 +8,25 @@ import (
 	"github.com/sstreight/dso/internal/proto/ds2pb"
 )
 
+// inBellKeeperPool makes a session a valid Bell Keeper target: the covenant, the
+// equipped seal and a belfry activity area are all required, and soul memory is
+// put in the same tier as testMatchingParameter's 100000 because the Bell Keeper
+// window is same-tier-only.
+//
+// Tests have to do this explicitly now. A session with no status blob is
+// deliberately unmatchable — we should never offer a player we know nothing
+// about — so before this existed every visitor test was passing against a list
+// that had simply not been filtered at all.
+func inBellKeeperPool(cs *clientSession) {
+	cs.profile = matchProfile{
+		received:           true,
+		covenant:           covenantBellKeepers,
+		bellKeepersSeal:    true,
+		onlineActivityArea: 101640, // Belfry Luna
+		soulMemory:         100000,
+	}
+}
+
 func visitorListRequest(t *testing.T, max int64) []byte {
 	t.Helper()
 	raw, err := proto.Marshal(&ds2pb.RequestGetVisitorList{
@@ -30,6 +49,8 @@ func visitorListRequest(t *testing.T, max int64) []byte {
 // area it asked about.
 func TestVisitorListExcludesSelfAndEchoesArea(t *testing.T) {
 	svc, log, host, summoner := signTestService(t)
+	inBellKeeperPool(host)
+	inBellKeeperPool(summoner) // eligible too, to prove self-exclusion still wins
 
 	replyRaw, err := svc.handleGetVisitorList(log, summoner, visitorListRequest(t, 5))
 	if err != nil {
@@ -60,9 +81,12 @@ func TestVisitorListExcludesSelfAndEchoesArea(t *testing.T) {
 // TestVisitorListRespectsMaxTargets — the client asks for a bounded list and a
 // server that ignores the bound can overflow it.
 func TestVisitorListRespectsMaxTargets(t *testing.T) {
-	svc, log, _, summoner := signTestService(t)
+	svc, log, host, summoner := signTestService(t)
+	inBellKeeperPool(host)
 	for i := uint32(10); i < 15; i++ {
-		svc.sessions[string(rune('a'+i))] = newTestSession("filler", i)
+		filler := newTestSession("filler", i)
+		inBellKeeperPool(filler)
+		svc.sessions[string(rune('a'+i))] = filler
 	}
 
 	replyRaw, err := svc.handleGetVisitorList(log, summoner, visitorListRequest(t, 2))

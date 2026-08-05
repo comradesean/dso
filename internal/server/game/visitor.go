@@ -102,9 +102,30 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 
 	var targets []*ds2pb.VisitorData
 	max := int(req.GetMaxTargets())
+	filtering := matchmakingEnabled()
+	window := visitorTierWindows[req.GetType()]
+	// Soul memory comes from the requester's own MatchingParameter rather than
+	// their status blob: it is `required` here, so it is always present and is
+	// the client's own view of what it is matching on.
+	hostSM := req.GetMatchingParameter().GetSoulMemory()
+
+	var skippedPool, skippedSoul int
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.playerID == cs.playerID {
 			continue
+		}
+		if filtering {
+			// The target must be standing in the pool being asked for. This is
+			// the filter that matters: it is what stops us offering someone who
+			// is at a bonfire, in the wrong area, or not carrying the seal.
+			if visitorPoolFor(other.profile) != req.GetType() {
+				skippedPool++
+				continue
+			}
+			if !soulMemoryMatches(hostSM, other.profile.soulMemory, window) {
+				skippedSoul++
+				continue
+			}
 		}
 		targets = append(targets, &ds2pb.VisitorData{
 			PlayerId:    proto.Int64(int64(other.playerID)),
@@ -115,10 +136,16 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 		}
 	}
 
+	// Returning zero is the normal, correct outcome most of the time — nobody is
+	// usually standing in a rat area — so this stays at Info with the skip
+	// reasons attached. "Returned 0 and skipped 1 for pool" is the difference
+	// between a working filter and a broken area constant.
 	log.Info("visitor target list",
 		"player_id", cs.playerID, "area_id", req.GetOnlineAreaId(),
 		"cell_id", req.GetCellId(), "type", req.GetType(),
-		"max", req.GetMaxTargets(), "returned", len(targets))
+		"max", req.GetMaxTargets(), "returned", len(targets),
+		"filtering", filtering, "host_soul_memory", hostSM,
+		"skipped_wrong_pool", skippedPool, "skipped_soul_memory", skippedSoul)
 
 	// online_area_id and cell_id are `required` in the response and are echoed
 	// back from the request — the client matches the reply to the area it asked
@@ -130,14 +157,24 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 	})
 }
 
-// handleVisit is a visitor asking to enter a host's world. The server notifies
-// the host; the two clients negotiate the session themselves from there.
+// handleVisit is a request to pull another player into the requester's world.
+// The server notifies that player; the two clients negotiate from there.
+//
+// DIRECTION, because the message name invites the opposite reading and this has
+// already caused one wrong diagnosis: the REQUESTER is the host, and the player
+// named in player_id is the guest who travels. Confirmed live on 2026-08-05 by a
+// Rat King summon, where the requester's own RequestNotifyJoinGuestPlayer
+// recorded itself as host and the named player as guest.
+//
+// It holds for Bell Keepers too, where the covenant member is the one summoned
+// away: the trespasser is the requester and the bell keeper is fetched to them.
+// So "visit" is always "bring this player to me", never "send me to them".
 func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestVisit
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestVisit: %w", err)
 	}
-	targetID := uint32(req.GetPlayerId())
+	guestID := uint32(req.GetPlayerId())
 
 	if !visitorModeInRange(req.GetType()) {
 		log.Warn("visit with a covenant outside the push-alias block; "+
@@ -145,11 +182,11 @@ func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]
 			"player_id", cs.playerID, "type", req.GetType())
 	}
 
-	target, live := s.sessionForPlayerLocked(targetID)
+	guest, live := s.sessionForPlayerLocked(guestID)
 	if !live {
-		log.Info("visit target is offline",
-			"visitor_player_id", cs.playerID, "target_player_id", targetID)
-		s.pushVisitRejected(log, cs, targetID, req.GetType())
+		log.Info("visit guest is offline",
+			"host_player_id", cs.playerID, "guest_player_id", guestID)
+		s.pushVisitRejected(log, cs, guestID, req.GetType())
 		return proto.Marshal(&ds2pb.RequestVisitResponse{})
 	}
 
@@ -165,10 +202,10 @@ func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]
 	if err != nil {
 		return nil, fmt.Errorf("build PushRequestVisit: %w", err)
 	}
-	target.conn.SendPush(body)
+	guest.conn.SendPush(body)
 
-	log.Info("pushed visit to host",
-		"visitor_player_id", cs.playerID, "target_player_id", targetID,
+	log.Info("pushed visit to guest",
+		"host_player_id", cs.playerID, "guest_player_id", guestID,
 		"type", req.GetType(),
 		"push_id", fmt.Sprintf("%#04x", visitorPushIDFor(req.GetType(), visitorRoleVisit)),
 		"payload_bytes", len(body))
@@ -176,7 +213,8 @@ func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]
 	return proto.Marshal(&ds2pb.RequestVisitResponse{})
 }
 
-// handleRejectVisit is a host declining a visitor, relayed back to them.
+// handleRejectVisit is the GUEST declining to be pulled in, relayed back to the
+// host who asked for them. See handleVisit for why that is the way round.
 //
 // The reason (unknown_2) is CLIENT-AUTHORED and 2 is the only value ever seen —
 // 54 of 55 visits in the project's history carried it. It does NOT mean the
@@ -198,32 +236,33 @@ func (s *Service) handleRejectVisit(log logger, cs *clientSession, payload []byt
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestRejectVisit: %w", err)
 	}
-	visitorID := uint32(req.GetPlayerId())
+	hostID := uint32(req.GetPlayerId())
 
-	if visitor, live := s.sessionForPlayerLocked(visitorID); live {
-		s.pushVisitRejected(log, visitor, cs.playerID, req.GetType())
+	if host, live := s.sessionForPlayerLocked(hostID); live {
+		s.pushVisitRejected(log, host, cs.playerID, req.GetType())
 	}
-	log.Info("host rejected visit",
-		"host_player_id", cs.playerID, "visitor_player_id", visitorID,
+	log.Info("guest declined visit",
+		"guest_player_id", cs.playerID, "host_player_id", hostID,
 		"reason", req.GetUnknown_2())
 	return proto.Marshal(&ds2pb.RequestRejectVisitResponse{})
 }
 
-// pushVisitRejected tells a visitor their attempt failed. Caller holds s.mu.
-func (s *Service) pushVisitRejected(log logger, visitor *clientSession, hostID uint32, vType ds2pb.VisitorType) {
+// pushVisitRejected tells the HOST that the guest they asked for is not coming.
+// It is what renders the client's "summoning failed" text. Caller holds s.mu.
+func (s *Service) pushVisitRejected(log logger, host *clientSession, guestID uint32, vType ds2pb.VisitorType) {
 	body, err := proto.Marshal(&ds2pb.PushRequestRejectVisit{
 		PushMessageId: ds2pb.PushMessageId(visitorPushIDFor(vType, visitorRoleReject)).Enum(),
-		PlayerId:      proto.Int64(int64(hostID)),
+		PlayerId:      proto.Int64(int64(guestID)),
 		Unknown_3:     proto.Int64(0),
-		PsnId:         proto.String(visitor.accountID),
+		PsnId:         proto.String(host.accountID),
 		Type:          vType.Enum(),
 	})
 	if err != nil {
 		log.Warn("failed to build PushRequestRejectVisit", "err", err)
 		return
 	}
-	visitor.conn.SendPush(body)
+	host.conn.SendPush(body)
 	log.Info("pushed visit rejection",
-		"visitor_player_id", visitor.playerID, "host_player_id", hostID,
+		"host_player_id", host.playerID, "guest_player_id", guestID,
 		"type", vType, "push_id", fmt.Sprintf("%#04x", visitorPushIDFor(vType, visitorRoleReject)))
 }

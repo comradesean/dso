@@ -72,8 +72,9 @@ func lowestFreeCharacterID(taken []uint32) uint32 {
 //
 // This is the heartbeat that drives every matchmaking filter: soul memory,
 // current area and covenant all come from here. The blob is a
-// DS2_Frpg2PlayerData.AllStatus protobuf; we keep it opaque for now and only
-// record that it arrived, since nothing consumes it until matchmaking exists.
+// DS2_Frpg2PlayerData.AllStatus protobuf — ordinary protobuf, never an opaque
+// payload; it was simply unparsed until matchmaking needed it. It is still
+// stored verbatim as well, because we decode only a fraction of it.
 //
 // Returns no reply. Decompilation shows this opcode registers no response
 // callback (docs/protocol-map-ps3.md), and a live client reached in-game with it
@@ -85,6 +86,23 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 		return nil, fmt.Errorf("parse RequestUpdatePlayerStatus: %w", err)
 	}
 	cs.status = append(cs.status[:0], req.GetStatus()...)
+
+	// Refresh the matching profile. Log at Info only when the visitor pool
+	// changes: the blob arrives constantly, but entering or leaving a pool is
+	// the event that decides whether auto-summons can find this player at all,
+	// and it is the first thing to check when one "does nothing".
+	prevPool := visitorPoolFor(cs.profile)
+	cs.profile = profileFromStatus(req.GetStatus())
+	if pool := visitorPoolFor(cs.profile); pool != prevPool {
+		log.Info("visitor pool changed",
+			"player_id", cs.playerID, "from", prevPool, "to", pool,
+			"covenant", cs.profile.covenant,
+			"activity_area", cs.profile.onlineActivityArea,
+			"soul_memory", cs.profile.soulMemory,
+			"tier", soulMemoryTier(cs.profile.soulMemory),
+			"at_bonfire", cs.profile.sittingAtBonfire)
+	}
+
 	if cs.characterID != 0 {
 		if err := s.store.SaveCharacterStatus(context.Background(),
 			cs.playerID, cs.characterID, req.GetStatus()); err != nil {
@@ -93,7 +111,7 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 	}
 	log.Debug("player status updated",
 		"player_id", cs.playerID, "character_id", cs.characterID,
-		"status_bytes", len(cs.status))
+		"status_bytes", len(cs.status), "parsed", cs.profile.received)
 	return nil, nil
 }
 
