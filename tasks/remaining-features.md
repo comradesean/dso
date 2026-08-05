@@ -119,11 +119,25 @@ the crest is equipped, so an ineligible target used to be re-offered indefinitel
 
 ## 4b. Matchmaking filters — DONE and CONFIRMED LIVE (2026-08-05)
 
-**Confirmed at Grave of Saints.** With filtering on, the target list flipped from `returned=0
-skipped_wrong_pool=1` to `returned=1` in the same poll that the prey entered the summonable zone,
-and the summon went straight to a joined session on the first attempt. **Zero rejections since the
-fix**, against 54 of 55 before it — the clearest evidence that we had been offering targets that
-were always going to refuse.
+**Confirmed at BOTH rat zones** — Grave of Saints and Doors of Pharros. With filtering on, the
+target list flipped from `returned=0 skipped_wrong_pool=1` to `returned=1` in the same poll that
+the prey entered the summonable zone, and the summon went straight to a joined session on the first
+attempt. **Zero rejections since the fix**, against 54 of 55 before it — the clearest evidence that
+we had been offering targets that were always going to refuse.
+
+Activity-area cells, both captured on the wire rather than guessed:
+
+| Zone | Activity cell | Map |
+|---|---|---|
+| Doors of Pharros | `103320` | m10_33 |
+| Grave of Saints | `103410` | m10_34 |
+
+**The reference server's label for `103410` is wrong** — it carries only that one constant and
+calls it Doors of Pharros. The value was right, so nothing broke, but the name would have sent a
+search into the wrong zone. Third confirmed place the reference is wrong for PS3.
+
+Covenant ids **5 (Rat King)** and **6 (Bell Keepers)** are likewise confirmed, read off live status
+blobs for players known to be in them. The rest of that enum is still guessed.
 
 Two behaviours worth recording, both CLIENT-side and neither ours to tune:
 
