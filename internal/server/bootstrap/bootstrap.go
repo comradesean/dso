@@ -1,12 +1,30 @@
-// Package bootstrap serves the HTTP "calibration" preflight that the Dark Souls
-// 2 PS3 client performs before it will go online. Pressing "Go Online" makes the
-// game GET http://frpg2-ps3-internal.s3-website-us-west-2.amazonaws.com/contents_0101.bin
-// (its version/regulation check); if that fails it drops to offline mode. We
-// redirect that host to this server (RPCS3 IP/Hosts switch) and answer here.
+// Package bootstrap serves the HTTP preflight that the Dark Souls 2 PS3 client
+// performs before it will go online. Pressing "Go Online" makes the game GET
+// http://frpg2-ps3-internal.s3-website-us-west-2.amazonaws.com/contents_0101.bin;
+// if that fails it drops to offline mode. We redirect that host to this server
+// (DNS, or the RPCS3 IP/Hosts switch) and answer here.
 //
-// The exact expected body is still being reverse-engineered, so this service
-// logs every request in full and serves a configurable response, letting us
-// iterate on what the client accepts.
+// contents_0101.bin is NOT a calibration blob or a server-address bootstrap. It
+// is an encrypted patch *manifest*, and it has been fully decrypted: a 256-byte
+// RSA header followed by AES-128-CBC ciphertext whose plaintext is a plain
+// key/value list naming exactly one file to download —
+//
+//	Patch.List.Count         = 1
+//	Patch.List.File0.Name    = regulation.bnd
+//	Patch.List.File0.Path    = http://<same host>/regulation_0101.bin
+//	Patch.List.File0.SizeEnc = 674992
+//	Patch.List.File0.DIGEST  = 6D817AB1...
+//
+// So a single request is never the whole story: the client follows the manifest
+// and asks us for regulation_0101.bin next. Serving one file for every path (as
+// this once did) hands the client 640 bytes where the manifest promised 674992,
+// which decrypts to garbage. Requests are therefore routed by path.
+//
+// Verified end to end: decrypting regulation_0101.bin yields a DCX whose inflated
+// BND4 HMAC-SHA1s to exactly the DIGEST above. Its 252 params include
+// ItemLotParam2_SvrEvent.param — the plausible delivery route for event items —
+// but the 2014 payload is byte-identical to the on-disc regulation apart from a
+// single version byte, so in practice it only rotates a version stamp.
 package bootstrap
 
 import (
@@ -15,6 +33,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sstreight/dso/internal/server/core"
@@ -78,22 +99,58 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Info("bootstrap request", headers...)
 
-	// If a contents file is configured, serve it for the calibration path.
-	if s.srv.Config.BootstrapContentsFile != "" {
-		if data, err := os.ReadFile(s.srv.Config.BootstrapContentsFile); err == nil {
+	if filePath, ok := s.resolve(r.URL.Path); ok {
+		if data, err := os.ReadFile(filePath); err == nil {
 			w.Header().Set("Content-Type", "application/octet-stream")
-			w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+			// The client checks SizeEnc against the manifest, so the length must be
+			// the file's own. Report the file's real mtime rather than now: the real
+			// origin serves 2014 dates and these payloads genuinely never change.
+			if fi, err := os.Stat(filePath); err == nil {
+				w.Header().Set("Last-Modified", fi.ModTime().UTC().Format(http.TimeFormat))
+			}
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(data)
-			log.Info("served contents file", "bytes", len(data))
+			log.Info("served bootstrap file", "path", filePath, "bytes", len(data))
 			return
 		} else {
-			log.Warn("could not read configured contents file", "err", err)
+			log.Warn("could not read bootstrap file", "path", filePath, "err", err)
 		}
 	}
 
-	// Default: an empty 200. We iterate on this based on how the client reacts.
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.WriteHeader(http.StatusOK)
-	log.Info("served empty 200")
+	// 404 rather than an empty 200 or the wrong file. A wrong-length body is worse
+	// than no body: the client validates it against the manifest's SizeEnc and
+	// DIGEST, so serving something plausible-but-wrong produces a decrypt failure
+	// that looks nothing like a missing file.
+	http.NotFound(w, r)
+	log.Warn("no bootstrap file for request", "url", r.URL.Path)
+}
+
+// resolve maps a request path to a file on disk.
+//
+// Files live alongside the configured contents file, so pointing
+// DSO_BOOTSTRAP_CONTENTS_FILE at data/contents_0101.bin also serves
+// data/regulation_0101.bin — which the client asks for immediately afterwards,
+// having read its name out of the manifest.
+func (s *Service) resolve(urlPath string) (string, bool) {
+	configured := s.srv.Config.BootstrapContentsFile
+	if configured == "" {
+		return "", false
+	}
+
+	name := path.Base(urlPath)
+	// path.Base cannot escape the directory, but be explicit: only plain names.
+	if name == "" || name == "." || name == "/" || strings.ContainsAny(name, `/\`) {
+		return "", false
+	}
+	// The manifest fetch itself keeps working even if the deployed file has been
+	// renamed, since that is the path the EBOOT hardcodes.
+	if name == path.Base(filepath.ToSlash(configured)) {
+		return configured, true
+	}
+
+	candidate := filepath.Join(filepath.Dir(configured), name)
+	if _, err := os.Stat(candidate); err != nil {
+		return "", false
+	}
+	return candidate, true
 }
