@@ -108,6 +108,14 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 // event-chest trigger, which was the last reason to care about it. It remains
 // logged in full because nothing has ever been seen sending it, and the payload
 // would be the only evidence of what it actually is.
+//
+// On the "I can hear other players ringing bells" reports, which are real and go
+// back to 2014: players hear it ONLY during an invasion. That is because a Bell
+// Keeper phantom is summoned INTO the host's world, so the bell is ordinary
+// in-world audio carried peer-to-peer with the rest of the session — not a
+// broadcast. DS1's global bell was genuine world state sent to everyone; DS2 has
+// no equivalent, and the server having no bell channel is therefore not a gap.
+// Confirmed by a player hearing it mid-invasion and at no other time.
 func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	// Not parsed: the message is a TODO in our schema, so parsing it would only
 	// assert a shape we have no evidence for. The bytes are the useful artefact.
