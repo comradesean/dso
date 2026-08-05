@@ -84,6 +84,8 @@ type Session struct {
 	retransmitTimer time.Time
 	retransmitTries int
 	rackCount       int
+	holeMisses      int
+	unknownOpcodes  int
 	retransmitPkt   packet
 
 	lastPacketReceived time.Time
@@ -282,7 +284,12 @@ func (s *Session) processPacket(p packet) {
 		s.handleSYN(p)
 	case OpSYNACK:
 		s.handleSYNACK(p)
-	case OpDAT:
+	case OpDAT, OpPTDATFRAG:
+		// PT_DAT_FRAG is "DAT, marked partial": the client's receive dispatcher
+		// indexes the same handler for base opcodes 4 and 8, differing only in a
+		// flag passed to the message-store insert. Treating it as anything else —
+		// or as an error — would kill a session over a packet the client considers
+		// ordinary.
 		s.handleDAT(p)
 	case OpHBT:
 		s.handleAckLike(p.remote)
@@ -302,22 +309,17 @@ func (s *Session) processPacket(p packet) {
 			s.state = StateEstablished
 		}
 		s.handleAckLike(p.remote)
-	case OpDATACK:
+	case OpDATACK, OpPTDATFRGACK:
 		s.handleAckLike(p.remote)
 		s.sendACK(p.local)
 		s.received = append(s.received, recvItem{data: p.payload, ackSeq: p.local})
 	case OpRACK:
-		// "Reject ACK". The reference ignores it too, with a comment saying it is
-		// "95% sure" it means the ack we sent was invalid.
-		//
-		// Ignoring it is empirically NOT harmless. In a captured failure the
-		// client sent its last real ACK, immediately followed by two RACKs, and
-		// then never acknowledged anything again — leaving our retransmit stuck
-		// and killing the session 45s later. Counted here so the next occurrence
-		// is visible rather than silent.
-		s.rackCount++
+		s.handleRACK(p)
 	default:
-		s.errState = fmt.Errorf("rudp: unknown opcode %s", p.opcode)
+		// Counted, never fatal. The client itself ignores base opcodes above 8,
+		// and killing a live session over one unexpected byte is a far worse
+		// failure than dropping the packet.
+		s.unknownOpcodes++
 	}
 }
 
@@ -339,8 +341,60 @@ func (s *Session) handleDAT(p packet) {
 	s.sendACK(p.local)
 }
 
-// handleAckLike updates the highest acknowledged local sequence, with the
-// reference's crude 12-bit overflow handling.
+// handleRACK responds to the peer's rejected-packet report.
+//
+// RACK is NOT "reject ack" as the reference guesses. It is a periodic statistics
+// report from the client's transmit pump — "I discarded N packets totalling M
+// bytes because they were out of sequence" — carrying a u32 count and u32 byte
+// total. Confirmed in the client at EBOOT 0xEA8684 (v1.10), where the pump emits
+// it whenever its rejected-bytes counter is non-zero and then zeroes both.
+//
+// It is the only NACK the protocol has, and it tells us exactly one thing: the
+// client is missing the packet after the one it last acknowledged. That matters
+// enormously, because while a gap is open the client is STRUCTURALLY UNABLE to
+// acknowledge anything further — its ack scheduler only fires when its last-sent
+// ack differs from its receive index, and the receive index cannot advance past
+// a hole. Worse, retransmitting a sequence it has already buffered is discarded
+// in silence. So ignoring RACK and retransmitting blindly is exactly how a
+// session spends its whole retransmit budget talking into a void.
+//
+// RACK also carries a valid ack. The client's encoder writes the ack counters for
+// RACK and ACK even when it has nothing new to acknowledge, and leaves them zero
+// for every other opcode — which is why a captured RACK reads their_ack=1381
+// while the DATs around it read 0.
+func (s *Session) handleRACK(p packet) {
+	s.rackCount++
+	s.handleAckLike(p.remote)
+	// Fast retransmit: send precisely the packet the peer is missing, now, rather
+	// than waiting out the retransmit timer on whatever happens to be at the head
+	// of the buffer.
+	s.retransmitHole()
+}
+
+// retransmitHole sends the one packet the peer is waiting for: the successor to
+// its last acknowledged sequence. Reports whether it found it.
+func (s *Session) retransmitHole() bool {
+	want := (s.sequenceIndexAcked + 1) % maxAckValue
+	for _, op := range s.retransmitBuf {
+		if op.pkt.local != want {
+			continue
+		}
+		s.sendRaw(op.pkt)
+		s.isRetransmit = true
+		s.retransmitIndex = op.pkt.local
+		s.retransmitPkt = op.pkt
+		s.retransmitTries = 0
+		s.retransmitTimer = s.now()
+		return true
+	}
+	// The peer wants a sequence we do not hold. That is a hole in our own
+	// numbering rather than a lost packet, and no amount of retransmitting will
+	// fix it — so it must be visible instead of silently consuming the budget.
+	s.holeMisses++
+	return false
+}
+
+// handleAckLike updates the highest acknowledged local sequence.
 func (s *Session) handleAckLike(inRemoteAck uint32) {
 	if seqNewer(inRemoteAck, s.sequenceIndexAcked) {
 		s.sequenceIndexAcked = inRemoteAck
@@ -434,12 +488,17 @@ func (s *Session) handleOutgoing() {
 		if len(s.retransmitBuf) > 0 {
 			op := s.retransmitBuf[0]
 			if now.Sub(op.sendTime) > retransmitInterval {
-				s.sendRaw(op.pkt)
-				s.isRetransmit = true
-				s.retransmitIndex = op.pkt.local
-				s.retransmitPkt = op.pkt
-				s.retransmitTries = 0
-				s.retransmitTimer = now
+				// Always retransmit the sequence the peer is actually missing.
+				// Resending anything it already holds is discarded in silence, so
+				// picking the head of the buffer is only correct by coincidence.
+				if !s.retransmitHole() {
+					s.sendRaw(op.pkt)
+					s.isRetransmit = true
+					s.retransmitIndex = op.pkt.local
+					s.retransmitPkt = op.pkt
+					s.retransmitTries = 0
+					s.retransmitTimer = now
+				}
 			}
 		}
 	} else {
@@ -488,8 +547,14 @@ type Diag struct {
 	Acked uint32
 	// Pending is how many packets are awaiting acknowledgement.
 	Pending int
-	// RACKs is how many "reject ack" packets the peer has sent.
+	// RACKs is how many rejected-packet reports the peer has sent. Each one means
+	// it discarded out-of-sequence packets and is waiting on a gap.
 	RACKs int
+	// HoleMisses counts times the peer asked for a sequence we do not hold — a
+	// hole in our own numbering rather than a lost packet.
+	HoleMisses int
+	// UnknownOpcodes counts packets we could not classify. Never fatal.
+	UnknownOpcodes int
 }
 
 // Diag returns the current transport state.
@@ -502,5 +567,7 @@ func (s *Session) Diag() Diag {
 		Acked:          s.sequenceIndexAcked,
 		Pending:        len(s.retransmitBuf),
 		RACKs:          s.rackCount,
+		HoleMisses:     s.holeMisses,
+		UnknownOpcodes: s.unknownOpcodes,
 	}
 }

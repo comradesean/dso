@@ -166,6 +166,32 @@ unimplemented opcode (`RequestNotifyRingBell` `0x03EE` is suggestively named), o
 Sessions were dying mid-fight with `rudp: connection died (max retransmits)` while the client was
 still actively sending messages seconds earlier. Two independent faults, both now fixed.
 
+**0. RACK is a NACK, and ignoring it was the main fault.** The reference calls it "Reject ACK",
+says it is "95% sure" that is what it means, and ignores it. The PS3 binary says otherwise: RACK
+is a periodic *rejected-packet statistics report* from the client's transmit pump (EBOOT
+`0xEA8684` v1.10), carrying a u32 count and u32 byte total, emitted whenever its rejected-bytes
+counter is non-zero.
+
+It is the protocol's only NACK, and the situation it reports is unrecoverable by blind
+retransmission:
+
+- The client rejects any DAT whose sequence is not exactly `RemoteSequenceIndex + 1` — a **gap**.
+- While that gap is open it is **structurally unable to acknowledge anything**: its ack scheduler
+  fires only when its last-sent ack differs from its receive index, and the receive index cannot
+  advance past a hole. That is the observed "never acknowledges again".
+- A retransmission of a sequence it has **already buffered** is discarded in total silence — no
+  ack, no RACK, no counter.
+
+So the only packet that can restart the connection is `their_ack + 1`. We were retransmitting the
+head of our buffer instead, and spending the whole 32-second budget on packets the peer threw
+away without a word. Retransmission now always targets the peer's actual hole, RACK triggers an
+immediate fast retransmit, and RACK's ack is consumed — it and ACK are the only opcodes whose ack
+counters the client populates when it has nothing new to report, which is why captured RACKs read
+`their_ack=1381` while the DATs around them read 0.
+
+Verified identical in v1.00 and v1.10 by byte-diffing the five relevant functions with the region
+deltas applied: every differing word is a TOC-relative load or a long branch, zero logic changes.
+
 **1. The ack comparison had a hole at the sequence wrap.** Sequence numbers are 12 bits and wrap
 at 4096; the comparison special-cased a wrap only when the current ack sat in the top quarter:
 

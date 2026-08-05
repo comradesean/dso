@@ -320,7 +320,8 @@ func (s *Service) pumpOnce() {
 			s.srv.Logger.Warn("game: session pump failed",
 				"service", "game", "peer", key, "err", err,
 				"stuck_seq", d.StuckSeq, "peer_acked", d.Acked,
-				"pending", d.Pending, "racks", d.RACKs)
+				"pending", d.Pending, "racks", d.RACKs,
+				"hole_misses", d.HoleMisses, "unknown_opcodes", d.UnknownOpcodes)
 			s.dropSession(key, cs)
 			continue
 		}
