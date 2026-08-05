@@ -47,9 +47,10 @@ type Service struct {
 	sessions  map[string]*clientSession // keyed by remote address
 	playerSeq uint32                    // hands out player ids
 
-	// messages holds placed blood messages. It has its own lock, so it must not
-	// be accessed while holding s.mu.
+	// messages and ghosts each have their own lock, so they must not be accessed
+	// while holding s.mu.
 	messages *bloodMessageStore
+	ghosts   *ghostStore
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -66,6 +67,9 @@ type clientSession struct {
 	playerID  uint32
 	// characterID is the slot assigned by RequestUpdateLoginPlayerCharacter.
 	characterID uint32
+	// status is the latest opaque AllStatus blob from RequestUpdatePlayerStatus;
+	// matchmaking filters will read soul memory and area out of it.
+	status []byte
 }
 
 // New creates a game service bound to the given server.
@@ -74,6 +78,7 @@ func New(srv *core.Server) *Service {
 		srv:      srv,
 		sessions: make(map[string]*clientSession),
 		messages: newBloodMessageStore(),
+		ghosts:   newGhostStore(),
 	}
 }
 

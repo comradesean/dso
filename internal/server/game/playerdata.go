@@ -9,7 +9,11 @@ import (
 )
 
 // CONFIRMED ON PS3 by live capture from a real BLUS41045 client, 2026-08-05.
-const opRequestUpdateLoginPlayerCharacter uint32 = 0x03B6
+const (
+	opRequestUpdateLoginPlayerCharacter uint32 = 0x03B6
+	opRequestUpdatePlayerStatus         uint32 = 0x03B8
+	opRequestUpdatePlayerCharacter      uint32 = 0x03A8
+)
 
 // handleUpdateLoginPlayerCharacter assigns the character slot the client will
 // play as. This is the "Initializing online mode..." step.
@@ -57,4 +61,41 @@ func lowestFreeCharacterID(taken []uint32) uint32 {
 			return id
 		}
 	}
+}
+
+// handleUpdatePlayerStatus records the periodic status blob the client uploads.
+//
+// This is the heartbeat that drives every matchmaking filter: soul memory,
+// current area and covenant all come from here. The blob is a
+// DS2_Frpg2PlayerData.AllStatus protobuf; we keep it opaque for now and only
+// record that it arrived, since nothing consumes it until matchmaking exists.
+//
+// Returns no reply. Decompilation shows this opcode registers no response
+// callback (docs/protocol-map-ps3.md), and a live client reached in-game with it
+// unanswered — so the client genuinely does not wait on one. The PC reference
+// sends an empty response, which is one of the places it differs from PS3.
+func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payload []byte) ([]byte, error) {
+	var req ds2pb.RequestUpdatePlayerStatus
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		return nil, fmt.Errorf("parse RequestUpdatePlayerStatus: %w", err)
+	}
+	cs.status = append(cs.status[:0], req.GetStatus()...)
+	log.Debug("player status updated",
+		"player_id", cs.playerID, "status_bytes", len(cs.status))
+	return nil, nil
+}
+
+// handleUpdatePlayerCharacter records the opaque character save blob.
+//
+// Stored verbatim and never interpreted, as the reference does. Returns no reply
+// for the same reason as handleUpdatePlayerStatus.
+func (s *Service) handleUpdatePlayerCharacter(log logger, cs *clientSession, payload []byte) ([]byte, error) {
+	var req ds2pb.RequestUpdatePlayerCharacter
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		return nil, fmt.Errorf("parse RequestUpdatePlayerCharacter: %w", err)
+	}
+	log.Debug("player character updated",
+		"player_id", cs.playerID, "character_id", req.GetCharacterId(),
+		"data_bytes", len(req.GetCharacterData()))
+	return nil, nil
 }

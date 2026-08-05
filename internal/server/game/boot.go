@@ -54,6 +54,16 @@ func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, p
 		return s.handleEvaluateBloodMessage(log, cs, payload)
 	case opRequestGetBloodMessageEvaluation:
 		return s.handleGetBloodMessageEvaluation(log, cs, payload)
+
+	case opRequestCreateGhostData:
+		return s.handleCreateGhostData(log, cs, payload)
+	case opRequestGetGhostDataList:
+		return s.handleGetGhostDataList(log, cs, payload)
+
+	case opRequestUpdatePlayerStatus:
+		return s.handleUpdatePlayerStatus(log, cs, payload)
+	case opRequestUpdatePlayerCharacter:
+		return s.handleUpdatePlayerCharacter(log, cs, payload)
 	default:
 		return nil, nil
 	}
