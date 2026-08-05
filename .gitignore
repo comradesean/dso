@@ -3,6 +3,14 @@
 /dist/
 *.exe
 *.out
+# Compiled binaries built in place by `go build -o <name>`
+/dsoserver
+/dsoclient
+/dsotool
+
+# Server logs and local run scripts
+*.log
+/server.bat
 
 # Runtime data (keys, config, sqlite, packet dumps)
 /data/
