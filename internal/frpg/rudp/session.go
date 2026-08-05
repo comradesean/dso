@@ -83,6 +83,7 @@ type Session struct {
 	retransmitIndex uint32
 	retransmitTimer time.Time
 	retransmitTries int
+	rackCount       int
 	retransmitPkt   packet
 
 	lastPacketReceived time.Time
@@ -306,7 +307,15 @@ func (s *Session) processPacket(p packet) {
 		s.sendACK(p.local)
 		s.received = append(s.received, recvItem{data: p.payload, ackSeq: p.local})
 	case OpRACK:
-		// "Reject ACK" — ignored.
+		// "Reject ACK". The reference ignores it too, with a comment saying it is
+		// "95% sure" it means the ack we sent was invalid.
+		//
+		// Ignoring it is empirically NOT harmless. In a captured failure the
+		// client sent its last real ACK, immediately followed by two RACKs, and
+		// then never acknowledged anything again — leaving our retransmit stuck
+		// and killing the session 45s later. Counted here so the next occurrence
+		// is visible rather than silent.
+		s.rackCount++
 	default:
 		s.errState = fmt.Errorf("rudp: unknown opcode %s", p.opcode)
 	}
@@ -463,4 +472,35 @@ func indexByLocal(q []packet, local uint32) int {
 		}
 	}
 	return -1
+}
+
+// Diag is a snapshot of the transport state, for logging a session that looks
+// stuck. Retransmit trouble is otherwise invisible until the connection dies.
+type Diag struct {
+	// Retransmitting is true while an unacknowledged packet is blocking the send
+	// queue — nothing new goes out until it is acknowledged or the session dies.
+	Retransmitting bool
+	// StuckSeq is the sequence number being retransmitted.
+	StuckSeq uint32
+	// Tries is how many retransmit attempts have been spent of retransmitMaxAttempts.
+	Tries, MaxTries int
+	// Acked is the highest sequence the peer has acknowledged.
+	Acked uint32
+	// Pending is how many packets are awaiting acknowledgement.
+	Pending int
+	// RACKs is how many "reject ack" packets the peer has sent.
+	RACKs int
+}
+
+// Diag returns the current transport state.
+func (s *Session) Diag() Diag {
+	return Diag{
+		Retransmitting: s.isRetransmit,
+		StuckSeq:       s.retransmitIndex,
+		Tries:          s.retransmitTries,
+		MaxTries:       retransmitMaxAttempts,
+		Acked:          s.sequenceIndexAcked,
+		Pending:        len(s.retransmitBuf),
+		RACKs:          s.rackCount,
+	}
 }

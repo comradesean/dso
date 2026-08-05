@@ -316,9 +316,23 @@ func (s *Service) pumpOnce() {
 			continue
 		}
 		if err := cs.sess.Pump(); err != nil {
-			s.srv.Logger.Warn("game: session pump failed", "service", "game", "peer", key, "err", err)
+			d := cs.sess.Diag()
+			s.srv.Logger.Warn("game: session pump failed",
+				"service", "game", "peer", key, "err", err,
+				"stuck_seq", d.StuckSeq, "peer_acked", d.Acked,
+				"pending", d.Pending, "racks", d.RACKs)
 			s.dropSession(key, cs)
 			continue
+		}
+		// Report a session whose send queue has been blocked for a while. A stuck
+		// retransmit stops ALL outgoing traffic, so replies are queued and never
+		// sent — from the client it looks like the server went quiet, and the
+		// first log line today came only when the connection finally died.
+		if d := cs.sess.Diag(); d.Retransmitting && d.Tries > 0 && d.Tries%25 == 0 {
+			s.srv.Logger.Warn("game: send queue blocked on an unacknowledged packet",
+				"service", "game", "peer", key, "stuck_seq", d.StuckSeq,
+				"peer_acked", d.Acked, "tries", d.Tries, "of", d.MaxTries,
+				"pending", d.Pending, "racks", d.RACKs)
 		}
 		if st := cs.sess.State(); st == rudp.StateClosed {
 			s.srv.Logger.Info("game session closed", "service", "game", "peer", key)
