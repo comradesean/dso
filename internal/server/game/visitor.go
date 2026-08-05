@@ -81,6 +81,19 @@ func visitorModeInRange(mode ds2pb.VisitorType) bool {
 // filters (soul memory band, covenant, area) live in the player status blob,
 // which nothing consumes yet. Correct for a small test server, obviously wrong
 // for a busy one.
+//
+// This is more visible than it sounds. The covenant auto-summon is a CLIENT poll
+// on a fixed ~20.5s timer (measured 20.4-20.7s across 12 consecutive rat polls),
+// and it re-asks for as long as the crest is equipped. Because we filter on
+// nothing, we hand back the same target every poll — so an ineligible target is
+// re-offered indefinitely and the visitor sees a refusal every 20 seconds. On
+// 2026-08-05 that produced 54 consecutive rejections before the target moved.
+//
+// The real server could not have known about the specific ineligibility below
+// (bonfire state is transient and there is no evidence the status blob carries
+// it), but with a populated world and soul-memory filtering it would have
+// returned DIFFERENT candidates each poll, so the loop would never be visible.
+// Two players plus no filter is the pathological case.
 func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestGetVisitorList
 	if err := proto.Unmarshal(payload, &req); err != nil {
@@ -164,6 +177,22 @@ func (s *Service) handleVisit(log logger, cs *clientSession, payload []byte) ([]
 }
 
 // handleRejectVisit is a host declining a visitor, relayed back to them.
+//
+// The reason (unknown_2) is CLIENT-AUTHORED and 2 is the only value ever seen —
+// 54 of 55 visits in the project's history carried it. It does NOT mean the
+// covenant or the target was wrong.
+//
+// PROVEN 2026-08-05: reason 2 means the target is not currently invadable, and
+// resting at a bonfire is one such state. Two independent observations:
+//
+//   - 18:20:44 the same pair in the same direction was refused; 21s later at
+//     18:21:05 the identical request was ACCEPTED. Same code, same push id, same
+//     players — so this is transient target state, not identity.
+//   - A rat summon was refused 15 consecutive times while the target sat at a
+//     bonfire, then succeeded within one poll of the target walking away.
+//
+// So a reject is normal traffic, not an error, and must stay cheap: the client
+// will re-ask every ~20.5s for as long as the crest is equipped.
 func (s *Service) handleRejectVisit(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestRejectVisit
 	if err := proto.Unmarshal(payload, &req); err != nil {

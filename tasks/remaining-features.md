@@ -96,9 +96,27 @@ Implemented in `internal/server/game/visitor.go` — the covenant auto-summon sy
 Keepers, Rat King, Blue Sentinels). Structurally the invasion flow, not the sign flow: nothing is
 stored, the server brokers between two live sessions and steps out.
 
-**Push ids confirmed live.** A Bell Keeper summon pushed `0x03CC`, exactly
-`0x3C9 + 3*mode + role` for mode 1 (BellKeepers) role 0 (visit), and the host received it and
-joined. The rejection path was exercised too (`0x03CD`).
+**Push ids confirmed live for two of three covenants.** A Bell Keeper summon pushed `0x03CC`,
+exactly `0x3C9 + 3*mode + role` for mode 1 role 0, and the host received it and joined; the
+rejection path was exercised too (`0x03CD`). On 2026-08-05 the **Rat King** covenant was confirmed
+end-to-end as well — `0x03CF` (mode 2, visit) produced a completed session, and `0x03D0` renders
+the client's "summoning failed" text. Only Blue Sentinels (`0x03C9`/`0x03CA`) remains untested.
+
+**The Rat King flow inverts the Bell Keeper one.** The covenant member is the HOST, and the victim
+is pulled into *their* world as a grey phantom — the opposite of Bell Keepers, where the covenant
+member travels. In both cases the covenant member is the one who sends `RequestVisit`, and the
+client works out who actually travels from `type`, so the same push shape serves both. Session
+kind is 15 for rat prey.
+
+**`reason=2` on a rejection is normal, not an error.** It is client-authored and means the target
+is not currently invadable; resting at a bonfire is one such state. Proven twice: an identical
+request refused at 18:20:44 was accepted at 18:21:05, and a rat summon refused 15 times while the
+target sat at a bonfire succeeded within one poll of them walking away.
+
+**The covenant auto-summon is a client poll on a fixed ~20.5s timer.** It re-asks for as long as
+the crest is equipped, and because `handleGetVisitorList` filters on nothing we return the same
+target every time — so an ineligible target is re-offered indefinitely. A reject-cooldown on the
+`(visitor, host)` pair would cut the noise; see the matchmaking-filter gap below.
 
 Historical note on how they were chosen: Nine aliases across `0x03C9`-`0x03D1` for three message
 types. We send `0x03CF`/`0x03D0`/`0x03D1`, which is better supported than a guess: the PC protos

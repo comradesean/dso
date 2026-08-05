@@ -70,7 +70,12 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 //	field_2  the session kind, observed live: 5 = ordinary summon sign,
 //	         8 = arena duel, 9 = Mirror Knight squire, 13 and 14 seen during Bell
 //	         Keeper covenant summons (14 confirmed as the grey-spirit visit; 13
-//	         seen once alongside it and not yet attributed).
+//	         seen once alongside it and not yet attributed), 15 = Rat King prey.
+//
+// The Rat King case is the one that inverts: the covenant member is the HOST and
+// the victim is the guest pulled into their world, the opposite of Bell Keepers
+// where the covenant member travels. Confirmed live 2026-08-05 — the rat sent
+// RequestVisit and the log recorded host=rat, guest=victim.
 //
 // field_9 remains an opaque blob and is logged by length only.
 func (s *Service) handleNotifyJoinGuestPlayer(log logger, cs *clientSession, payload []byte) ([]byte, error) {
