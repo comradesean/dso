@@ -65,9 +65,17 @@ authoritative oracle is now `TestConsoleCapture` (real console bytes) plus `Test
 byte-swaps `Z` but *not* the data block, so each 4-byte group is reversed relative to a plain
 big-endian read. Ciphertext was always correct; only tags differed.
 
-**The EBOOT holds two RSA keys and only one is the login key.** `0x17FB338` is the login key
-(byte-identical to the PC one); `0x189AB48` is something else. Patching the wrong one gives a
-client that connects but whose RSA block never decrypts.
+**The EBOOT holds two RSA keys and only one is the login key.** On v1.00, `0x17FB338` is the login
+key (byte-identical to the PC one) and `0x189AB48` is the **calibration** key — it verifies the
+`contents_NNNN.bin` header, loaded by the request builder at `0x01673D5C` from mini-TOC slot
+`0x1CC27E8`. Patching the wrong one gives a client that connects but whose RSA block never
+decrypts.
+
+**A title update moves the keys and invalidates the patch, silently.** RPCS3 patches are keyed by
+PPU executable hash, so a launch-disc patch simply stops applying after an update — no emulator
+warning, just `decrypt: crypto/rsa: decryption error` on our side and a game that hangs on login.
+The keys themselves do not change; only their addresses do (v1.10: login `0x186E100`, calibration
+`0x1910670`). `tools/rpcs3/dso.yml` carries a block per version and documents how to add more.
 
 **`Frpg2GameServerInfo` is 56 bytes on PS3, not the PC's 184.** The client checks the length
 with a hard equality and, on mismatch, skips the entire struct copy *silently* — no error, no
