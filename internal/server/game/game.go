@@ -46,6 +46,10 @@ type Service struct {
 	mu        sync.Mutex
 	sessions  map[string]*clientSession // keyed by remote address
 	playerSeq uint32                    // hands out player ids
+
+	// messages holds placed blood messages. It has its own lock, so it must not
+	// be accessed while holding s.mu.
+	messages *bloodMessageStore
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -66,7 +70,11 @@ type clientSession struct {
 
 // New creates a game service bound to the given server.
 func New(srv *core.Server) *Service {
-	return &Service{srv: srv, sessions: make(map[string]*clientSession)}
+	return &Service{
+		srv:      srv,
+		sessions: make(map[string]*clientSession),
+		messages: newBloodMessageStore(),
+	}
 }
 
 // Name implements core.Service.

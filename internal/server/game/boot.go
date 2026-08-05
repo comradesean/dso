@@ -41,6 +41,19 @@ func (s *Service) handleMessage(log logger, cs *clientSession, msgType uint32, p
 		return s.handleGetAnnounceMessageList(log, cs, payload)
 	case opRequestUpdateLoginPlayerCharacter:
 		return s.handleUpdateLoginPlayerCharacter(log, cs, payload)
+
+	case opRequestCreateBloodMessage:
+		return s.handleCreateBloodMessage(log, cs, payload)
+	case opRequestGetBloodMessageList:
+		return s.handleGetBloodMessageList(log, cs, payload)
+	case opRequestReentryBloodMessage:
+		return s.handleReentryBloodMessage(log, cs, payload)
+	case opRequestRemoveBloodMessage:
+		return s.handleRemoveBloodMessage(log, cs, payload)
+	case opRequestEvaluateBloodMessage:
+		return s.handleEvaluateBloodMessage(log, cs, payload)
+	case opRequestGetBloodMessageEvaluation:
+		return s.handleGetBloodMessageEvaluation(log, cs, payload)
 	default:
 		return nil, nil
 	}
