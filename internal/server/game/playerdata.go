@@ -92,7 +92,25 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 	// the event that decides whether auto-summons can find this player at all,
 	// and it is the first thing to check when one "does nothing".
 	prevPool := visitorPoolFor(cs.profile)
+	prevArea := cs.profile.onlineActivityArea
 	cs.profile.applyStatus(req.GetStatus())
+
+	// Log every activity-area change, not just pool changes. Walking into a zone
+	// we do not recognise produces no pool transition at all — None to None —
+	// so without this an unknown covenant area is completely silent, and the
+	// only symptom is a summon that never fires for no visible reason.
+	//
+	// This is how a missing cell constant gets discovered: enter the area, read
+	// the id off this line, add it. The second Rat King zone is still unknown
+	// and is expected to arrive this way.
+	if area := cs.profile.onlineActivityArea; area != prevArea {
+		log.Info("activity area changed",
+			"player_id", cs.playerID, "from", prevArea, "to", area,
+			"known_rat_cell", ratCells[area],
+			"known_bell_keeper_cell", bellKeeperCells[area],
+			"covenant", cs.profile.effectiveCovenant())
+	}
+
 	if pool := visitorPoolFor(cs.profile); pool != prevPool {
 		log.Info("visitor pool changed",
 			"player_id", cs.playerID, "from", prevPool, "to", pool,
