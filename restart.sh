@@ -15,10 +15,16 @@ export PATH="$HOME/sdk/go/bin:$HOME/go/bin:$PATH"
 
 # A session counts as live if its peer sent us anything in the last 90s. The
 # server's own idle timeout is 60s, so this is deliberately a little longer.
+#
+# The cutoff MUST be local time. The server logs local timestamps with a -04:00
+# suffix, and an earlier version compared them against a UTC cutoff — which made
+# every entry look four hours stale, so the guard reported "no clients connected"
+# while two people were mid-duel and restarted underneath them. Exactly the
+# failure it exists to prevent.
 live_peers() {
     [ -f server_debug.log ] || return 0
     local cutoff
-    cutoff=$(date -u -d '90 seconds ago' +%Y-%m-%dT%H:%M:%S 2>/dev/null) || return 0
+    cutoff=$(date -d '90 seconds ago' +%Y-%m-%dT%H:%M:%S 2>/dev/null) || return 0
     awk -v cut="$cutoff" '
         match($0, /time=([0-9-]+T[0-9:]+)/, t) && t[1] > cut &&
         match($0, /peer=([0-9.]+:[0-9]+)/, p) { seen[p[1]] = 1 }
