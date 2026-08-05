@@ -43,7 +43,14 @@ stretch.
 
 ## Not built
 
-Visitors, quick match, ranking, telemetry, Mirror Knight.
+**33 of 95 live opcodes are implemented.** The full remaining list, ordered by value-for-effort
+and cross-referenced against `ref/ds3os`, is in **`tasks/remaining-features.md`**: connection
+keepalive and bandwidth, telemetry notifies, player-character reads, visitors, quick match,
+Mirror Knight, power-stone ranking, and three pushes we never send.
+
+Authoring our own calibration payloads is **parked** in `tasks/calibration-reverse-engineering.md`
+— serving FromSoftware's works completely, but writing our own is blocked on the 256-byte RSA
+header format.
 
 Player ids and character ids are still per-run and in memory, which is the same id-reuse hazard
 described below waiting to happen once anything caches them.
@@ -113,9 +120,13 @@ Version stamps, read from BND4+24: disc `00010000`, 0101/0104 `00010100`, 0107 `
 It is an April 2015 payload in a different stamp format and expects a matching title update.
 Nothing is written when it fails, so the install survives.
 
-**Note for the event-item work:** `ItemLotParam2_SvrEvent.param` is byte-identical across
-0101-0113. Only 0114 adds lots, so no reachable calibration changes the chest on an un-updated
-game.
+**The event-item chest is NOT a calibration problem.** Calibration 0114 — the only payload that
+changes `ItemLotParam2_SvrEvent.param`, which is byte-identical across 0101-0113 — installed
+successfully on a v1.10 client and the chest was still empty. The lots are present in the
+client's regulation and nothing appears, so something must *select* an active lot and that
+selection is not in the regulation. Candidates are all server-side: an event flag, an
+unimplemented opcode (`RequestNotifyRingBell` `0x03EE` is suggestively named), or the
+`PlayerInfoUploadConfigPushMessage` push `0x038C` that we never send.
 
 ## Open questions
 
