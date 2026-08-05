@@ -59,6 +59,14 @@ var handledOpcodes = map[uint32]bool{
 	opRequestNotifyDeath:             true,
 	opRequestNotifyOfflineDeathCount: true,
 	opRequestNotifyKillPlayer:        true,
+	opRequestNotifyJoinSession:       true,
+	opRequestNotifyLeaveSession:      true,
+	opRequestNotifyJoinGuestPlayer:   true,
+	opRequestNotifyLeaveGuestPlayer:  true,
+	opRequestNotifyRingBell:          true,
+	opRequestNotifyKillEnemy:         true,
+	opRequestNotifyBuyItem:           true,
+	opRequestNotifyDisconnectSession: true,
 }
 
 func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payload []byte) ([]byte, error) {
@@ -129,6 +137,32 @@ func (s *Service) dispatch(log logger, cs *clientSession, msgType uint32, payloa
 
 	case opRequestGetLoginPlayerCharacter:
 		return s.handleGetLoginPlayerCharacter(log, cs, payload)
+
+	case opServerPing:
+		return s.handleServerPing(log, cs, payload)
+	case opRequestMeasureUploadBandwidth:
+		return s.handleMeasureUploadBandwidth(log, cs, payload)
+	case opRequestMeasureDownloadBandwith:
+		return s.handleMeasureDownloadBandwidth(log, cs, payload)
+	case opRequestBenchmarkThroughput:
+		return s.handleBenchmarkThroughput(log, cs, payload)
+
+	case opRequestNotifyJoinSession:
+		return s.handleNotifyJoinSession(log, cs, payload)
+	case opRequestNotifyLeaveSession:
+		return s.handleNotifyLeaveSession(log, cs, payload)
+	case opRequestNotifyJoinGuestPlayer:
+		return s.handleNotifyJoinGuestPlayer(log, cs, payload)
+	case opRequestNotifyLeaveGuestPlayer:
+		return s.handleNotifyLeaveGuestPlayer(log, cs, payload)
+	case opRequestNotifyRingBell:
+		return s.handleNotifyRingBell(log, cs, payload)
+	case opRequestNotifyKillEnemy:
+		return s.handleNotifyKillEnemy(log, cs, payload)
+	case opRequestNotifyBuyItem:
+		return s.handleNotifyBuyItem(log, cs, payload)
+	case opRequestNotifyDisconnectSession:
+		return s.handleNotifyDisconnectSession(log, cs, payload)
 
 	case opRequestUpdatePlayerStatus:
 		return s.handleUpdatePlayerStatus(log, cs, payload)
