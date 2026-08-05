@@ -86,6 +86,21 @@ type Config struct {
 	BootstrapHTTPPort     int
 	BootstrapContentsFile string
 
+	// BootstrapCalibrationDir holds the calibration payloads (contents_NNNN.bin
+	// and regulation_NNNN.bin). Requests are served by filename from here.
+	// Defaults to the directory of BootstrapContentsFile when unset.
+	BootstrapCalibrationDir string
+
+	// CalibrationVersion selects which calibration the client actually receives.
+	//
+	// The EBOOT hardcodes the contents_0101.bin URL, so a real client can only
+	// ever ask for 0101. Setting this to e.g. "0114" answers that request with
+	// contents_0114.bin instead. Nothing else needs redirecting: the manifest
+	// inside names its own regulation file, and the client fetches that by name.
+	//
+	// Empty means serve exactly what was asked for.
+	CalibrationVersion string
+
 	// DNS redirect: on a real PS3 (no IP/Hosts switch) the console is pointed at
 	// this DNS server, which answers the FromSoftware hostnames with our
 	// advertise address and forwards everything else upstream.
@@ -159,6 +174,8 @@ func Load() (Config, error) {
 	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)
 	c.BootstrapHTTPPort = envInt("DSO_BOOTSTRAP_HTTP_PORT", c.BootstrapHTTPPort)
 	c.BootstrapContentsFile = envStr("DSO_BOOTSTRAP_CONTENTS_FILE", c.BootstrapContentsFile)
+	c.BootstrapCalibrationDir = envStr("DSO_BOOTSTRAP_CALIBRATION_DIR", c.BootstrapCalibrationDir)
+	c.CalibrationVersion = envStr("DSO_CALIBRATION_VERSION", c.CalibrationVersion)
 	c.DNSEnabled = envBool("DSO_DNS", c.DNSEnabled)
 	c.DNSPort = envInt("DSO_DNS_PORT", c.DNSPort)
 	c.DNSUpstream = envStr("DSO_DNS_UPSTREAM", c.DNSUpstream)

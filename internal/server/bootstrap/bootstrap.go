@@ -21,10 +21,15 @@
 // which decrypts to garbage. Requests are therefore routed by path.
 //
 // Verified end to end: decrypting regulation_0101.bin yields a DCX whose inflated
-// BND4 HMAC-SHA1s to exactly the DIGEST above. Its 252 params include
-// ItemLotParam2_SvrEvent.param — the plausible delivery route for event items —
-// but the 2014 payload is byte-identical to the on-disc regulation apart from a
-// single version byte, so in practice it only rotates a version stamp.
+// BND4 HMAC-SHA1s to exactly the DIGEST above.
+//
+// Ten calibrations were published (0101, 0104, 0107-0114; Jan 2014 - Apr 2015)
+// and all are archived locally. The EBOOT hardcodes the 0101 URL, so a real
+// client can only ever ask for that one — but DSO_CALIBRATION_VERSION answers
+// that request with a different version's manifest, and since each manifest names
+// its own regulation file the client follows it from there unaided. Serving 0114
+// is how a client gets the final event-item table (which added Human Effigy lots
+// and a 90/5/3/2 Titanite Chunk/Slab/Twinkling/Dragon Bone drop).
 package bootstrap
 
 import (
@@ -35,6 +40,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -69,8 +75,12 @@ func (s *Service) Serve(ctx context.Context) error {
 			"addr", addr, "err", err)
 		return nil
 	}
+	version := s.srv.Config.CalibrationVersion
+	if version == "" {
+		version = "(as requested)"
+	}
 	s.srv.Logger.Info("bootstrap http listening", "addr", addr,
-		"contents_file", s.srv.Config.BootstrapContentsFile)
+		"calibration_dir", s.dir(), "calibration_version", version)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handle)
@@ -135,15 +145,24 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 	log.Warn("no bootstrap file for request", "url", r.URL.Path)
 }
 
+// contentsName matches the manifest filename, capturing its 4-digit calibration
+// version. Only contents_ is remapped; regulation_ files are fetched by the name
+// the manifest itself gives, so they must be served exactly as asked.
+var contentsName = regexp.MustCompile(`^contents_(\d{4})\.bin$`)
+
 // resolve maps a request path to a file on disk.
 //
-// Files live alongside the configured contents file, so pointing
-// DSO_BOOTSTRAP_CONTENTS_FILE at data/contents_0101.bin also serves
-// data/regulation_0101.bin — which the client asks for immediately afterwards,
-// having read its name out of the manifest.
+// Two requests arrive per boot and both are served from the calibration
+// directory: contents_NNNN.bin (the manifest) and then the regulation file it
+// names.
+//
+// If CalibrationVersion is set, a request for any contents_NNNN.bin is answered
+// with that version's manifest instead. That is the whole mechanism for serving a
+// calibration other than the one the EBOOT hardcodes — the manifest names its own
+// regulation file, so the client follows it there without further help.
 func (s *Service) resolve(urlPath string) (string, bool) {
-	configured := s.srv.Config.BootstrapContentsFile
-	if configured == "" {
+	dir := s.dir()
+	if dir == "" {
 		return "", false
 	}
 
@@ -152,15 +171,34 @@ func (s *Service) resolve(urlPath string) (string, bool) {
 	if name == "" || name == "." || name == "/" || strings.ContainsAny(name, `/\`) {
 		return "", false
 	}
-	// The manifest fetch itself keeps working even if the deployed file has been
-	// renamed, since that is the path the EBOOT hardcodes.
-	if name == path.Base(filepath.ToSlash(configured)) {
-		return configured, true
+
+	if v := s.srv.Config.CalibrationVersion; v != "" {
+		if contentsName.MatchString(name) {
+			name = "contents_" + v + ".bin"
+		}
 	}
 
-	candidate := filepath.Join(filepath.Dir(configured), name)
+	candidate := filepath.Join(dir, name)
 	if _, err := os.Stat(candidate); err != nil {
+		// Fall back to the explicitly configured manifest. This keeps a
+		// deployment working where that file was renamed or sits outside the
+		// calibration directory.
+		if cf := s.srv.Config.BootstrapContentsFile; cf != "" &&
+			name == path.Base(filepath.ToSlash(cf)) {
+			return cf, true
+		}
 		return "", false
 	}
 	return candidate, true
+}
+
+// dir is the directory calibration payloads are served from.
+func (s *Service) dir() string {
+	if d := s.srv.Config.BootstrapCalibrationDir; d != "" {
+		return d
+	}
+	if cf := s.srv.Config.BootstrapContentsFile; cf != "" {
+		return filepath.Dir(cf)
+	}
+	return ""
 }

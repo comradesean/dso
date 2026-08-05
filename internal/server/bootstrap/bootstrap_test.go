@@ -16,16 +16,20 @@ import (
 func testService(t *testing.T) (*Service, string) {
 	t.Helper()
 	dir := t.TempDir()
-	contents := filepath.Join(dir, "contents_0101.bin")
-	if err := os.WriteFile(contents, []byte("MANIFEST"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "regulation_0101.bin"), []byte("REGULATION-PAYLOAD"), 0o644); err != nil {
-		t.Fatal(err)
+	// Two calibrations, as on the real origin.
+	for name, body := range map[string]string{
+		"contents_0101.bin":   "MANIFEST-0101",
+		"regulation_0101.bin": "REGULATION-0101",
+		"contents_0114.bin":   "MANIFEST-0114",
+		"regulation_0114.bin": "REGULATION-0114",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	cfg := config.Default()
-	cfg.BootstrapContentsFile = contents
+	cfg.BootstrapContentsFile = filepath.Join(dir, "contents_0101.bin")
 	return &Service{srv: &core.Server{
 		Config: cfg,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -55,12 +59,12 @@ func get(t *testing.T, s *Service, path string) (int, string) {
 func TestServesManifestAndPayloadSeparately(t *testing.T) {
 	s, _ := testService(t)
 
-	if code, body := get(t, s, "/contents_0101.bin"); code != http.StatusOK || body != "MANIFEST" {
-		t.Errorf("manifest request: got %d %q, want 200 %q", code, body, "MANIFEST")
+	if code, body := get(t, s, "/contents_0101.bin"); code != http.StatusOK || body != "MANIFEST-0101" {
+		t.Errorf("manifest request: got %d %q, want 200 %q", code, body, "MANIFEST-0101")
 	}
-	if code, body := get(t, s, "/regulation_0101.bin"); code != http.StatusOK || body != "REGULATION-PAYLOAD" {
+	if code, body := get(t, s, "/regulation_0101.bin"); code != http.StatusOK || body != "REGULATION-0101" {
 		t.Errorf("payload request: got %d %q, want 200 %q — serving the manifest here "+
-			"is the bug this test exists for", code, body, "REGULATION-PAYLOAD")
+			"is the bug this test exists for", code, body, "REGULATION-0101")
 	}
 }
 
@@ -92,6 +96,51 @@ func TestResolveRejectsTraversal(t *testing.T) {
 	} {
 		if code, body := get(t, s, p); code == http.StatusOK {
 			t.Errorf("%s: served %d %q; must not escape the bootstrap directory", p, code, body)
+		}
+	}
+}
+
+// TestCalibrationVersionOverride covers serving a calibration other than the one
+// the client asked for.
+//
+// The EBOOT hardcodes the contents_0101.bin URL, so a real client can only ever
+// request 0101. The override answers that with another version's manifest; the
+// client then reads the regulation filename out of that manifest and fetches it
+// by name, which must NOT be remapped or it would collect a payload whose digest
+// does not match the manifest it came from.
+func TestCalibrationVersionOverride(t *testing.T) {
+	s, _ := testService(t)
+	s.srv.Config.CalibrationVersion = "0114"
+
+	if code, body := get(t, s, "/contents_0101.bin"); code != http.StatusOK || body != "MANIFEST-0114" {
+		t.Errorf("override: got %d %q, want 200 %q", code, body, "MANIFEST-0114")
+	}
+	// The 0114 manifest names regulation_0114.bin; that must arrive verbatim.
+	if code, body := get(t, s, "/regulation_0114.bin"); code != http.StatusOK || body != "REGULATION-0114" {
+		t.Errorf("payload: got %d %q, want 200 %q", code, body, "REGULATION-0114")
+	}
+	// A regulation request must never be remapped -- pairing 0114's manifest with
+	// 0101's payload would fail the client's DIGEST check.
+	if code, body := get(t, s, "/regulation_0101.bin"); code != http.StatusOK || body != "REGULATION-0101" {
+		t.Errorf("regulation must not be remapped: got %d %q, want 200 %q",
+			code, body, "REGULATION-0101")
+	}
+}
+
+// TestCalibrationDirServesEverything pins that pointing at the directory serves
+// the whole archive, not just the configured manifest.
+func TestCalibrationDirServesEverything(t *testing.T) {
+	s, dir := testService(t)
+	s.srv.Config.BootstrapCalibrationDir = dir
+	s.srv.Config.BootstrapContentsFile = ""
+
+	for path, want := range map[string]string{
+		"/contents_0101.bin":   "MANIFEST-0101",
+		"/contents_0114.bin":   "MANIFEST-0114",
+		"/regulation_0114.bin": "REGULATION-0114",
+	} {
+		if code, body := get(t, s, path); code != http.StatusOK || body != want {
+			t.Errorf("%s: got %d %q, want 200 %q", path, code, body, want)
 		}
 	}
 }
