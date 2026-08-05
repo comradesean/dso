@@ -134,15 +134,46 @@ then succeeded with no server change: the target was at a bonfire, then walked i
 rat-summonable precisely because you are *not* a rat, which the in-game text states outright.
 Getting this backwards would break the mode entirely, so it is pinned by test.
 
-Two pieces are **not** verified against the PS3 client and are the first suspects if matching gets
-too strict:
+**The client sends PARTIAL status updates** — an occasional full blob (~1336 bytes) and a stream of
+28–52 byte deltas. The profile must therefore be *merged per field*, using proto2 presence, not
+rebuilt per message. The first version rebuilt it, so every delta blanked whatever it did not
+mention; players flickered in and out of their pools several times a minute and were never offered
+to anyone. It looked exactly like an over-strict filter. Regression test:
+`TestPartialStatusDoesNotWipeProfile`.
 
-- the 44-band soul memory tier table, which is reference-derived (it is matchmaking policy the
-  client never sees, so it cannot be recovered from the binary or from two test accounts)
-- the belfry and rat cell ids
+`MatchingParameter`, which every list request carries and whose fields are all `required`, is used
+as a fallback so a player is matchable before their first full status blob arrives.
 
-Rat's tier window is authoritative, from the covenant description: **1 tier below to 3 above**.
-Others default to same-tier-only. `DSO_MATCHMAKING_FILTERS=0` disables the lot.
+### Confidence in the numbers
+
+**Patch 1.10 is the Scholar of the First Sin update** for the original game (Feb 2015, free to
+vanilla owners). The vanilla/SOTFS distinction therefore mostly collapses for us — the real axis is
+pre-1.10 vs 1.10+, and we are 1.10+. Notably 1.10 removed the NG/NG+ matchmaking divide and added
+the Agape Ring.
+
+Windows are measured in tiers either side of the **item user's** band, and select who they may
+connect to. The reference server builds its window around the other party, which for invasions
+inverts DS2's documented "never invade below your soul memory" rule — we take its constants but not
+its argument order.
+
+| Piece | Confidence |
+|---|---|
+| Tier bucket model (not a percentage window) | High — testing explicitly debunked the ±% rumours |
+| Tier bands 1–43 | High — every source agrees exactly |
+| The 359,999,999 band | Medium — majority reading, no published test, only affects >45M |
+| Bell Keeper 1/3, Rat 1/3 | Good, though Rat is flagged as not re-tested after 1.10 |
+| Blue Sentinels 5/4 | **Disputed** — sources split 5/4 vs 7/6; untested live |
+| Activity-area cell ids | 103410 confirmed on our own wire; the second rat cell is unknown |
+
+Apparent unanimity across community sources is misleading: they descend from about **two** lineages
+of black-box testing, not five independent ones, and one widely-copied table is a stale snapshot
+with every lower bound off by one.
+
+A previous version of this file claimed the Rat window was authoritative because the covenant item
+says so in game. It does not — the item text carries no numbers, and the quoted sentence is wiki
+boilerplate repeated across unrelated items. The value stands on testing, not on that.
+
+`DSO_MATCHMAKING_FILTERS=0` disables the lot.
 
 **Not yet applied to sign lists, break-in targets or quick match** — deliberately. Those work
 today, their ranges are unknown, and a wrong filter there would break confirmed features.

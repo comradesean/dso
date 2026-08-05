@@ -20,7 +20,7 @@ import (
 func inBellKeeperPool(cs *clientSession) {
 	cs.profile = matchProfile{
 		received:           true,
-		covenant:           covenantBellKeepers,
+		covenant:           cov(covenantBellKeepers),
 		bellKeepersSeal:    true,
 		onlineActivityArea: 101640, // Belfry Luna
 		soulMemory:         100000,

@@ -92,7 +92,7 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 	// the event that decides whether auto-summons can find this player at all,
 	// and it is the first thing to check when one "does nothing".
 	prevPool := visitorPoolFor(cs.profile)
-	cs.profile = profileFromStatus(req.GetStatus())
+	cs.profile.applyStatus(req.GetStatus())
 	if pool := visitorPoolFor(cs.profile); pool != prevPool {
 		log.Info("visitor pool changed",
 			"player_id", cs.playerID, "from", prevPool, "to", pool,

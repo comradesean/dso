@@ -36,7 +36,12 @@ type matchProfile struct {
 
 	soulMemory uint32
 	soulLevel  uint32
-	covenant   uint32
+
+	// covenant is a pointer rather than a value plus a "known" flag because
+	// covenant 0 is a real state — belonging to none — and is indistinguishable
+	// from "not told yet" in a plain uint32. A struct literal that sets a
+	// covenant cannot then silently read back as 0.
+	covenant *uint32
 
 	// onlineActivityArea is the cell the player is doing online activity in, and
 	// is 0 when they are not eligible for any of it — resting at a bonfire, in a
@@ -56,36 +61,116 @@ type matchProfile struct {
 
 	nameEngravedRing   uint32
 	disableCrossRegion bool
+
+	// Mirrors of the same two values from MatchingParameter, used only until the
+	// status blob supplies them. Kept separate rather than merged so the source
+	// of a matching decision stays visible.
+	mpSoulMemory uint32
+	mpCovenant   uint32
+	mpSeen       bool
 }
 
-// profileFromStatus reduces an AllStatus blob to the fields matching needs.
+// applyStatus MERGES an AllStatus blob into the profile. It must never replace
+// it wholesale.
 //
-// A failure to parse is not an error: the blob is client-supplied and a partial
-// or unexpected one should degrade to "unknown player", never drop the session.
-func profileFromStatus(blob []byte) matchProfile {
+// THE CLIENT SENDS PARTIAL UPDATES. Measured live: an occasional full blob of
+// ~1336 bytes, and a steady stream of 28-52 byte deltas carrying only what
+// changed. An earlier version of this rebuilt the profile from each message, so
+// every delta that omitted PlayerLocation reset the activity area to 0 and every
+// one that omitted PlayerStatus reset covenant and soul memory. The visible
+// effect was a player flickering in and out of their visitor pool several times
+// a minute and never being offered to anyone — which looked exactly like the
+// filter being too strict, rather than the filter being fed zeroes.
+//
+// Merging is per FIELD, not per sub-message, because the sub-messages are
+// partial too: a PlayerStatus carrying only sitting_at_bonfire must not blank
+// soul memory. proto2 optional fields carry explicit presence, so a nil pointer
+// means "unchanged" and is distinguishable from a real zero. That distinction is
+// the whole mechanism here, and is why these read the pointers directly instead
+// of the Get accessors, which cannot tell the two apart.
+//
+// A failure to parse is not an error: the blob is client-supplied and a
+// malformed one should leave the profile untouched, never drop the session.
+func (p *matchProfile) applyStatus(blob []byte) {
 	var all ds2datapb.AllStatus
 	if err := proto.Unmarshal(blob, &all); err != nil {
-		return matchProfile{}
+		return
 	}
-	p := matchProfile{received: true}
+	p.received = true
 
 	if st := all.GetPlayerStatus(); st != nil {
-		p.soulMemory = st.GetSoulMemory()
-		p.soulLevel = st.GetSoulLevel()
-		p.covenant = st.GetCovenant()
-		p.sittingAtBonfire = st.GetSittingAtBonfire() != 0
-		p.disableCrossRegion = st.GetDisableCrossRegionPlay() != 0
+		if st.SoulMemory != nil {
+			p.soulMemory = *st.SoulMemory
+		}
+		if st.SoulLevel != nil {
+			p.soulLevel = *st.SoulLevel
+		}
+		if st.Covenant != nil {
+			cov := *st.Covenant
+			p.covenant = &cov
+		}
+		if st.SittingAtBonfire != nil {
+			p.sittingAtBonfire = *st.SittingAtBonfire != 0
+		}
+		if st.DisableCrossRegionPlay != nil {
+			p.disableCrossRegion = *st.DisableCrossRegionPlay != 0
+		}
 	}
 	if loc := all.GetPlayerLocation(); loc != nil {
-		p.onlineActivityArea = loc.GetOnlineActivityAreaId()
+		if loc.OnlineActivityAreaId != nil {
+			p.onlineActivityArea = *loc.OnlineActivityAreaId
+		}
 	}
 	if it := all.GetItemUsingInfo(); it != nil {
-		p.guardiansSeal = it.GetGuardiansSeal() != 0
-		p.bellKeepersSeal = it.GetBellKeepersSeal() != 0
-		p.crestOfTheRat = it.GetCrestOfTheRat() != 0
-		p.nameEngravedRing = it.GetNamedRingGod()
+		if it.GuardiansSeal != nil {
+			p.guardiansSeal = *it.GuardiansSeal != 0
+		}
+		if it.BellKeepersSeal != nil {
+			p.bellKeepersSeal = *it.BellKeepersSeal != 0
+		}
+		if it.CrestOfTheRat != nil {
+			p.crestOfTheRat = *it.CrestOfTheRat != 0
+		}
+		if it.NamedRingGod != nil {
+			p.nameEngravedRing = *it.NamedRingGod
+		}
 	}
-	return p
+}
+
+// applyMatchingParameter records the matching view the client sends with every
+// list request. Each field is `required`, so this is complete every time —
+// unlike the status blob, which arrives in fragments.
+//
+// This exists because a player who has just connected, or who has only sent
+// deltas so far, would otherwise have a soul memory of 0 and sit in tier 0,
+// matching nobody. It fills that gap immediately and is also a useful check on
+// the status blob: the two should agree, and a disagreement is worth seeing.
+func (p *matchProfile) applyMatchingParameter(mp *ds2pb.MatchingParameter) {
+	if mp == nil {
+		return
+	}
+	p.received = true
+	p.mpSoulMemory = mp.GetSoulMemory()
+	p.mpCovenant = mp.GetCovenant()
+	p.mpSeen = true
+}
+
+// effectiveSoulMemory prefers the status blob and falls back to the client's own
+// MatchingParameter.
+func (p matchProfile) effectiveSoulMemory() uint32 {
+	if p.soulMemory != 0 {
+		return p.soulMemory
+	}
+	return p.mpSoulMemory
+}
+
+// effectiveCovenant does the same, using presence rather than non-zero: covenant
+// 0 is the legitimate value for belonging to no covenant.
+func (p matchProfile) effectiveCovenant() uint32 {
+	if p.covenant != nil {
+		return *p.covenant
+	}
+	return p.mpCovenant
 }
 
 // DS2 covenant ids as they appear in PlayerStatus.covenant.
@@ -115,10 +200,29 @@ var (
 		101950: true, // Belfry Sol
 	}
 	ratCells = map[uint32]bool{
-		103410: true, // Doors of Pharros
-		103130: true, // Grave of Saints
+		// CONFIRMED LIVE: this is the cell every rat poll carried during the
+		// successful summon on 2026-08-05, and it is also the only rat constant
+		// the reference server carries.
+		//
+		// The LABEL is uncertain even though the value is not. The reference
+		// calls it Doors of Pharros, but the area id alongside it on our wire
+		// was 10340000 = m10_34, which maps to Grave of Saints. The two rat
+		// zones are m10_33 and m10_34 and the naming disagrees; the value is
+		// what matters and it is corroborated twice.
+		103410: true,
+		// The OTHER rat zone's cell is unknown. An earlier version guessed
+		// 103130 here, which is wrong -- the 1031 prefix is m10_31, Heide's
+		// Tower of Flame, nowhere near a rat. Guessing a second one would only
+		// risk making an unrelated area rat-summonable, so it is left out until
+		// a capture supplies it.
 	}
 )
+
+// The 6-digit activity-area ids decompose as mmmmbb: the first four digits are
+// the map (m10_16 -> 1016) and the last two a block within it. Our own captures
+// fit that exactly -- activity area 103410 arrived alongside area id 10340000 --
+// which is worth stating because no public documentation of this id space could
+// be found, so the wire is the only source.
 
 // visitorPoolFor returns which auto-summon pool a player is currently AVAILABLE
 // TO BE PULLED INTO, which is not the same as the covenant they belong to.
@@ -143,15 +247,16 @@ func visitorPoolFor(p matchProfile) ds2pb.VisitorType {
 		return ds2pb.VisitorType_VisitorType_None
 	}
 
-	if p.guardiansSeal && p.covenant == covenantBlueSentinels {
+	cov := p.effectiveCovenant()
+	if p.guardiansSeal && cov == covenantBlueSentinels {
 		return ds2pb.VisitorType_VisitorType_BlueSentinels
 	}
-	if p.bellKeepersSeal && p.covenant == covenantBellKeepers &&
+	if p.bellKeepersSeal && cov == covenantBellKeepers &&
 		bellKeeperCells[p.onlineActivityArea] {
 		return ds2pb.VisitorType_VisitorType_BellKeepers
 	}
 	// Inverted on purpose: a rat cannot be prey.
-	if p.covenant != covenantRatKing && ratCells[p.onlineActivityArea] {
+	if cov != covenantRatKing && ratCells[p.onlineActivityArea] {
 		return ds2pb.VisitorType_VisitorType_Rat
 	}
 	return ds2pb.VisitorType_VisitorType_None
@@ -159,11 +264,24 @@ func visitorPoolFor(p matchProfile) ds2pb.VisitorType {
 
 // Soul memory tiers — the end value of each band, ascending.
 //
-// REFERENCE-DERIVED and not verified against this binary. There is no plausible
-// way to recover these from the PS3 executable (they are matchmaking policy, and
-// the client never sees them), and no way to derive them from two test accounts,
-// so this is one of the few places the reference is the only available source.
-// If matching ever behaves oddly at a band edge, suspect this table first.
+// Not verifiable against this binary: these are server-side matchmaking policy
+// the client never sees, so they cannot be recovered from the executable, and
+// two test accounts cannot derive them either.
+//
+// Bands 1-43 are solid — every community source agrees character for character,
+// and they trace back to systematic black-box testing (save-edited mules with
+// binary-searched boundaries) rather than assertion.
+//
+// The 359,999,999 band is MEDIUM confidence. It is the majority reading and the
+// reason this list has 44 entries below it rather than 43, but no published test
+// covers it and it only ever separates players above 45M soul memory. Including
+// it is the low-risk choice: too many bands merely narrows matching for players
+// nobody has, while too few would silently merge them.
+//
+// Treat the apparent unanimity of sources with care — they descend from roughly
+// two lineages, not five independent ones, and at least one widely-copied table
+// is a stale snapshot with every lower bound off by one. If matching behaves
+// oddly at a band edge, suspect this table first.
 var soulMemoryTiers = []uint32{
 	9_999, 19_999, 29_999, 39_999, 49_999, 69_999, 89_999, 109_999,
 	129_999, 149_999, 179_999, 209_999, 239_999, 269_999, 299_999,
@@ -171,7 +289,7 @@ var soulMemoryTiers = []uint32{
 	899_999, 999_999, 1_099_999, 1_199_999, 1_299_999, 1_399_999,
 	1_499_999, 1_749_999, 1_999_999, 2_249_999, 2_499_999, 2_749_999,
 	2_999_999, 4_999_999, 6_999_999, 8_999_999, 11_999_999, 14_999_999,
-	19_999_999, 29_999_999, 44_999_999, 999_999_999,
+	19_999_999, 29_999_999, 44_999_999, 359_999_999, 999_999_999,
 }
 
 // soulMemoryTier returns the 0-based band a soul memory value falls in.
@@ -187,26 +305,41 @@ func soulMemoryTier(sm uint32) int {
 // tierWindow is how far either side of the host's band a guest may sit.
 type tierWindow struct{ below, above int }
 
-// Per-covenant windows.
+// Per-covenant windows, as tiers either side of the ITEM USER's own band.
 //
-// The Rat King window is AUTHORITATIVE — it is stated in the game's own covenant
-// description: "you may pull players into your world that are up to 1 Soul
-// Memory tier lower or 3 tiers higher than your own". The others have no such
-// text and default to same-tier-only, which is the reference's default. Being
-// too strict here shows up as "no targets found", which is a much easier
-// symptom to recognise than being too loose.
+// Direction matters and is easy to invert. The window is built around the player
+// using the covenant item — the one holding the crest or seal, which is always
+// our requester — and it selects who they may be connected to. The reference
+// server builds its window around the other party instead, which for invasions
+// yields "you invade people at or below you", the opposite of DS2's documented
+// anti-twink rule. We take its constants but not its argument order.
+//
+// An earlier version of this comment called the Rat window authoritative on the
+// grounds that the covenant item says so in game. It does not: the item text
+// carries no numbers, and the sentence quoted was wiki boilerplate repeated
+// across several unrelated items. The value is still well-supported by testing —
+// just not by that.
+//
+// Bell Keepers was same-tier-only here, which was simply too strict and is the
+// kind of over-tightening that reads in game as "the covenant is broken".
 var visitorTierWindows = map[ds2pb.VisitorType]tierWindow{
-	ds2pb.VisitorType_VisitorType_Rat:           {below: 1, above: 3},
-	ds2pb.VisitorType_VisitorType_BellKeepers:   {below: 0, above: 0},
-	ds2pb.VisitorType_VisitorType_BlueSentinels: {below: 0, above: 0},
+	// Both well-supported, though the Rat figure is flagged by the most rigorous
+	// tester as not re-verified after patch 1.10.
+	ds2pb.VisitorType_VisitorType_Rat:         {below: 1, above: 3},
+	ds2pb.VisitorType_VisitorType_BellKeepers: {below: 1, above: 3},
+	// DISPUTED: sources split between 5/4 and 7/6, and the wider figure has no
+	// published test behind it. The narrower one is the majority, and being a
+	// little too strict here shows up as "found nobody", which is far easier to
+	// recognise than being too loose. Blue Sentinels is still untested live.
+	ds2pb.VisitorType_VisitorType_BlueSentinels: {below: 5, above: 4},
 }
 
-// soulMemoryMatches reports whether a guest's soul memory is in range of a
-// host's, given a window. Both are absolute soul memory, not tiers.
-func soulMemoryMatches(hostSM, guestSM uint32, w tierWindow) bool {
-	host := soulMemoryTier(hostSM)
-	guest := soulMemoryTier(guestSM)
-	return guest >= host-w.below && guest <= host+w.above
+// soulMemoryMatches reports whether a candidate's soul memory is in range of the
+// item user's, given a window. Both are absolute soul memory, not tiers.
+func soulMemoryMatches(itemUserSM, candidateSM uint32, w tierWindow) bool {
+	user := soulMemoryTier(itemUserSM)
+	cand := soulMemoryTier(candidateSM)
+	return cand >= user-w.below && cand <= user+w.above
 }
 
 // matchmakingEnabled gates the whole filter so a bad table or a wrong area

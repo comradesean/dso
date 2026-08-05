@@ -108,6 +108,10 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 	// their status blob: it is `required` here, so it is always present and is
 	// the client's own view of what it is matching on.
 	hostSM := req.GetMatchingParameter().GetSoulMemory()
+	// Record it against the requester too. The status blob arrives in fragments
+	// and can leave a player at soul memory 0 for a while; this is complete on
+	// every request, so it keeps them matchable in the meantime.
+	cs.profile.applyMatchingParameter(req.GetMatchingParameter())
 
 	var skippedPool, skippedSoul int
 	for _, other := range s.sessions {
@@ -122,7 +126,7 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 				skippedPool++
 				continue
 			}
-			if !soulMemoryMatches(hostSM, other.profile.soulMemory, window) {
+			if !soulMemoryMatches(hostSM, other.profile.effectiveSoulMemory(), window) {
 				skippedSoul++
 				continue
 			}
