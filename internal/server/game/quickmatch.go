@@ -140,13 +140,21 @@ func (q *quickMatchStore) remove(playerID uint32) (*quickMatch, bool) {
 // rather than filtered on. A strict cell filter would leave two players queued at
 // different statues waiting forever while each was visible to the other.
 //
-// WHICH FIELD CARRIES THE STATUE IS UNCONFIRMED. cell_id is the only per-venue
-// field the request has and is the obvious candidate — the schema's own samples
-// pair area 10230000 with cell 102350 and area 10310000 with cell 103140 — but we
-// have only ever observed one cell per venue live, because both test clients used
-// the same statue. If a capture shows the cell fixed per venue, the statue is
-// carried elsewhere (most likely inside the opaque MatchingParameter) and this
-// ordering becomes a no-op rather than a wrong answer.
+// CONFIRMED LIVE: cell_id does NOT carry the statue. Registering at the left and
+// middle statues of Undead Purgatory both logged cell_id=102350, so the cell is
+// fixed per venue and the map choice rides elsewhere — almost certainly inside the
+// opaque MatchingParameter, which we store and hand over without interpreting.
+//
+// That makes this ordering a no-op in practice rather than a wrong answer, and it
+// is kept because it costs nothing and is correct if the map ever does reach us.
+// Map selection demonstrably works in game regardless, so whatever channel
+// carries it does not need us.
+//
+// KNOWN ROUGH EDGE: if both players register and neither searches, both sit
+// advertising and no match forms — observed live as a ~23-second stall that broke
+// the moment one player re-queued. The server is passive here by design: it
+// advertises and lets a client choose to join. Whether the real server actively
+// paired two waiting registrations is unknown.
 func (q *quickMatchStore) search(areaID, cellID int64, mode ds2pb.QuickMatchGameMode, exclude uint32, limit int) []*quickMatch {
 	q.mu.Lock()
 	defer q.mu.Unlock()

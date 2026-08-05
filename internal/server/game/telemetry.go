@@ -67,8 +67,8 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 //
 //	field_1  the PEER's player id (the guest here, the host in JoinSession)
 //	field_7  the online area id, confirmed by matching the sign's own area
-//	field_2  the session kind: 5 for an ordinary summon sign, 9 for a Mirror
-//	         Knight squire. Other values not yet observed.
+//	field_2  the session kind, observed live: 5 = ordinary summon sign,
+//	         8 = arena duel, 9 = Mirror Knight squire.
 //
 // field_9 remains an opaque blob and is logged by length only.
 func (s *Service) handleNotifyJoinGuestPlayer(log logger, cs *clientSession, payload []byte) ([]byte, error) {

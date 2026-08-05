@@ -141,12 +141,17 @@ there and paired across maps when nobody is, with the higher covenant rank decid
 used. Matching therefore orders by cell rather than filtering on it — a strict filter left two
 players at different statues visible to each other and never able to meet.
 
-**Which field carries the statue is still unconfirmed.** `cell_id` is the only per-venue field the
-request has and the schema's samples pair area `10230000` with cell `102350` and area `10310000`
-with cell `103140` — but only one cell per venue has ever been observed live, because both test
-clients used the same statue. Registering at a *different* statue and watching the logged
-`cell_id` settles it in one attempt. If the cell turns out fixed per venue, the statue rides in
-the opaque `MatchingParameter` and the ordering becomes a harmless no-op.
+**Settled: `cell_id` does NOT carry the statue.** The left and middle statues at Undead Purgatory
+both register `cell_id=102350`, so the cell is fixed per venue and the map choice rides elsewhere
+— almost certainly inside the opaque `MatchingParameter`. Map selection works correctly in game
+regardless, so whatever channel carries it does not involve us. The cross-map ordering is
+therefore a no-op in practice, kept because it costs nothing and is right if the map ever does
+reach us.
+
+**Rough edge worth watching:** if both players register and neither searches, both sit advertising
+and no match forms — seen live as a ~23-second stall that broke as soon as one player re-queued.
+The server is passive by design here. Whether the real server actively paired two waiting
+registrations is unknown.
 
 **Not implemented:** the higher-ranked player's map choice deciding the venue. Covenant rank is
 not tracked, and map selection is most likely negotiated client-to-client after the join.
