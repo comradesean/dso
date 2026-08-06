@@ -350,9 +350,30 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 		return
 	}
 
-	var sent int
+	// Only send to players in the map the bell is in.
+	//
+	// The client discards a toll for a map it is not in — proven in game, where
+	// a synthetic toll carrying Belfry Luna's map was audible in the Lost
+	// Bastille and silent everywhere else. So sending it to the whole server was
+	// always going to be thrown away by everyone out of earshot, and the traffic
+	// bought nothing.
+	//
+	// Worth trimming rather than shrugging at: a push to every session is the
+	// same shape as the burst that killed a session earlier — four large replies
+	// at once overran a client's receive window. This is a small message, but
+	// "broadcast to everyone" scales with player count for no benefit.
+	//
+	// FAILS OPEN on an unknown location. A player whose profile has not arrived
+	// yet has onlineArea 0 and still gets the toll: the client will discard it if
+	// they are elsewhere, so a false positive costs one small packet, while a
+	// false negative would silence a bell someone should have heard.
+	var sent, skipped int
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.playerID == from.playerID {
+			continue
+		}
+		if other.profile.onlineArea != 0 && other.profile.onlineArea != mapID {
+			skipped++
 			continue
 		}
 		other.conn.SendPush(body)
@@ -361,7 +382,8 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 	log.Info("broadcast bell toll",
 		"ringer_player_id", from.playerID, "map_id", mapID,
 		"push_id", fmt.Sprintf("%#04x", int(ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell)),
-		"recipients", sent, "payload_bytes", len(body))
+		"recipients", sent, "skipped_other_map", skipped,
+		"payload_bytes", len(body))
 }
 
 // maybeSendTestBellToll fires a synthetic toll on a timer, when
@@ -395,6 +417,11 @@ func (s *Service) maybeSendTestBellToll(log logger) {
 	if err != nil {
 		return
 	}
+	// Sends to EVERYONE, unlike the real relay, and deliberately so: broadcasting
+	// regardless of location is what makes the client's own map filter
+	// observable. A player roams, hears the toll only in the map this names, and
+	// that is the experiment. Adding the location filter here would quietly
+	// destroy it.
 	var sent int
 	for _, other := range s.sessions {
 		if other.playerID == 0 {
