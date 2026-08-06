@@ -73,8 +73,18 @@ live result exactly.
 published calibrations — including 0109 (2014-06-05) and 0110 (2014-07-08), which land on event
 dates. Yet the event demonstrably ran. Both halves of the mechanism being frozen in the S3 channel
 is **two** independent reasons to think the weekly data arrived by another route, and
-`0x038B RegulationFileUpdatePushMessage` — inline `diff_data` with `start_at`/`end_at` — remains the
-only candidate in the client's 214-class message set.
+`0x038B RegulationFileUpdatePushMessage` — inline `diff_data` — remains the only candidate in the
+client's 214-class message set.
+
+**That candidate is now traced end to end: see `tasks/regulation-push-038b.md`.** The client applies
+pushed resources on the next frame, in memory, no restart — so FromSoftware could replace
+`OnlineEventParam.param` at runtime and never touch the S3 calibration channel. Note the write-up
+also *corrects* the theory that `start_at`/`end_at` scheduled the rotation: those fields are never
+read. Any scheduling was server-side.
+
+Constraint that matters here: the pushed payload must be **exactly the same size** as the loaded
+resource. Flipping the `u16` at `OnlineEventParam` row 0 `+2` qualifies. Creating a missing row does
+not.
 
 ### Key addresses (v1.10)
 
