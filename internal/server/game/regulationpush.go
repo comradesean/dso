@@ -23,6 +23,13 @@ import (
 // 0x1588218.
 const opPushRegulationFileUpdate = 0x038B
 
+// regulationPushByteBudget caps the total payload bytes in one push.
+//
+// The largest message this transport has been seen to carry is ~10.7 KB (13
+// fragments at 900 bytes); this leaves headroom above that without inviting a
+// 55-fragment message nobody has tested.
+const regulationPushByteBudget = 16384
+
 // regulationPushSentinelStart / End are the "always valid" window the client
 // itself constructs when the fields are absent (handler 0x15F74B8 defaults them
 // via cellRtc).
@@ -163,6 +170,25 @@ func (s *Service) regulationPushEntries(log logger, path string, data []byte) []
 		}
 		return []*ds2pb.RegulationFileDiffData{
 			regulationDiffEntry(path, data, uint32(cfg.RegulationPushVersionRequired), uint32(versionNew)),
+		}
+	}
+
+	// Every entry carries its OWN full copy of the payload, so a wide sweep over a
+	// large file makes an enormous push. Eleven copies of the 4420-byte lot param
+	// is ~48 KB, which at 900-byte fragments is ~55 packets — four times the
+	// largest message this transport has been observed to carry.
+	//
+	// Cap the total and say so when it bites. A silently truncated sweep would
+	// look exactly like a working one right up until the version it needed was the
+	// one dropped.
+	if len(data) > 0 {
+		if room := max(1, regulationPushByteBudget/len(data)); room < len(candidates) {
+			log.Warn("regulation push: sweep truncated to fit the transport",
+				"payload_bytes", len(data),
+				"candidates", len(candidates),
+				"sending", room,
+				"dropped", candidates[room:])
+			candidates = candidates[:room]
 		}
 	}
 
