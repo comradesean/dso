@@ -83,6 +83,38 @@ FromSoft must have made it there.
 That is plausible and it is not evidence. It is exactly the kind of "must have been"
 reasoning that has been wrong repeatedly on this project.
 
+### A PC capture was tried, and CANNOT settle it (2026-08-06)
+
+680 MB captured against FromSoftware's live DS2 SOTFS servers. **Result: inconclusive, and no further
+analysis of those files will change that.** Two independent blockers:
+
+- **The login/auth phase was not captured.** A 369-second gap between files swallowed the whole
+  handshake. Zero Frpg2 packet-header signatures across 441,902 TCP segments with payload, and the
+  first captured game datagram is mid-session (`packet_type = 0x00`, no connection prefix).
+- **The key is unrecoverable even with it.** `RequestHandshake` carries the 16-byte CWC key
+  **client->server under RSA-OAEP** to FromSoftware's public key (2048-bit, e=3, at file offset
+  `0x10D3940` in `DarkSoulsII.exe`). Only their private key reverses it; e=3 buys nothing because
+  OAEP is randomized and fills the modulus. Both directions switch to CWC *before* the game key is
+  derived, so it is never in the clear. The one readable direction, server->client X9.31, carries
+  only the auth server's address.
+
+The envelope decode is CONFIRMED working — all 4,773 client->server datagrams carry the same
+cleartext 8-byte auth token and the framing matches `dev/proto/pc/**/frpg2_game_*.ksy` — so the
+transport read is right and only the payload is closed. 2.4 MB of ciphertext at 7.9999 bits/byte,
+zero `F5 02` magic, zero occurrences of the bell payload or either belfry map id.
+
+**The player's own bell ring is in there and could not be located either.** That is the positive
+control failing, which makes this inconclusive rather than a negative — exactly the distinction this
+file exists to keep straight.
+
+Corrections from the capture: the PC game service is on UDP **`:50000`**, not `:50010` or `:50031`.
+
+Settling it this way needs client-side key extraction — hooking the CWC cipher construction or
+reading the 16-byte key from process memory at session start — paired with a capture started
+*before* the game launches. Tooling is ready for that:
+`scratchpad/pccap/pcapng.py` (dependency-free dissector) and `decode_game.py` (envelope decoder,
+takes `--key`).
+
 ### What would settle it
 
 **The discriminating question: did anyone in retail DS2 ever hear a belfry bell while
