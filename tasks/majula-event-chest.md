@@ -1,7 +1,87 @@
-# The Majula event chest — found, and one test away from settled
+# The Majula event chest — the gate is found
 
-**Status: the chest is identified, the prize lives in one param row, and there is a cheap live
-test that decides whether anything server-side is needed at all.**
+**Status: the chest is identified, the prize lives in one param row, and the gate that keeps it
+shut is a threshold in a second param row that is zero in every file we hold.**
+
+---
+
+## THE GATE (found 2026-08-06, supersedes the "next step" section below)
+
+The live test was run: a calibration was authored putting Agape Ring (`42000000`) into
+`ItemLotParam2_SvrEvent[10045500]`, signed, served, downloaded and installed — the client verified
+our signature, proving the authoring pipeline works end to end. **The chest gave a Soul Vessel**,
+i.e. lot `10045600`, the *ordinary* object's lot. The event object never participated.
+
+Diffing both rows of `MapObjectInstanceParam_m10_04_00_00.param` (128 rows, table at `0x34`, stride
+40) shows they are identical **except** the selector byte `+0x18` (`1c` vs `24`) and the lot id
+`+0x24`. No enable flag, event-flag id, time window or condition field differs. **The gate is not in
+the object data.** It is in the component code behind selector `0x24`.
+
+### `0x58E360` — the arm/refresh method
+
+```
+this->armed = 0
+r3 = *(world + 3368)
+if (r3 && *(r3 + 34) == 0)        return          // GATE A - secondary, UNIDENTIFIED
+threshold = OnlineEventParam[0].u16[1]            // bytes +2..+3, read via 0x66F1D8
+stored    = 0x5B6318(mgr, objKey)                 // per-object u16, 0 by default
+if (stored >= threshold)          return          // GATE B - 0 >= 0 is TRUE
+0x58FF10(this, 1)                                 // enable the item
+this->armed = 1
+```
+
+`0x58E228` (tick) requires `armed != 0`, and on claim calls `0x5B63D0(mgr, objKey, threshold)` —
+**storing the threshold into the per-object counter**, so `stored >= threshold` holds forever after.
+
+**That is a claim latch.** Bump the threshold and the chest re-arms exactly once. It accounts for
+the weekly rotation, "once per account", "re-closes if you opened it before that week", and the NG+
+reset, with **no network message involved at all**.
+
+`OnlineEventParam` row 0 is `00000000000000000000000000000000` — byte-identical in all ten
+calibrations and both disc regulations. Threshold = 0, so the chest can never arm. This predicts the
+live result exactly.
+
+### How `OnlineEventParam` was identified (traced, not inferred)
+
+- `0xA5F484` = `GetOnlineEventParamPath()` → string `param:/OnlineEventParam.param` @ `0x1881208`
+  (its only pointer slot, `0x1D26600`).
+- Called from `0x66F6A0`, which stores the resource via `0x56A118` into **holder+24**
+  (siblings: NetworkParam→+8, NetworkAreaParam→+16, NetworkMessageParam→+32).
+- `0x66F1D8` reads `*(r4 + 24)` where `r4 = *(0x1E1EAB4 + 32)` — **the same slot**. Same compilation
+  unit as `0x66F6A0`.
+- `0x66F1D8` is a PARAM row-0 reader: `+10` = rowCount, `+68` = row[0].dataOffset, memcpy 16 bytes;
+  zero-fills and returns untouched if the resource is missing, state `!= 2`, or rowCount `== 0`.
+  Those offsets match §8 of `docs/regulation-format.md`.
+- Corroboration: of the 12 params in the v1.10 regulation with 16-byte rows, `ONLINE_EVENT_PARAM` is
+  the **only one with exactly one row at id 0**, and the string sits in the network param group.
+
+**Confidence: high.**
+
+### Still unknown
+
+- **GATE A**, `*(world+3368)+34` — a second boolean, unidentified. May be an online/login flag. The
+  chest needs it non-zero (or that object null).
+- Whether the per-object counter (8 slots at `+4964..+4992`) persists in the save.
+- The `+0x2C` `_SvrEvent` table reader. The earlier scan was **unsound**: the loader at `0x56A320` is
+  reached via `0xA5EE4C` which does `addi r3,r3,12`, so relative to the repository pointer the slots
+  are `+0x28/+0x30/+0x38`. Corrected and re-run, the scan found no `_Chr` or `_Other` reads either —
+  and those must exist — so the seed does not survive to use sites. **Inconclusive, not negative.**
+
+### The tension that still points at `0x038B`
+
+`OnlineEventParam` row 0 **and** `ItemLotParam2_SvrEvent[10045500]` are static across all ten
+published calibrations — including 0109 (2014-06-05) and 0110 (2014-07-08), which land on event
+dates. Yet the event demonstrably ran. Both halves of the mechanism being frozen in the S3 channel
+is **two** independent reasons to think the weekly data arrived by another route, and
+`0x038B RegulationFileUpdatePushMessage` — inline `diff_data` with `start_at`/`end_at` — remains the
+only candidate in the client's 214-class message set.
+
+### Key addresses (v1.10)
+
+Component CU `0x58D960`–`0x58E4E0`; vtable `0x1CA0BC0`; class descriptor `0x1E1C5FC` (ptr at
+`0x1E1C5F4`); register `0x58DD5C`; unregister `0x58DE3C`; tick/claim `0x58E228`; **arm/gate
+`0x58E360`**; threshold reader `0x66F1D8`; counter read `0x5B6318` / write `0x5B63D0`; enable-item
+`0x58FF10`; gate-A predicate `0xB5338C`.
 
 ---
 
@@ -118,7 +198,10 @@ binary:
 - **Local save flag** — "once per account" may be community shorthand for the save being
   account-locked.
 
-## NEXT STEP — the test that settles it
+## ~~NEXT STEP — the test that settles it~~ (DONE — result: Soul Vessel, see THE GATE above)
+
+This test was run and came back "Soul Vessel", which the section below calls the "runtime gate
+exists" branch. That gate has since been found: it is `OnlineEventParam` row 0. Kept for the record.
 
 **Author a calibration changing only `ItemLotParam2_SvrEvent` row `10045500`** to something
 unmistakable — Bonfire Ascetic (`60527000`) ×4 is one of the real historical prizes — leaving every
