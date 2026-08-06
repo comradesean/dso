@@ -203,8 +203,34 @@ boilerplate repeated across unrelated items. The value stands on testing, not on
 
 `DSO_MATCHMAKING_FILTERS=0` disables the lot.
 
-**Not yet applied to sign lists, break-in targets or quick match** — deliberately. Those work
-today, their ranges are unknown, and a wrong filter there would break confirmed features.
+### Break-in (invasion) filters
+
+Applied 2026-08-05 after Dark Chasm of Old invasions failed instantly with "unable to find a world
+to invade". The list was returning a target and the **host's client was refusing it in ~116ms**;
+we relayed that refusal, and the invader read it as nobody being found.
+
+**The cause is invadability, not location.** A player cannot be broken into while resting at a
+bonfire, while their activity area is 0, or **after burning a Human Effigy** — DS2's deliberate
+opt-out of invasion, which we had been ignoring entirely. Symptom to remember: the invasion becomes
+possible the moment the host's state changes, with nothing changing server-side.
+
+**A location filter was briefly added here and was wrong.** It required the host's activity *cell*
+to equal the request's `cell_id`, which enforces a restriction the game does not have — a Cracked
+Red Eye Orb reaches any of the three Dark Chasms regardless of which one the invader stands in. The
+effect was that two players inside the Chasm complex could never be offered to each other and the
+client searched forever. Matching is now on the coarse **area** id (`40030000` for the whole
+complex). The cell remains right for the covenant pools, which genuinely are cell-scoped.
+
+Worth recording as a process note: the invadability gate and the location rule shipped together,
+and the improvement was initially credited to the wrong one. Two filters in one deploy cannot be
+told apart by a single test.
+
+Soul memory uses **0 tiers below, 4 above** — invaders reach up, never down. DS2's anti-twink rule,
+and the best-evidenced figure in the system, since the Cracked Red Eye Orb was the probe used to
+derive the tier table.
+
+**Still not applied to sign lists or quick match** — deliberately. Those work today, their ranges
+are less certain, and a wrong filter there would break confirmed features.
 
 Historical note on how they were chosen: Nine aliases across `0x03C9`-`0x03D1` for three message
 types. We send `0x03CF`/`0x03D0`/`0x03D1`, which is better supported than a guess: the PC protos
