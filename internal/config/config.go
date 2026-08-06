@@ -127,7 +127,18 @@ type Config struct {
 	RegulationPushPath            string
 	RegulationPushVersionRequired uint64
 	RegulationPushVersionNew      uint64
-	RegulationPushDelaySeconds    uint64
+
+	// RegulationPushVersionSweep is a comma-separated list of candidate
+	// version_required values. When set, one diff entry is sent per candidate in
+	// a single push instead of one entry using RegulationPushVersionRequired.
+	//
+	// It exists because the client silently drops any entry whose
+	// target_regulation_version differs from a value we cannot read and it never
+	// reports. At most one candidate can match, so a sweep costs one login where
+	// guessing costs one login per value -- and with an FMG payload each entry
+	// carries text naming its own candidate, so the game displays the answer.
+	RegulationPushVersionSweep string
+	RegulationPushDelaySeconds uint64
 
 	// Bootstrap HTTP: the DS2 PS3 client does an HTTP "calibration" check before
 	// going online. BootstrapHTTPEnabled starts an HTTP server (port 80 by
@@ -253,6 +264,7 @@ func Load() (Config, error) {
 	c.RegulationPushPath = envStr("DSO_REGULATION_PUSH_PATH", c.RegulationPushPath)
 	c.RegulationPushVersionRequired = envUint("DSO_REGULATION_PUSH_VERSION_REQUIRED", c.RegulationPushVersionRequired)
 	c.RegulationPushVersionNew = envUint("DSO_REGULATION_PUSH_VERSION_NEW", c.RegulationPushVersionNew)
+	c.RegulationPushVersionSweep = envStr("DSO_REGULATION_PUSH_VERSION_SWEEP", c.RegulationPushVersionSweep)
 	c.RegulationPushDelaySeconds = envUint("DSO_REGULATION_PUSH_DELAY_SECONDS", c.RegulationPushDelaySeconds)
 	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)
 	c.BootstrapHTTPPort = envInt("DSO_BOOTSTRAP_HTTP_PORT", c.BootstrapHTTPPort)

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -92,23 +94,14 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 		path = filepath.Base(cfg.RegulationPushFile)
 	}
 
-	versionNew := cfg.RegulationPushVersionNew
-	if versionNew == 0 {
-		versionNew = cfg.RegulationPushVersionRequired + 1
+	entries := s.regulationPushEntries(log, path, data)
+	if len(entries) == 0 {
+		return
 	}
 
 	body, err := proto.Marshal(&ds2pb.RegulationFileUpdatePushMessage{
 		PushMessageId: ds2pb.PushMessageId(opPushRegulationFileUpdate).Enum(),
-		UpdateMsg: &ds2pb.RegulationFileUpdateMessage{
-			DiffDataList: []*ds2pb.RegulationFileDiffData{{
-				VersionNew:      proto.Uint32(uint32(versionNew)),
-				VersionRequired: proto.Uint32(uint32(cfg.RegulationPushVersionRequired)),
-				Path:            proto.String(path),
-				DiffData:        data,
-				StartAt:         regulationPushSentinelStart,
-				EndAt:           regulationPushSentinelEnd,
-			}},
-		},
+		UpdateMsg:     &ds2pb.RegulationFileUpdateMessage{DiffDataList: entries},
 	})
 	if err != nil {
 		log.Warn("regulation push: marshal failed", "err", err)
@@ -121,8 +114,115 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 		"push_id", fmt.Sprintf("%#04x", opPushRegulationFileUpdate),
 		"path", path,
 		"payload_bytes", len(data),
-		"version_new", versionNew,
-		"version_required", cfg.RegulationPushVersionRequired)
+		"entries", len(entries),
+		"versions_required", cfg.RegulationPushVersionRequired,
+		"sweep", cfg.RegulationPushVersionSweep)
+}
+
+// regulationPushEntries builds the diff list.
+//
+// Normally that is one entry. With a sweep configured it is one entry per
+// candidate version, which exists because of the check at 0x7705A8:
+//
+//	holder->current_version != elem.target_regulation_version -> skip, silently
+//
+// We cannot read holder->current_version from here, and the client reports no
+// version we can map onto it — the calibration manifest's own Version field is 1
+// in every published calibration, so it carries no information either. Guessing
+// one value per login is a slow way to search a space we cannot see into.
+//
+// The client accepts at most one entry, since at most one candidate can equal a
+// single stored value. So sweeping costs one login instead of forty, and where
+// the payload is an FMG each entry can carry its own text naming the candidate
+// it was built for — which makes the game itself report the answer.
+func (s *Service) regulationPushEntries(log logger, path string, data []byte) []*ds2pb.RegulationFileDiffData {
+	cfg := s.srv.Config
+
+	candidates := parseVersionSweep(cfg.RegulationPushVersionSweep)
+	if len(candidates) == 0 {
+		versionNew := cfg.RegulationPushVersionNew
+		if versionNew == 0 {
+			versionNew = cfg.RegulationPushVersionRequired + 1
+		}
+		return []*ds2pb.RegulationFileDiffData{
+			regulationDiffEntry(path, data, uint32(cfg.RegulationPushVersionRequired), uint32(versionNew)),
+		}
+	}
+
+	entries := make([]*ds2pb.RegulationFileDiffData, 0, len(candidates))
+	for _, v := range candidates {
+		payload := data
+		if labelled, ok := labelFMG(data, fmt.Sprintf("0x038B APPLIED. VERSION MATCHED = %d", v)); ok {
+			payload = labelled
+		}
+		// version_new must be <= 999999 (0x770418) and, among entries the client
+		// accepts, strictly increasing (0x770438). Only one entry can be accepted,
+		// so v+1 is safe and keeps the resulting version predictable.
+		entries = append(entries, regulationDiffEntry(path, payload, v, min(v+1, 999999)))
+	}
+	log.Info("regulation push: sweeping candidate versions", "count", len(entries))
+	return entries
+}
+
+func regulationDiffEntry(path string, data []byte, required, next uint32) *ds2pb.RegulationFileDiffData {
+	return &ds2pb.RegulationFileDiffData{
+		VersionNew:      proto.Uint32(next),
+		VersionRequired: proto.Uint32(required),
+		Path:            proto.String(path),
+		DiffData:        data,
+		StartAt:         regulationPushSentinelStart,
+		EndAt:           regulationPushSentinelEnd,
+	}
+}
+
+func parseVersionSweep(spec string) []uint32 {
+	var out []uint32
+	for _, f := range strings.Split(spec, ",") {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		if v, err := strconv.ParseUint(f, 10, 32); err == nil {
+			out = append(out, uint32(v))
+		}
+	}
+	return out
+}
+
+// labelFMG rewrites the single string in regulationEnglish.fmg in place.
+//
+// That file is 128 bytes and holds exactly one string, id 100 at offset 0x2C —
+// the Majula obelisk, "The letters are worn beyond recognition.", 40 characters
+// of UTF-16BE. Replacing it with another 40-character string leaves the file
+// length and every offset inside it untouched, so the result is still a valid
+// FMG without rebuilding anything.
+//
+// This is deliberately narrow: it returns false for anything that is not
+// byte-for-byte the shape it expects, rather than trying to be a general FMG
+// writer. tools/gamedata/regparam.py is the general one.
+func labelFMG(data []byte, label string) ([]byte, bool) {
+	const stringOff = 0x2C
+	const chars = 40
+
+	if len(data) != 128 {
+		return nil, false
+	}
+
+	runes := []rune(label)
+	if len(runes) > chars {
+		runes = runes[:chars]
+	}
+	for len(runes) < chars {
+		runes = append(runes, ' ')
+	}
+
+	out := make([]byte, len(data))
+	copy(out, data)
+	for i, r := range runes {
+		out[stringOff+i*2] = byte(r >> 8)
+		out[stringOff+i*2+1] = byte(r)
+	}
+	return out, true
 }
 
 // maybeSendRegulationPush sends the push after an optional delay.
