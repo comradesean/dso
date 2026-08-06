@@ -135,12 +135,33 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 // way, since the entries are compressed". That was wrong and nothing had checked
 // the header — the index is plaintext and carries every filename.
 //
-// What remains unexplained is the CONDITION. A player rang Belfry Luna five
-// times consecutively with full packet logging and 0x03EE never appeared. The
-// leading theory is that the script fires once — a bell is a one-shot in DS2,
-// the gate it opens stays open — so a character who has already rung that bell
-// can never trigger it again. Testing that needs a character who has rung
-// neither bell.
+// THE CONDITION IS HOST DEATH, NOT RINGING THE BELL.
+//
+// The send branch is gated behind 「ホスト死亡判定」 — host death determination —
+// and the bell object's action prompt is disabled from map load until that same
+// condition holds. A living player, alone or in a session, has no path to it.
+// The name is confirmed from FromSoftware's own .edd command dictionaries and
+// the executable's RTTI string, so the message really is the bell; only our
+// assumption about what rings it was wrong.
+//
+// That is the actual DS2 mechanic: the bell TOLLS WHEN SOMEONE DIES in a belfry
+// duel. It also finally explains the long-standing player reports of hearing
+// bells with no invasion of their own in progress — they are hearing a Bell
+// Keeper fight end somewhere else, which is why it sounded mysterious and why it
+// never correlated with anything the listener was doing.
+//
+// This retires two theories that fit the evidence and were both wrong: that the
+// script fires once on a first ring, and that the guard merely required an
+// active multiplayer session. A player rang Belfry Luna five times solo, and
+// later once more with a Bell Keeper session live in their world, and neither
+// produced a packet.
+//
+// CAUTION on the earlier claim here that command 130631 appeared in five files
+// across the DLC archive, including two AI scripts and Brightstone Cove
+// Tseldora. Those were COINCIDENTAL BYTE MATCHES. A full structural parse of
+// those scripts visited every command entry (760/760 and 768/768) and found no
+// real uses. Raw byte scanning with tools/gamedata/bhf4.py grep32 over-reports;
+// only a structural parse settles whether a hit is a command id.
 //
 // Payload, recovered from the serialiser rather than guessed:
 //

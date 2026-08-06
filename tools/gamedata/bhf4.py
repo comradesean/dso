@@ -33,10 +33,16 @@ Usage:
     bhf4.py extract <substring> <outdir>
     bhf4.py grep32 <int> [substring] search files for a big-endian u32
 
-The grep32 mode is what identified the bell trigger: EzState command 130631
-appears in exactly two of the game's 475 .esd scripts, event_m10_16_00_00 and
-event_m10_19_00_00 — Belfry Luna and Belfry Sol — and nowhere else, which is
-what proved opcode 0x03EE is genuinely the bell and is reachable in retail.
+grep32 finds a big-endian u32 anywhere in a file's bytes. That located EzState
+command 130631, the gate on opcode 0x03EE, in the Belfry Luna and Belfry Sol
+event scripts.
+
+CAVEAT, learned the hard way: grep32 OVER-REPORTS. Scanning the DLC archive for
+the same value also hit two enemy AI scripts and Brightstone Cove Tseldora, and
+a full structural parse of those files showed every one to be a coincidental
+byte match with no command entry there at all. Four bytes recur by chance in
+megabytes of bytecode. Use grep32 to find candidates, never to conclude — a hit
+is only real once the surrounding structure is parsed.
 """
 
 import os
