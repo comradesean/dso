@@ -395,21 +395,27 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 		if other.playerID == 0 || other.playerID == from.playerID {
 			continue
 		}
-		// DISABLED while the mechanism is under test — see the note above.
+		// THE SERVER IS THE FILTER. This is not an optimisation — it is the
+		// feature, and without it the wrong bell rings.
 		//
-		// The filter is a proxy for "would this player's script poll the latch",
-		// and it is only as good as our idea of where they are. With the body
-		// proven inert and the latch global, the interesting questions are what
-		// a foreign map id does and whether a Sol ring sounds Luna's bell to
-		// someone in the Lost Bastille — and both need every client to receive
-		// the toll regardless of where we think they are.
+		// Proven in game: with this disabled, a player standing in Iron Keep
+		// heard BELFRY SOL's bell while the toll carried Belfry Luna's map in
+		// field 2 and Luna's cell in field 3. The client cannot tell which bell
+		// rang, because it never reads the body — it sets a latch, and whichever
+		// belfry map is loaded plays its own bell.
 		//
-		// Restore once those are settled; the traffic saving is real.
+		// So the map and cell in this message exist for OUR benefit, not the
+		// client's. FromSoftware's server must have done exactly this, because
+		// it is the only place the decision can be made: decline to notify
+		// players who would sound the wrong bell.
 		//
-		// if other.profile.onlineArea != 0 && other.profile.onlineArea != mapID {
-		// 	skipped++
-		// 	continue
-		// }
+		// Fails open on an unknown location, since a false positive costs one
+		// small packet and a false negative silences a bell someone should have
+		// heard.
+		if other.profile.onlineArea != 0 && other.profile.onlineArea != mapID {
+			skipped++
+			continue
+		}
 		other.conn.SendPush(body)
 		sent++
 	}
@@ -444,9 +450,19 @@ func (s *Service) maybeSendTestBellToll(log logger) {
 
 	body, err := proto.Marshal(&ds2pb.PushRequestNotifyRingBell{
 		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell.Enum(),
-		Field_2:       proto.Uint32(10160000), // Belfry Luna
-		Field_3:       proto.Uint32(0),
-		Field_4:       []byte{},
+		Field_2:       proto.Uint32(10160000), // Belfry Luna's map
+		// UNDER TEST: field 3 was the invented literal 0, and this is Belfry
+		// Luna's activity cell — the finer-grained location, the same value the
+		// Bell Keeper pool matches on. If field 3 is a location or a bell
+		// identity, this is the value it would want.
+		//
+		// The decompilation says the consumer never reads this field at all, so
+		// the prediction is that NOTHING changes: the bell rings exactly as
+		// before, in the same places. A change of any kind — a different bell,
+		// a different range, silence — refutes that and means a reader exists
+		// which the analysis missed, as one already did for the sink pointer.
+		Field_3: proto.Uint32(101640),
+		Field_4: []byte{},
 	})
 	if err != nil {
 		return
