@@ -70,12 +70,20 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 //
 //	field_1  the PEER's player id (the guest here, the host in JoinSession)
 //	field_7  the online area id, confirmed by matching the sign's own area
-//	field_2  the session kind, observed live: 5 = ordinary summon sign,
-//	         8 = arena duel, 9 = Mirror Knight squire, 13 and 14 seen during Bell
-//	         Keeper covenant summons (14 confirmed as the grey-spirit visit; 13
-//	         seen once alongside it and not yet attributed), 15 = Rat King prey,
-//	         10 = Dragon Remnants duel via a Dragon Eye sign (sign_type 6),
-//	         7 = break-in invasion (confirmed in the Dark Chasm of Old).
+//	field_2  the session kind. Observed live:
+//	           5  ordinary summon sign, AND Red Eye Orb invasions — an earlier
+//	              note here had 5 as sign-only, but a confirmed
+//	              BreakInType_RedEyeOrb invasion produced it, so the kind varies
+//	              by invasion TYPE rather than being one value for all break-ins
+//	           7  break-in invasion in the Dark Chasm of Old (a different
+//	              BreakInType from the above)
+//	           8  arena duel
+//	           9  Mirror Knight squire
+//	          10  Dragon Remnants duel via a Dragon Eye sign (sign_type 6)
+//	          11  Blue Sentinels covenant defence
+//	          13  seen once alongside 14 during a Bell Keeper summon, unattributed
+//	          14  Bell Keeper covenant defence (the grey-spirit visit)
+//	          15  Rat King prey
 //
 // The Rat King case is the one that inverts: the covenant member is the HOST and
 // the victim is the guest pulled into their world, the opposite of Bell Keepers
@@ -271,13 +279,41 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // exists. Static "nothing ever writes this" is a claim about what the analysis
 // could find, not about the program.
 //
-// Fields 2-4 are still of unknown meaning: what we send is reasoned from the
-// request's layout, not observed, and the client evidently accepts it. What the
-// handler does with them, recovered statically and now known to actually run:
-// field 1 is never read; fields 2 and 3 are copied verbatim into a 24-byte
-// struct with NO comparison of any kind — notably no map check, which is why a
-// listener far from the belfry still hears it; field 4 is byte-copied and an
-// empty one is safe.
+// WHAT WE SEND, and where each value actually comes from — worth stating
+// plainly, because "it works" hides how little of this is known:
+//
+//	field 1  the push id. CONFIRMED from the binary.
+//	field 2  the map id lifted from the ringer's own 0x03EE. Forwarding it is an
+//	         assumption about where it belongs, not an observation.
+//	field 3  the literal 0. INVENTED, because proto2 required something.
+//	field 4  an empty byte string. INVENTED, mirroring the request's empty blob.
+//
+// The client compares NONE of them, so the bell would most likely have played
+// with all three zeroed. Working code is not evidence the schema is right.
+//
+// What the handler does, recovered statically and now known to run: field 1 is
+// never read at all; fields 2 and 3 are copied into a 24-byte payload struct
+// (+0x00 and +0x04) with no comparison of any kind — notably no map check, which
+// is why a listener in a different map still hears it; field 4 is copied into a
+// vector at +0x08 and freed immediately after dispatch, so a consumer keeping it
+// must copy it. The dispatch is a shared net-library event-sink idiom used by
+// eleven managers: sink->vtable[slot 3](sink, eventIndex, payload, size), ours
+// with eventIndex 0 and size 24.
+//
+// EMPIRICALLY PINNED by the live test, which disassembly could not have told us:
+// field 3 = 0 and field 4 = empty are SUFFICIENT — neither suppresses playback —
+// and a field 2 naming a map the listener is not in does not suppress it either.
+//
+// The remaining risk is the inverse of a crash: field 3 or 4 may SELECT
+// something — a bell identity, an emitter position, an attenuation — that is
+// currently defaulting to something audible, so a wrong value would never
+// announce itself. Treat the present combination as a known-good baseline and do
+// not change it on a hypothesis.
+//
+// To settle it, break at v1.10 0x15D0924 (v1.00 0x15667DC), the dispatch bctrl,
+// and read CTR — the vtable walk has completed by then, so CTR holds the
+// resolved consumer address, which can be read statically in one pass. r5 is the
+// 24-byte payload, r3 the sink whose vtable identifies the owning subsystem.
 //
 // Sent to everyone EXCEPT the ringer. Their own client already played the bell
 // locally, and a relay would give them a second one.

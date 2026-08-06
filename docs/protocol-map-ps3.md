@@ -280,6 +280,27 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x03F8` | R/R | `RequestGetPowerStoneRankingRecordCount` | `0x1567718`; resp `0x1566D20` |
 | `0x03F9` | M | `RequestNotifyDisconnectSession` | `0x15659D8` |
 
+## A note on "nothing in the binary does X"
+
+An analysis of `0x03EF` concluded the client could not receive it, because the listener pointer its
+handler checks appeared never to be assigned. A live test then had a player hear the bell, so the
+assignment plainly exists.
+
+The post-mortem is worth keeping, because the failure was not a missed instruction form. The search
+found **1170** candidate store sites, filtered them with three heuristics down to ~40, triaged
+those, and reported the negative as exhaustive — in its own words, *"I never enumerated that set; I
+filtered it and reported the filtered negative as an exhaustive one."* A further 466 indexed stores
+were counted and never resolved at all.
+
+So, for any future existence claim in this document:
+
+- **Phrase the claim as what was actually tested.** "None of the ~40 sites surfaced by three
+  heuristics over 1170 candidates assigns it" is true and weak; "nothing anywhere assigns it" is
+  false and strong, and the strong version stops people testing.
+- **Say when indexed stores were not resolved.** They are a standing blind spot.
+- **A negative from static analysis is a hypothesis.** Where a runtime check is cheap — and on this
+  project it usually is, since we can trigger events on demand — the runtime check is the evidence.
+
 **Confidence: high** for every row that carries a message name and both a send and a response witness (≈80 rows). **Medium-high** for send-only rows. **Medium** for `0x03AA` (opcode certain, name inferred from the enclosing manager). `0x03EF` was
 in that category and is now **high**: its name was read directly off `GetTypeName`, and it is
 `PushRequestNotifyRingBell`, not the session-disconnect push it was previously guessed to be. **Opcode certain / name unknown** for `0x0387`, `0x0388`, `0x038A`, `0x0389`, `0x038B`, `0x038C`, `0x0390`, and the three push blocks.

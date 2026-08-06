@@ -300,8 +300,10 @@ func (p matchProfile) effectiveCovenant() uint32 {
 
 // DS2 covenant ids as they appear in PlayerStatus.covenant.
 //
-// Rat King (5) and Bell Keepers (6) are CONFIRMED on the wire — both were read
-// off live status blobs on 2026-08-05 for players known to be in those covenants.
+// Blue Sentinels (2), Rat King (5) and Bell Keepers (6) are CONFIRMED on the
+// wire, read off live status blobs for players known to be in them. The Blue
+// Sentinel case was watched changing 6 -> 2 as the player switched covenant, and
+// the summon then worked, so both the id and the pool rule are verified.
 // The rest of the list is unverified and would only show up as a covenant-gated
 // pool never activating.
 const (

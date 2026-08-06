@@ -96,6 +96,15 @@ Implemented in `internal/server/game/visitor.go` — the covenant auto-summon sy
 Keepers, Rat King, Blue Sentinels). Structurally the invasion flow, not the sign flow: nothing is
 stored, the server brokers between two live sessions and steps out.
 
+**ALL THREE COVENANTS NOW CONFIRMED LIVE (Blue Sentinels, 2026-08-06).** A Sentinel was summoned
+into an invaded player's world, defeated the invader, and everyone was returned home — the complete
+loop. Session kind **11**.
+
+Two things that had been guesses are now verified by it: covenant id **2 = Blue Sentinels**, watched
+changing `6 -> 2` on the wire as the player switched; and the rule that a covenant seal must be
+EQUIPPED, not merely joined. The Sentinel sat unsummonable with `skipped_wrong_pool` until the
+Guardian's Seal went on, exactly as the Bell Keeper's Seal behaves.
+
 **Push ids confirmed live for two of three covenants.** A Bell Keeper summon pushed `0x03CC`,
 exactly `0x3C9 + 3*mode + role` for mode 1 role 0, and the host received it and joined; the
 rejection path was exercised too (`0x03CD`). On 2026-08-05 the **Rat King** covenant was confirmed
