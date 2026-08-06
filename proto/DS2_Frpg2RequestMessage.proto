@@ -46,7 +46,11 @@ enum PushMessageId {
 	PushID_PushRequestVisit                    = 0x03CF;
 	PushID_PushRequestRejectVisit              = 0x03D0;
 	PushID_PushRequestRemoveVisitor            = 0x03D1;
-	PushID_PushRequestNotifyRingBell           = 0x03C9; // check
+	// 0x03EF, NOT 0x03C9 as this said before. 0x03C9 is the visitor push block's
+	// base (Blue Sentinels visit), so the old value collided with an unrelated
+	// message. Read off GetTypeName in BLUS41045: registered at v1.10 0x15CFCD8
+	// (`li r4,0x3EF`), handler 0x15D0528, ctor 0x16418E4, vtable 0x1CE1AE0.
+	PushID_PushRequestNotifyRingBell           = 0x03EF;
 	PushID_RegulationFileUpdatePushMessage     = 0x038B; // check
 	PushID_PushRequestRejectMirrorKnightSign   = 0x03A6; 
 	PushID_PushRequestRemoveMirrorKnightSign   = 0x03A7; 
@@ -926,13 +930,41 @@ message PushRequestVisit {
 // Game Server Messages - Bells, this is for archdragon peak I believe.
 // ------------------------------------------------------------------------------------------------------------
 
+// Server -> client broadcast of a bell toll: what other players actually hear.
+//
+// Field layout recovered from the client's own serialiser at v1.10 0x1634BA0
+// (uint32, uint32, uint32, bytes). Field 1 is the push id, as in every other
+// push here.
+//
+// Fields 2-4 have UNKNOWN meaning. Nothing has ever sent one of these, so there
+// is no capture to learn from and the assignment below is a considered guess:
+// the client->server RequestNotifyRingBell carries the map id and an always-
+// empty byte string, so the broadcast most likely relays the same map id, with
+// field 4 the same empty blob. field_3 is sent as 0 for want of anything better.
+//
+// All four are declared required so we cannot forget one. The client's
+// IsInitialized would drop the whole message over a missing field, and that
+// failure is silent.
 message PushRequestNotifyRingBell {
 	required PushMessageId push_message_id = 1;
-    // TODO
+	required uint32 field_2 = 2; // believed to be the map id, e.g. 10160000
+	required uint32 field_3 = 3; // unknown; sent as 0
+	required bytes  field_4 = 4; // believed to mirror the request's empty blob
 }
 
+// Client -> server, sent when a covenant defender pulls a belfry lever after
+// defeating the host. See internal/server/game/telemetry.go for the full chain.
+//
+// CONFIRMED on the wire 2026-08-06: `08 80 8f ec 04 12 00`, which is
+// field_1 = 10160000 (Belfry Luna) and an empty field_2 — exactly the shape
+// recovered from the client's serialiser and ByteSize beforehand.
+//
+// field_1 is uint32, not int32: ByteSize takes the unsigned varint-size path.
+// field_2 is always constructed empty by the only caller, so it goes out as
+// `12 00`.
 message RequestNotifyRingBell {
-    // TODO
+	optional uint32 field_1 = 1; // map id, DS2 decimal form (10160000)
+	optional bytes  field_2 = 2; // always empty
 }
 
 message RequestNotifyRingBellResponse {

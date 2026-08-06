@@ -3,6 +3,8 @@ package game
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 
 	"google.golang.org/protobuf/proto"
 
@@ -108,9 +110,10 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 // message's GetTypeName (v1.10 vtable 0x1CE1B60 slot 2) returns the literal
 // "Frpg2RequestMessage.RequestNotifyRingBell".
 //
-// CONFIRMED BY OBSERVATION 2026-08-05: ringing a belfry bell does NOT send this.
-// A player rang Belfry Sol, and later Belfry Luna five times consecutively, with
-// full packet logging on, and no 0x03EE ever arrived.
+// Pulling a belfry lever as an ordinary player does NOT send this. A player rang
+// Belfry Sol, and later Belfry Luna five times consecutively, with full packet
+// logging on, and no 0x03EE arrived — because the lever is not interactive at
+// all until a covenant defender has beaten the host. See THE FULL CHAIN below.
 //
 // The decompilation explains why. The send at 0x15D0178 is reached only from a
 // data-driven script command interpreter, gated on command id 130631 (0x1FE47).
@@ -152,11 +155,11 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 //
 // THE FULL CHAIN, confirmed by the player who did it:
 //
-//	1. a covenant defender is summoned into a belfry
-//	2. the defender defeats the host — the lever CANNOT be pulled before this,
-//	   the prompt simply is not offered
-//	3. the lever becomes usable and someone pulls it
-//	4. 0x03EE is sent
+//  1. a covenant defender is summoned into a belfry
+//  2. the defender defeats the host — the lever CANNOT be pulled before this,
+//     the prompt simply is not offered
+//  3. the lever becomes usable and someone pulls it
+//  4. 0x03EE is sent
 //
 // Both halves matter and neither is sufficient alone. Host death only ENABLES
 // the lever; pulling it is what sends. That is why an identical host death eight
@@ -222,12 +225,81 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 //
 // This opcode remains definitively NOT the event-chest trigger.
 func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []byte) ([]byte, error) {
-	// Still logged raw. The shape above is known, but nothing has ever sent one,
-	// so the first real payload is worth having verbatim to check it against.
-	log.Info("BELL RUNG - never yet observed, capture this",
-		"player_id", cs.playerID, "payload_bytes", len(payload),
+	var req ds2pb.RequestNotifyRingBell
+	if err := proto.Unmarshal(payload, &req); err != nil {
+		// Not fatal. This is a notify with no reply, and the raw bytes below are
+		// worth more than the session is worth dropping over.
+		log.Warn("BELL RUNG but did not parse",
+			"player_id", cs.playerID, "payload_hex", fmt.Sprintf("%x", payload))
+		return nil, nil
+	}
+
+	// Raw hex stays: only one frame has ever been seen, so a second that differs
+	// is the most interesting thing that could happen here.
+	log.Info("BELL RUNG",
+		"player_id", cs.playerID, "map_id", req.GetField_1(),
+		"blob_bytes", len(req.GetField_2()),
 		"payload_hex", fmt.Sprintf("%x", payload))
+
+	s.broadcastBellToll(log, cs, req.GetField_1())
 	return nil, nil
+}
+
+// broadcastBellToll relays a toll to every other connected player.
+//
+// This is what makes a bell audible to people who are not in the belfry, and it
+// is the mechanism behind the long-standing reports of hearing bells with no
+// invasion of one's own underway.
+//
+// SPECULATIVE, and deliberately gated. Fields 2-4 of the push have unknown
+// meaning — nothing has ever sent one, so there is no capture to copy — and the
+// assignment here is reasoned from the request's own layout rather than
+// observed. If the guess is wrong the likely outcome is a push the client
+// discards in silence, which costs nothing; but a malformed push is also how
+// several silent failures in this project began, hence the switch.
+//
+// Sent to everyone EXCEPT the ringer. Their own client already played the bell
+// locally, and a relay would give them a second one.
+func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint32) {
+	if !bellBroadcastEnabled() {
+		return
+	}
+	body, err := proto.Marshal(&ds2pb.PushRequestNotifyRingBell{
+		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell.Enum(),
+		Field_2:       proto.Uint32(mapID),
+		Field_3:       proto.Uint32(0),
+		Field_4:       []byte{},
+	})
+	if err != nil {
+		log.Warn("failed to build PushRequestNotifyRingBell", "err", err)
+		return
+	}
+
+	var sent int
+	for _, other := range s.sessions {
+		if other.playerID == 0 || other.playerID == from.playerID {
+			continue
+		}
+		other.conn.SendPush(body)
+		sent++
+	}
+	log.Info("broadcast bell toll",
+		"ringer_player_id", from.playerID, "map_id", mapID,
+		"push_id", fmt.Sprintf("%#04x", int(ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell)),
+		"recipients", sent, "payload_bytes", len(body))
+}
+
+// bellBroadcastEnabled gates the relay. Defaults ON — the whole point of
+// decoding this was to reproduce a behaviour players remember — but it is the
+// one thing here built on guessed field meanings, so it can be switched off
+// without a rebuild if it misbehaves.
+func bellBroadcastEnabled() bool {
+	v := os.Getenv("DSO_BELL_BROADCAST")
+	if v == "" {
+		return true
+	}
+	on, err := strconv.ParseBool(v)
+	return err != nil || on
 }
 
 // handleNotifyKillEnemy adds to the world enemy-kill counter.

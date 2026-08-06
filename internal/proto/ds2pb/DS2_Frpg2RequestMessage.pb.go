@@ -65,7 +65,11 @@ const (
 	PushMessageId_PushID_PushRequestVisit                  PushMessageId = 975
 	PushMessageId_PushID_PushRequestRejectVisit            PushMessageId = 976
 	PushMessageId_PushID_PushRequestRemoveVisitor          PushMessageId = 977
-	PushMessageId_PushID_PushRequestNotifyRingBell         PushMessageId = 969 // check
+	// 0x03EF, NOT 0x03C9 as this said before. 0x03C9 is the visitor push block's
+	// base (Blue Sentinels visit), so the old value collided with an unrelated
+	// message. Read off GetTypeName in BLUS41045: registered at v1.10 0x15CFCD8
+	// (`li r4,0x3EF`), handler 0x15D0528, ctor 0x16418E4, vtable 0x1CE1AE0.
+	PushMessageId_PushID_PushRequestNotifyRingBell         PushMessageId = 1007
 	PushMessageId_PushID_RegulationFileUpdatePushMessage   PushMessageId = 907 // check
 	PushMessageId_PushID_PushRequestRejectMirrorKnightSign PushMessageId = 934
 	PushMessageId_PushID_PushRequestRemoveMirrorKnightSign PushMessageId = 935
@@ -91,7 +95,7 @@ var (
 		975:  "PushID_PushRequestVisit",
 		976:  "PushID_PushRequestRejectVisit",
 		977:  "PushID_PushRequestRemoveVisitor",
-		969:  "PushID_PushRequestNotifyRingBell",
+		1007: "PushID_PushRequestNotifyRingBell",
 		907:  "PushID_RegulationFileUpdatePushMessage",
 		934:  "PushID_PushRequestRejectMirrorKnightSign",
 		935:  "PushID_PushRequestRemoveMirrorKnightSign",
@@ -114,7 +118,7 @@ var (
 		"PushID_PushRequestVisit":                  975,
 		"PushID_PushRequestRejectVisit":            976,
 		"PushID_PushRequestRemoveVisitor":          977,
-		"PushID_PushRequestNotifyRingBell":         969,
+		"PushID_PushRequestNotifyRingBell":         1007,
 		"PushID_RegulationFileUpdatePushMessage":   907,
 		"PushID_PushRequestRejectMirrorKnightSign": 934,
 		"PushID_PushRequestRemoveMirrorKnightSign": 935,
@@ -7740,9 +7744,27 @@ func (x *PushRequestVisit) GetCellId() int64 {
 	return 0
 }
 
+// Server -> client broadcast of a bell toll: what other players actually hear.
+//
+// Field layout recovered from the client's own serialiser at v1.10 0x1634BA0
+// (uint32, uint32, uint32, bytes). Field 1 is the push id, as in every other
+// push here.
+//
+// Fields 2-4 have UNKNOWN meaning. Nothing has ever sent one of these, so there
+// is no capture to learn from and the assignment below is a considered guess:
+// the client->server RequestNotifyRingBell carries the map id and an always-
+// empty byte string, so the broadcast most likely relays the same map id, with
+// field 4 the same empty blob. field_3 is sent as 0 for want of anything better.
+//
+// All four are declared required so we cannot forget one. The client's
+// IsInitialized would drop the whole message over a missing field, and that
+// failure is silent.
 type PushRequestNotifyRingBell struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"` // TODO
+	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
+	Field_2       *uint32                `protobuf:"varint,2,req,name=field_2,json=field2" json:"field_2,omitempty"` // believed to be the map id, e.g. 10160000
+	Field_3       *uint32                `protobuf:"varint,3,req,name=field_3,json=field3" json:"field_3,omitempty"` // unknown; sent as 0
+	Field_4       []byte                 `protobuf:"bytes,4,req,name=field_4,json=field4" json:"field_4,omitempty"`  // believed to mirror the request's empty blob
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7784,8 +7806,41 @@ func (x *PushRequestNotifyRingBell) GetPushMessageId() PushMessageId {
 	return PushMessageId_PushID_PushRequestRemoveSign
 }
 
+func (x *PushRequestNotifyRingBell) GetField_2() uint32 {
+	if x != nil && x.Field_2 != nil {
+		return *x.Field_2
+	}
+	return 0
+}
+
+func (x *PushRequestNotifyRingBell) GetField_3() uint32 {
+	if x != nil && x.Field_3 != nil {
+		return *x.Field_3
+	}
+	return 0
+}
+
+func (x *PushRequestNotifyRingBell) GetField_4() []byte {
+	if x != nil {
+		return x.Field_4
+	}
+	return nil
+}
+
+// Client -> server, sent when a covenant defender pulls a belfry lever after
+// defeating the host. See internal/server/game/telemetry.go for the full chain.
+//
+// CONFIRMED on the wire 2026-08-06: `08 80 8f ec 04 12 00`, which is
+// field_1 = 10160000 (Belfry Luna) and an empty field_2 — exactly the shape
+// recovered from the client's serialiser and ByteSize beforehand.
+//
+// field_1 is uint32, not int32: ByteSize takes the unsigned varint-size path.
+// field_2 is always constructed empty by the only caller, so it goes out as
+// `12 00`.
 type RequestNotifyRingBell struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Field_1       *uint32                `protobuf:"varint,1,opt,name=field_1,json=field1" json:"field_1,omitempty"` // map id, DS2 decimal form (10160000)
+	Field_2       []byte                 `protobuf:"bytes,2,opt,name=field_2,json=field2" json:"field_2,omitempty"`  // always empty
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7818,6 +7873,20 @@ func (x *RequestNotifyRingBell) ProtoReflect() protoreflect.Message {
 // Deprecated: Use RequestNotifyRingBell.ProtoReflect.Descriptor instead.
 func (*RequestNotifyRingBell) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{129}
+}
+
+func (x *RequestNotifyRingBell) GetField_1() uint32 {
+	if x != nil && x.Field_1 != nil {
+		return *x.Field_1
+	}
+	return 0
+}
+
+func (x *RequestNotifyRingBell) GetField_2() []byte {
+	if x != nil {
+		return x.Field_2
+	}
+	return nil
 }
 
 type RequestNotifyRingBellResponse struct {
@@ -12016,10 +12085,15 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\rplayer_struct\x18\x04 \x02(\fR\fplayerStruct\x128\n" +
 	"\x04type\x18\x05 \x02(\x0e2$.DS2_Frpg2RequestMessage.VisitorTypeR\x04type\x12$\n" +
 	"\x0eonline_area_id\x18\x06 \x02(\x03R\fonlineAreaId\x12\x17\n" +
-	"\acell_id\x18\a \x02(\x03R\x06cellId\"k\n" +
+	"\acell_id\x18\a \x02(\x03R\x06cellId\"\xb6\x01\n" +
 	"\x19PushRequestNotifyRingBell\x12N\n" +
-	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\"\x17\n" +
-	"\x15RequestNotifyRingBell\"\x1f\n" +
+	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12\x17\n" +
+	"\afield_2\x18\x02 \x02(\rR\x06field2\x12\x17\n" +
+	"\afield_3\x18\x03 \x02(\rR\x06field3\x12\x17\n" +
+	"\afield_4\x18\x04 \x02(\fR\x06field4\"I\n" +
+	"\x15RequestNotifyRingBell\x12\x17\n" +
+	"\afield_1\x18\x01 \x01(\rR\x06field1\x12\x17\n" +
+	"\afield_2\x18\x02 \x01(\fR\x06field2\"\x1f\n" +
 	"\x1dRequestNotifyRingBellResponse\"\x1a\n" +
 	"\x18RequestGetRegulationFile\"\"\n" +
 	" RequestGetRegulationFileResponse\"\x18\n" +
@@ -12207,7 +12281,7 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\x17PushID_PushRequestVisit\x10\xcf\a\x12\"\n" +
 	"\x1dPushID_PushRequestRejectVisit\x10\xd0\a\x12$\n" +
 	"\x1fPushID_PushRequestRemoveVisitor\x10\xd1\a\x12%\n" +
-	" PushID_PushRequestNotifyRingBell\x10\xc9\a\x12+\n" +
+	" PushID_PushRequestNotifyRingBell\x10\xef\a\x12+\n" +
 	"&PushID_RegulationFileUpdatePushMessage\x10\x8b\a\x12-\n" +
 	"(PushID_PushRequestRejectMirrorKnightSign\x10\xa6\a\x12-\n" +
 	"(PushID_PushRequestRemoveMirrorKnightSign\x10\xa7\a\x12-\n" +
