@@ -209,6 +209,11 @@ Applied 2026-08-05 after Dark Chasm of Old invasions failed instantly with "unab
 to invade". The list was returning a target and the **host's client was refusing it in ~116ms**;
 we relayed that refusal, and the invader read it as nobody being found.
 
+**CONFIRMED LIVE** after the fix: `returned=1` with all three skip counters at zero, push `0x03BD`,
+guest joined, session kind **7**. The client queried cell `400330` — the chasm the invader was
+standing in — which also disproves an earlier guess here that the client only shops the two chasms
+it is *not* in. It queries all three; we had merely sampled two.
+
 **The cause is invadability, not location.** A player cannot be broken into while resting at a
 bonfire, while their activity area is 0, or **after burning a Human Effigy** — DS2's deliberate
 opt-out of invasion, which we had been ignoring entirely. Symptom to remember: the invasion becomes
