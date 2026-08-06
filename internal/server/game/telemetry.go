@@ -150,12 +150,29 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 //	02:50:10  the HOST dies; the Bell Keeper reports the kill
 //	02:50:17  the HOST's client sends 0x03EE, 6.3s later
 //
-// HOST DEATH IS NECESSARY BUT NOT SUFFICIENT. An identical host death eight
-// minutes earlier, same pair, same session kind, same map, produced no bell at
-// all. So something else gates the final step, and one capture cannot say what.
-// Note also that the sender is the player who DIED, not the victor.
+// THE FULL CHAIN, confirmed by the player who did it:
 //
-// THE CONDITION INVOLVES HOST DEATH, NOT MERELY RINGING THE BELL.
+//	1. a covenant defender is summoned into a belfry
+//	2. the defender defeats the host — the lever CANNOT be pulled before this,
+//	   the prompt simply is not offered
+//	3. the lever becomes usable and someone pulls it
+//	4. 0x03EE is sent
+//
+// Both halves matter and neither is sufficient alone. Host death only ENABLES
+// the lever; pulling it is what sends. That is why an identical host death eight
+// minutes earlier — same pair, same session kind, same map — produced nothing:
+// nobody pulled the lever afterwards. It also retires every earlier theory here,
+// all of which had a living player ringing a bell that was never interactive.
+//
+// The frame came from the session HOST's client, not the defender who pulled the
+// lever. The bell is an object in the host's world, so the host's client owns
+// and reports the world event whoever triggers it. INFERRED from one capture,
+// but it is the natural reading and nothing contradicts it.
+//
+// So the message is exactly what its name says, and the mechanic is the toll
+// announcing a successful defence — which is also why players heard bells with
+// no invasion of their own underway. They were hearing someone else's belfry
+// duel end.
 //
 // The send branch is gated behind 「ホスト死亡判定」 — host death determination —
 // and the bell object's action prompt is disabled from map load until that same
