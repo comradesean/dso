@@ -219,12 +219,28 @@ bonfire, while their activity area is 0, or **after burning a Human Effigy** —
 opt-out of invasion, which we had been ignoring entirely. Symptom to remember: the invasion becomes
 possible the moment the host's state changes, with nothing changing server-side.
 
-**A location filter was briefly added here and was wrong.** It required the host's activity *cell*
-to equal the request's `cell_id`, which enforces a restriction the game does not have — a Cracked
-Red Eye Orb reaches any of the three Dark Chasms regardless of which one the invader stands in. The
-effect was that two players inside the Chasm complex could never be offered to each other and the
-client searched forever. Matching is now on the coarse **area** id (`40030000` for the whole
-complex). The cell remains right for the covenant pools, which genuinely are cell-scoped.
+**Targets are matched on activity CELL, and this is settled.** Offering a host from another cell
+does not produce a cross-chasm invasion — it produces a rejection, because the host's client
+refuses an invasion tagged for a chasm it is not in. Evidence across seven attempts before the
+filter: cell `400330` succeeded 4 of 4 while the host stood there, `400310` and `400320` were
+refused 3 of 3, in both directions and with both players taking each role.
+
+**The client cycles cells, and its own cell is in the rotation.** This was the open question and it
+is now answered directly. With both players at `400330`, the invader queried `400310`, `400310`,
+then `400330` — its own — and connected. Roughly three queries and ~45s. So no chasm is
+unreachable, and same-chasm invasion works.
+
+An earlier note here claimed the client "excludes the chasm it is standing in". That was invented
+from a four-query sample and is **wrong**; it is disproved above with the invader's own position
+known.
+
+With the filter in place there are **zero** `host rejected break-in` events. What a player sees as
+an instant decline is now an empty list — the client reporting it found nobody in the cell it asked
+about, which is true — rather than us handing out a target that was always going to refuse.
+
+The list logs `available_cells` (the cells of hosts passing every check but position) next to the
+queried `cell_id`. If those ever stop intersecting over a long run, the client is not cycling and
+this rule needs revisiting.
 
 Worth recording as a process note: the invadability gate and the location rule shipped together,
 and the improvement was initially credited to the wrong one. Two filters in one deploy cannot be
