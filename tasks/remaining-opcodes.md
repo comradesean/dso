@@ -53,7 +53,7 @@ is `RequestGetMirrorKnightSignList`.
 
 | Opcode | Message | Summary |
 |---|---|---|
-| `0x038B` | `RegulationFileUpdatePushMessage` | **Parked.** Confirmed to parse (handler `0x158B150`, `ParseFromArray` at `0x158B1D0`) but never shown to *apply* — no param reload or file write was reached. Carries `start_at`/`end_at`, the shape of time-windowed content. See `tasks/calibration-reverse-engineering.md`. |
+| `0x038B` | `RegulationFileUpdatePushMessage` | **DONE — implemented and confirmed live 2026-08-06.** Replaces one whole resource (param or FMG) in the running client, applied next frame, no restart. `internal/server/game/regulationpush.go`. Full trace and constraints in `tasks/regulation-push-038b.md`. |
 | `0x038C` | `PlayerInfoUploadConfigPushMessage` | ds3os sends this at login to configure what telemetry the client uploads. Never sent by us. A candidate for the event-chest trigger. |
 | `0x03EF` | session-disconnect push | Would let the server evict a client cleanly rather than waiting out the 60s idle timeout. |
 

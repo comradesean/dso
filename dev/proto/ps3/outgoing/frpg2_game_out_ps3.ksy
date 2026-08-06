@@ -148,9 +148,13 @@ enums:
   # Recovered by decompilation; the alias blocks are the biggest divergence from
   # the PC reference and are NOT individually resolved - see below.
   push_opcode:
-    0x0389: push_special_0389        # special-cased ahead of the handler map
-    0x038b: push_special_038b        # special-cased; PC calls this DS3-only
-    0x038c: player_info_upload_config  # special-cased; pushed after login
+    0x0389: management_text          # special-cased; banner, upper left, after login
+    # CONFIRMED LIVE 2026-08-06: not DS3-only. Replaces one whole resource file in
+    # the running client -- a param or an FMG -- applied on the next frame with no
+    # restart. field 2 must equal the client's BUILD version (11500 = 1.15), which
+    # nothing in the protocol reports; field 1 becomes its new version.
+    0x038b: regulation_file_update    # special-cased; live resource replacement
+    0x038c: player_info_upload_config  # special-cased; upload scheduling only
     0x039b: push_request_summon_sign
     0x039c: push_request_reject_sign
     0x039d: push_request_remove_sign

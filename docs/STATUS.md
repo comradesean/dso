@@ -46,6 +46,8 @@ stretch.
 | Keepalive + bandwidth (4 opcodes) | Implemented | `ServerPing` had been going unanswered |
 | Telemetry notifies (8 opcodes) | Implemented | Kill/purchase counters persisted |
 | **Serving our own calibrations** | **Working** | Client applied our regulation_0107 and 0113; save matches byte for byte |
+| **Live regulation push (`0x038B`)** | **Working** | Replaces a param or FMG in the running client, applied next frame, no restart |
+| **The Majula event chest** | **Solved** | Armed it with a pushed `OnlineEventParam`; it reset and paid out |
 | Persistence (SQLite) | Working | Messages, counters, **players, characters, rankings** survive restart |
 | **Stable player ids** | **Working** | Same PSN account keeps its id across restarts |
 | Player status blob | Recorded | Persisted; **nothing consumes it, so no matchmaking filters** |
@@ -57,8 +59,8 @@ implementation. What remains is not really features:
 
 - **Matchmaking filters.** The status blob carrying soul memory, area and covenant is persisted
   but unread, so every listing offers every online player. This is the largest functional gap.
-- **Three pushes we never send** — `0x038B` regulation update, `0x038C` player-info config,
-  `0x03EF` session disconnect.
+- **Two pushes we never send** — `0x038C` player-info config (upload scheduling only; deliberately
+  not implemented) and `0x03EF`. `0x038B` is now implemented and confirmed live.
 - **Four unidentified opcodes** — `0x0387`, `0x0388`, `0x038A`, `0x0390`. None observed live.
 - **28 unused push aliases**, which belong to message types we already send.
 
@@ -154,13 +156,15 @@ Version stamps, read from BND4+24: disc `00010000`, 0101/0104 `00010100`, 0107 `
 It is an April 2015 payload in a different stamp format and expects a matching title update.
 Nothing is written when it fails, so the install survives.
 
-**The event-item chest is NOT a calibration problem.** Calibration 0114 — the only payload that
-changes `ItemLotParam2_SvrEvent.param`, which is byte-identical across 0101-0113 — installed
-successfully on a v1.10 client and the chest was still empty. The lots are present in the
-client's regulation and nothing appears, so something must *select* an active lot and that
-selection is not in the regulation. Candidates are all server-side: an event flag, an
-unimplemented opcode (`RequestNotifyRingBell` `0x03EE` is suggestively named), or the
-`PlayerInfoUploadConfigPushMessage` push `0x038C` that we never send.
+**The event-item chest — SOLVED (2026-08-06).** It was never a calibration problem, and the
+selector was not an event flag or an opcode. The chest's arm method reads a **`u16` threshold from
+`OnlineEventParam` row 0** and refuses to arm while the per-object claim counter is `>=` it. That
+row is sixteen zero bytes in every regulation ever published, so `0 >= 0` held forever and the
+chest could never open.
+
+Raising the threshold over `0x038B` armed it: the chest visibly reset and paid out its Torch. Since
+the claim writes the threshold back into the counter, each bump reopens it exactly once — which is
+the weekly rotation, and it is now ours to drive. See `tasks/majula-event-chest.md`.
 
 ## The random-disconnect bug, and what it really was
 
@@ -246,12 +250,20 @@ session.
   modified regulation, which makes the `0x038B` regulation push the route to the obelisk *and*
   to the event items. The string is byte-identical across all ten published calibrations, so
   FromSoftware never actually used it in these payloads.
-- **The `0x038B` regulation push parses but may not apply.** Confirmed: the client special-cases
-  it, constructs `RegulationFileUpdatePushMessage` and calls `ParseFromArray`. Unproven: that
-  anything downstream consumes it — no param reload or file write was reached. Its
-  `RegulationFileDiffData` carries `start_at`/`end_at`, which is exactly the shape of a
-  time-windowed content rotation, so this is the likely event-item channel. Note the field
-  *numbers* are unrecoverable from the string table and would have to come from tag immediates.
+- **~~The `0x038B` regulation push may not apply~~ IT APPLIES — confirmed live 2026-08-06.** It
+  replaces one whole resource file in the running client, param or FMG, on the next frame, with no
+  restart and no calibration download. `diff_data` is not a diff: no container, no compression, no
+  delta decoder, just the raw bytes, and for a param the size must match the loaded resource
+  exactly.
+
+  The field that blocked us for three live tests is `target_regulation_version`, which must equal
+  the game's **build** version — 11500, i.e. 1.15, as shown in the game's own menu. Nothing in the
+  protocol reports it and the calibration manifest's `Version` field is 1 in every published
+  manifest, so it carries no information. It was read out of memory with the RPCS3 debugger.
+
+  `start_at`/`end_at` have no reader anywhere in the applier module, but that search could not have
+  seen an address-taken comparison, so treat them as unresolved rather than dead.
+  See `tasks/regulation-push-038b.md`.
 - **~~The death counter's scope~~ RESOLVED.** `RequestGetTotalDeathCount` (`0x03F0`) carries a
   zero-byte payload — no area, no character, no scope — so a single global total was the only
   reading available. Confirmed in-game: the client labels it **"deaths worldwide"**. The reply

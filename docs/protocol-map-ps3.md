@@ -200,10 +200,10 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x0386` | — | `RequestWaitForUserLogin` | `0x166FF4C` (fn `0x166DC88` → `bl 0x1664470`) |
 | `0x0387` | — | *(unidentified)* | `0x16638F4` (fn `0x16633A8` → `bl 0x1798AA0`) |
 | `0x0388` | — | *(unidentified)* | `0x1663994` |
-| `0x0389` | P | *(push, special-cased)* | dispatcher `0x158C1D8` → handler `0x1587F60` |
+| `0x0389` | P | `ManagementTextMessage` | dispatcher `0x158C1D8` → handler `0x1587F60`; **confirmed live** — banner, upper left |
 | `0x038A` | — | *(unidentified)* | `0x1663A34` |
-| `0x038B` | P | *(push, special-cased)* | dispatcher `0x158C1E0` → handler `0x158B150` |
-| `0x038C` | P | *(push, special-cased)* | dispatcher `0x158C1E8` → handler `0x1588218` |
+| `0x038B` | P | `RegulationFileUpdatePushMessage` | dispatcher `0x158C1E0` → handler `0x158B150`; **confirmed live** — replaces a resource in the running client |
+| `0x038C` | P | `PlayerInfoUploadConfigPushMessage` | dispatcher `0x158C1E8` → handler `0x1588218`; upload scheduling only — do not implement |
 | `0x038D` | R/R | `ServerPing` | `0x1559118`; resp `0x155833C` |
 | `0x038E` | R/R | `RequestMeasureUploadBandwidth` | `0x155AB04`; resp `0x1559710` |
 | `0x038F` | R/R | `RequestMeasureDownloadBandwidth` | `0x1559588`; resp `0x1559408` |
@@ -303,7 +303,7 @@ So, for any future existence claim in this document:
 
 **Confidence: high** for every row that carries a message name and both a send and a response witness (≈80 rows). **Medium-high** for send-only rows. **Medium** for `0x03AA` (opcode certain, name inferred from the enclosing manager). `0x03EF` was
 in that category and is now **high**: its name was read directly off `GetTypeName`, and it is
-`PushRequestNotifyRingBell`, not the session-disconnect push it was previously guessed to be. **Opcode certain / name unknown** for `0x0387`, `0x0388`, `0x038A`, `0x0389`, `0x038B`, `0x038C`, `0x0390`, and the three push blocks.
+`PushRequestNotifyRingBell`, not the session-disconnect push it was previously guessed to be. **Opcode certain / name unknown** for `0x0387`, `0x0388`, `0x038A`, `0x0390`, and the three push blocks. `0x0389`, `0x038B` and `0x038C` are now named and, for the first two, confirmed live.
 
 ### 4.2 The "no response callback" set (M)
 
@@ -666,7 +666,7 @@ Since `Frpg2GameServerInfo` carries **ten trailing u32 transport params from off
 | 6 | `0x038E`/`0x038F` bandwidth measurement are DS3-only | Present in DS2/PS3, **same numbers**, request/response | High |
 | 7 | `RequestGetPlayerCharacterList` is DS3-only at `0x03A1` | Present in DS2/PS3 at **`0x03B5`** | High |
 | 8 | `RequestBenchmarkThroughput` is DS3-only at `0x03A3` | Present in DS2/PS3 at **`0x03B7`** | High |
-| 9 | `RegulationFileUpdatePushMessage` (`0x038B`) is DS3-only, never sent | PS3 DS2 **special-cases `0x038B`** in its push dispatcher, ahead of the handler map | High that `0x038B` is a live push opcode; medium on the name |
+| 9 | `RegulationFileUpdatePushMessage` (`0x038B`) is DS3-only, never sent | PS3 DS2 **special-cases `0x038B`**, and we have **driven it live**: the client accepted a pushed resource and applied it mid-session | Certain — observed, not inferred |
 | 10 | `0x03C9` is `PushRequestNotifyRingBell`, "not registered" | `0x03C9` **is** registered — as the first entry of the Visitor push block | High |
 | 11 | Visitor pushes are `0x03CF`/`0x03D0`/`0x03D1` | Those three exist, but they are the **last group of nine** (`0x03C9`–`0x03D1`) | High |
 | 12 | QuickMatch pushes are `0x03E1`/`0x03E3`/`0x03E5`/`0x03E7` | Those four exist, but so do `0x03E0`/`0x03E2`/`0x03E4`/`0x03E6` — **eight** total | High |

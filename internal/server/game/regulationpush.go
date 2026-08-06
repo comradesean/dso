@@ -53,26 +53,37 @@ var (
 
 // sendRegulationPush pushes one whole replacement resource to a client.
 //
-// UNVERIFIED END TO END. The receive path is traced from the push dispatcher to
-// an applier that runs every frame and reloads the live resource in place, so a
-// push should take effect mid-session with no restart. What is NOT established
-// is whether the applier's resource repository — reached via *(*(0x1E1D810))+24
-// — is the same one the rest of the game reads params from; the Majula chest's
-// threshold reader gets there via *(*(0x1E1EAB4+32))+24, a different global. If
-// those differ, this lands somewhere nothing looks and fails silently.
+// CONFIRMED LIVE (2026-08-06). The client accepts the entry and applies it on the
+// next frame — no restart, no calibration download. Proven twice: a replacement
+// regulationEnglish.fmg moved the holder's version counter, and a replacement
+// OnlineEventParam.param armed the Majula event chest, which reset in front of
+// the player and paid out. See tasks/regulation-push-038b.md.
 //
-// That question is far cheaper to answer on a console than in a disassembler,
-// which is what this code is for.
+// That second result also closed the one question the disassembly could not: the
+// applier's resource repository (*(*(0x1E1D810))+24) IS the one the game reads
+// params from (*(*(0x1E1EAB4+32))+24), despite the different globals.
 //
-// Constraints the client enforces, all of which fail SILENTLY:
+// Constraints the client enforces. EVERY ONE OF THEM FAILS SILENTLY — no error,
+// no log, no visible difference — so a negative result isolates nothing on its
+// own. Change one variable at a time, and read the holder's version counter with
+// a debugger rather than guessing from in-game effects:
 //
+//   - VersionRequired must equal the version in the holder at 0x1E1D388. That is
+//     the game's BUILD version (11500 = 1.15) at boot, and becomes whatever
+//     VersionNew we last sent after each accepted push (0x7705A8, 0x770480). It
+//     is skipped only when the holder's value is 0, which it never is once a
+//     regulation has loaded. Nothing in the protocol reports it. Sweeping a small
+//     window is the practical answer; see regulationPushEntries.
 //   - For a .param the payload size must equal the loaded resource's size
 //     exactly (0x770DE4). Rows can be edited, never added or removed.
 //   - For a .fmg the payload is capped at 1024 bytes (0x76A0F0).
-//   - VersionRequired must equal the version the client already holds, unless
-//     that is 0, in which case the check is skipped (0x7705A8).
-//   - VersionNew must be <= 999999 and, within one push, strictly greater than
-//     any entry accepted before it (0x770438). We send a single entry.
+//   - VersionNew must be <= 999999 and, among entries accepted in one push,
+//     strictly greater than any accepted before it (0x770438, 0x770418).
+//
+// One caveat about testing: the .fmg route memcpys into the buffer the file was
+// loaded into, so anything that already copied a string out of it keeps showing
+// the old text. A visible-text probe can therefore read "no change" on complete
+// success, which is how the obelisk misled us. The version counter cannot.
 func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 	cfg := s.srv.Config
 	if cfg.RegulationPushFile == "" {
