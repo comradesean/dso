@@ -113,6 +113,27 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 	// every request, so it keeps them matchable in the meantime.
 	cs.profile.applyMatchingParameter(req.GetMatchingParameter())
 
+	// The Bell Keeper summon is asymmetric, and both halves matter.
+	//
+	// The DEFENDER may be anywhere — their icon glows in ordinary areas well
+	// away from either belfry, because they are summoned TO the trespasser.
+	// That half is handled in visitorPoolFor, which no longer gates on position.
+	//
+	// The TRESPASSER, who is the requester here, must actually be in a belfry.
+	// Bell Keepers defend Luna and Sol; there is nothing to defend anywhere
+	// else, so a request from outside one should find nobody rather than pull a
+	// defender to a place they have no business being.
+	if filtering && req.GetType() == ds2pb.VisitorType_VisitorType_BellKeepers &&
+		!bellKeeperCells[cs.profile.onlineActivityArea] {
+		log.Info("bell keeper request from outside a belfry",
+			"player_id", cs.playerID, "activity_area", cs.profile.onlineActivityArea,
+			"cell_id", req.GetCellId())
+		return proto.Marshal(&ds2pb.RequestGetVisitorListResponse{
+			OnlineAreaId: proto.Int64(req.GetOnlineAreaId()),
+			CellId:       proto.Int64(req.GetCellId()),
+		})
+	}
+
 	var skippedPool, skippedSoul int
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.playerID == cs.playerID {

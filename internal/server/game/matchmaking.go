@@ -325,6 +325,9 @@ const (
 // cell every rat poll carried). The others are reference-derived and unverified,
 // so an unrecognised cell is logged rather than silently dropped.
 var (
+	// Retained for the diagnostic log only — NOT used to gate the Bell Keeper
+	// pool, since defenders are summoned to a belfry rather than standing in
+	// one. Still useful for spotting when someone is in the trespasser position.
 	bellKeeperCells = map[uint32]bool{
 		101640: true, // Belfry Luna
 		101950: true, // Belfry Sol
@@ -380,8 +383,23 @@ func visitorPoolFor(p matchProfile) ds2pb.VisitorType {
 	if p.guardiansSeal && cov == covenantBlueSentinels {
 		return ds2pb.VisitorType_VisitorType_BlueSentinels
 	}
-	if p.bellKeepersSeal && cov == covenantBellKeepers &&
-		bellKeeperCells[p.onlineActivityArea] {
+	// Bell Keepers are NOT required to be standing in a belfry.
+	//
+	// This gate previously demanded p.onlineActivityArea be Belfry Luna or Sol,
+	// taken from the reference server. That has the direction backwards: the
+	// defender is summoned TO the belfry from wherever they happen to be, and it
+	// is the TRESPASSER who has to be there. Confirmed in game — a Bell Keeper's
+	// covenant icon glows, meaning the client considers them summonable, while
+	// standing in ordinary areas well away from either belfry.
+	//
+	// The cost of the old rule was total: a defender anywhere else was never in
+	// the pool, so `skipped_wrong_pool` fired on every poll and the covenant
+	// could not be summoned at all.
+	//
+	// The same reference also mislabelled a rat cell, so its area constants have
+	// now been wrong twice. Requiring only the covenant and the equipped seal is
+	// the narrower claim and the one the evidence supports.
+	if p.bellKeepersSeal && cov == covenantBellKeepers {
 		return ds2pb.VisitorType_VisitorType_BellKeepers
 	}
 	// Inverted on purpose: a rat cannot be prey.

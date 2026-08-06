@@ -77,13 +77,16 @@ func TestUnparseableStatusIsUnmatchableNotFatal(t *testing.T) {
 func TestPartialStatusDoesNotWipeProfile(t *testing.T) {
 	u := func(v uint32) *uint32 { return &v }
 
+	// Covenant deliberately NOT Bell Keepers with a seal here: since defenders
+	// are no longer gated on position, a sealed Bell Keeper standing in a rat
+	// area matches the Bell Keeper pool first and this would stop exercising the
+	// rat path it exists to test.
 	full, err := proto.Marshal(&ds2datapb.AllStatus{
 		PlayerStatus: &ds2datapb.PlayerStatus{
-			Covenant:   u(covenantBellKeepers),
+			Covenant:   u(covenantHeirsOfTheSun),
 			SoulMemory: u(5_634_765),
 		},
 		PlayerLocation: &ds2datapb.PlayerLocation{OnlineActivityAreaId: u(103410)},
-		ItemUsingInfo:  &ds2datapb.ItemUsingInfo{BellKeepersSeal: u(1)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +113,7 @@ func TestPartialStatusDoesNotWipeProfile(t *testing.T) {
 	if p.soulMemory != 5_634_765 {
 		t.Errorf("delta wiped soul memory: %d", p.soulMemory)
 	}
-	if p.effectiveCovenant() != covenantBellKeepers {
+	if p.effectiveCovenant() != covenantHeirsOfTheSun {
 		t.Errorf("delta wiped covenant: %d", p.effectiveCovenant())
 	}
 	if got := visitorPoolFor(p); got != ds2pb.VisitorType_VisitorType_Rat {
@@ -240,6 +243,67 @@ func TestBonfireLeavesEveryPool(t *testing.T) {
 	walked.sittingAtBonfire = false
 	if got := visitorPoolFor(walked); got != ds2pb.VisitorType_VisitorType_BellKeepers {
 		t.Errorf("pool in belfry = %v, want BellKeepers", got)
+	}
+}
+
+// TestBellKeeperDefenderNeedsNoBelfry pins the half of the rule that was
+// backwards, and which made the covenant unsummonable.
+//
+// The defender is summoned TO the trespasser, so they may be anywhere. Gating
+// them on standing in a belfry — which is what the reference server does, and
+// what this code did — meant a defender in any ordinary area was never in the
+// pool, so every poll reported skipped_wrong_pool and nothing ever matched.
+// Confirmed in game: the covenant icon glows far from either belfry.
+func TestBellKeeperDefenderNeedsNoBelfry(t *testing.T) {
+	// Somewhere entirely unrelated to a belfry.
+	away := matchProfile{
+		received: true, covenant: cov(covenantBellKeepers), bellKeepersSeal: true,
+		onlineActivityArea: 102310,
+	}
+	if got := visitorPoolFor(away); got != ds2pb.VisitorType_VisitorType_BellKeepers {
+		t.Errorf("defender away from a belfry: pool = %v, want BellKeepers", got)
+	}
+
+	// Still nothing while not in an online activity area at all.
+	away.onlineActivityArea = 0
+	if got := visitorPoolFor(away); got != ds2pb.VisitorType_VisitorType_None {
+		t.Errorf("defender with no activity area: pool = %v, want None", got)
+	}
+}
+
+// TestBellKeeperTrespasserMustBeInABelfry is the other half: the requester is
+// the one being invaded, and Bell Keepers defend Luna and Sol specifically.
+func TestBellKeeperTrespasserMustBeInABelfry(t *testing.T) {
+	svc, log, host, summoner := signTestService(t)
+	inBellKeeperPool(host)
+
+	// Requester is nowhere near a belfry — expect no targets even though a
+	// perfectly good defender is available.
+	summoner.profile = matchProfile{received: true, onlineActivityArea: 102310}
+	replyRaw, err := svc.handleGetVisitorList(log, summoner, visitorListRequest(t, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp ds2pb.RequestGetVisitorListResponse
+	if err := proto.Unmarshal(replyRaw, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(resp.GetTargetData()); n != 0 {
+		t.Errorf("summoned %d defenders from outside a belfry, want 0", n)
+	}
+
+	// Same request from inside Belfry Luna finds the defender.
+	summoner.profile.onlineActivityArea = 101640
+	replyRaw, err = svc.handleGetVisitorList(log, summoner, visitorListRequest(t, 5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Reset()
+	if err := proto.Unmarshal(replyRaw, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(resp.GetTargetData()); n != 1 {
+		t.Errorf("from inside the belfry got %d defenders, want 1", n)
 	}
 }
 
