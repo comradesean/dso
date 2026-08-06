@@ -155,9 +155,11 @@ func (s *Service) regulationPushEntries(log logger, path string, data []byte) []
 
 	candidates := parseVersionSweep(cfg.RegulationPushVersionSweep)
 	if len(candidates) == 0 {
+		// Default to leaving the client's version untouched; see the sweep branch
+		// below for why incrementing is a trap.
 		versionNew := cfg.RegulationPushVersionNew
 		if versionNew == 0 {
-			versionNew = cfg.RegulationPushVersionRequired + 1
+			versionNew = cfg.RegulationPushVersionRequired
 		}
 		return []*ds2pb.RegulationFileDiffData{
 			regulationDiffEntry(path, data, uint32(cfg.RegulationPushVersionRequired), uint32(versionNew)),
@@ -170,10 +172,22 @@ func (s *Service) regulationPushEntries(log logger, path string, data []byte) []
 		if labelled, ok := labelFMG(data, fmt.Sprintf("0x038B APPLIED. VERSION MATCHED = %d", v)); ok {
 			payload = labelled
 		}
-		// version_new must be <= 999999 (0x770418) and, among entries the client
-		// accepts, strictly increasing (0x770438). Only one entry can be accepted,
-		// so v+1 is safe and keeps the resulting version predictable.
-		entries = append(entries, regulationDiffEntry(path, payload, v, min(v+1, 999999)))
+		// version_new == version_required, so an accepted push leaves the client's
+		// version WHERE IT WAS and the same sweep window keeps working forever.
+		//
+		// Incrementing looks natural — FromSoftware presumably chained diffs that
+		// way — and it is a trap for us. We send up to three pushes per login, so
+		// the counter would climb ~3 each time and walk off an eleven-wide window
+		// after three or four logins, at which point everything stops with no
+		// error anywhere. Widening the window is not an answer either: each entry
+		// carries a full copy of the payload, and the lot param alone is 4420
+		// bytes.
+		//
+		// Nothing forbids this. The only bounds are <= 999999 (0x770418) and
+		// strictly-greater-than-the-best-accepted-within-this-pass (0x770438,
+		// accumulator starts at -1), and at most one entry per push can match a
+		// single stored value, so that second rule never binds.
+		entries = append(entries, regulationDiffEntry(path, payload, v, v))
 	}
 	log.Info("regulation push: sweeping candidate versions", "count", len(entries))
 	return entries

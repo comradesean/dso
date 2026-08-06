@@ -353,14 +353,24 @@ copied the string into its own display state. **A visible-text probe is therefor
 of this message** — it can read "no change" on complete success. `current_version` is the correct
 readout, because the applier writes it before any display is involved.
 
-### `current_version` increments on every success
+### `current_version` moves only if we let it
 
 It is 11500 at boot (seeded from the loaded regulation) and becomes whatever `version_new` we sent
-after each accepted push. A fixed `version_required` therefore works exactly **once** per session.
+after each accepted push.
 
-The server sweeps a small window (`11500`-`11510`) rather than tracking it: at most one entry can
-match, the rest are dropped silently and harmlessly, and it self-heals across client restarts, which
-reset the value to 11500.
+**So we send `version_new = version_required` and it never moves.** Incrementing looks natural —
+FromSoftware presumably chained diffs that way — and for us it is a trap: we send up to three pushes
+per login, so the counter would climb ~3 each time and walk off a sweep window after three or four
+logins, at which point everything stops with no error anywhere. Widening the window does not fix it,
+because every entry carries a full copy of the payload and the lot param alone is 4420 bytes.
+
+Nothing forbids holding it steady. The only bounds on field 1 are `<= 999999` (`0x770418`) and
+strictly-greater-than-the-best-accepted-**within one pass** (`0x770438`, accumulator starts at `-1`),
+and at most one entry per push can match a single stored value, so that second rule never binds.
+
+The sweep still exists to cover the value itself: it is 11500 after a game restart, but the holder
+may or may not survive a network logout (`0x7722A0` destroys it on teardown), so the window absorbs
+both cases.
 
 ## SOLVED BY DEBUGGER — `current_version` is the client's build version
 
