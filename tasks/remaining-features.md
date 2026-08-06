@@ -402,7 +402,10 @@ by character alone). Since character ids are still per-run and in memory, a reus
 inherit a previous character's score. That is the id-reuse hazard again, and persisting
 characters is the fix.
 
-## 7b. Ghosts — wire bug FOUND AND FIXED (2026-08-05)
+## 7b. Ghosts — FIXED and CONFIRMED LIVE (2026-08-05)
+
+**Ghosts render in game.** Confirmed by a player immediately after the field-number fix below, on a
+feature that had never worked once in the project's history.
 
 Ghosts had never once been seen in game, despite 80 recorded and lists returning up to 8 per
 request. The server was storing and returning them correctly the whole time.
@@ -435,6 +438,10 @@ So the earlier suspicion recorded here, that a missing area echo was to blame, i
 Also ruled out from the binary: there is no count cap, cell filter, distance check or `data`
 predicate in the client's network layer. The `0x0392` poll wrapper copies every returned element
 into its output vector, using the same plumbing as the blood-message path.
+
+**Ghosts now working NARROWS this considerably.** Both features share the recording pipeline, the
+`inCells` selection, the per-cell request shape and the same client-side network plumbing — and
+ghosts render while stains do not. So the cause is bloodstain-specific, not anything shared.
 
 Where the client drops them is **above the network API**, reached only through an interface vtable
 with no direct callers, and was not traced. Two facts worth carrying:
