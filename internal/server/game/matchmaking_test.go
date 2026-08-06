@@ -141,6 +141,73 @@ func TestMatchingParameterFillsSoulMemoryGap(t *testing.T) {
 	}
 }
 
+// TestChangedFieldsReportsOnlyMovement — this drives a diagnostic log used to
+// hunt gates we do not model, so a diff that reports noise (or misses a change)
+// costs a live test cycle to discover.
+func TestChangedFieldsReportsOnlyMovement(t *testing.T) {
+	before := map[string]uint32{"a": 1, "b": 2, "c": 3}
+	after := map[string]uint32{"a": 1, "b": 99, "d": 7}
+
+	got := changedFields(before, after)
+	want := []string{"b=2->99", "d=+7"}
+	if len(got) != len(want) {
+		t.Fatalf("changedFields = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("changedFields = %v, want %v", got, want)
+			break
+		}
+	}
+
+	if n := len(changedFields(before, before)); n != 0 {
+		t.Errorf("identical maps produced %d changes, want none — a quiet "+
+			"client must stay quiet in the log", n)
+	}
+}
+
+// TestStatusFieldsSurviveDeltas — the diagnostic mirror has to merge like
+// everything else, or every partial update would look like a mass change.
+func TestStatusFieldsSurviveDeltas(t *testing.T) {
+	u := func(v uint32) *uint32 { return &v }
+
+	full, err := proto.Marshal(&ds2datapb.AllStatus{
+		PlayerStatus:  &ds2datapb.PlayerStatus{Unknown_4: u(1), Unknown_5: u(2)},
+		ItemUsingInfo: &ds2datapb.ItemUsingInfo{UsingDriedFingers: u(0)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta, err := proto.Marshal(&ds2datapb.AllStatus{
+		PlayerStatus: &ds2datapb.PlayerStatus{Unknown_5: u(9)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var p matchProfile
+	p.applyStatus(full)
+	snapshot := make(map[string]uint32, len(p.statusFields))
+	for k, v := range p.statusFields {
+		snapshot[k] = v
+	}
+
+	p.applyStatus(delta)
+	if got := p.statusFields["ps.unknown_4"]; got != 1 {
+		t.Errorf("delta wiped ps.unknown_4: got %d, want 1", got)
+	}
+	// Presence, not value: dried_fingers is legitimately 0 here, so a plain
+	// lookup could not tell "recorded as 0" from "dropped by the delta".
+	if got, ok := p.statusFields["item.dried_fingers"]; !ok || got != 0 {
+		t.Errorf("delta lost item.dried_fingers (present=%v value=%d)", ok, got)
+	}
+
+	changed := changedFields(snapshot, p.statusFields)
+	if len(changed) != 1 || changed[0] != "ps.unknown_5=2->9" {
+		t.Errorf("changed = %v, want exactly [ps.unknown_5=2->9]", changed)
+	}
+}
+
 // TestRatPoolIsInverted is the rule that is easiest to get backwards, and did
 // mislead this project: you are rat-summonable because you are NOT a rat.
 func TestRatPoolIsInverted(t *testing.T) {

@@ -1,7 +1,9 @@
 package game
 
 import (
+	"fmt"
 	"os"
+	"sort"
 	"strconv"
 
 	"google.golang.org/protobuf/proto"
@@ -82,6 +84,41 @@ type matchProfile struct {
 	mpSoulMemory uint32
 	mpCovenant   uint32
 	mpSeen       bool
+
+	// statusFields is a diagnostic mirror of every scalar in the status blob,
+	// including the ones we do not model. It exists to answer "which field
+	// changed when the client's behaviour changed", which is how
+	// online_activity_area_id was identified in the first place.
+	//
+	// Merged across partial updates like everything else, so it always reflects
+	// the client's full current state rather than the last fragment.
+	statusFields map[string]uint32
+}
+
+// setField records a diagnostic field, allocating on first use.
+func (p *matchProfile) setField(name string, v uint32) {
+	if p.statusFields == nil {
+		p.statusFields = make(map[string]uint32, 24)
+	}
+	p.statusFields[name] = v
+}
+
+// changedFields returns "name=old->new" for every field that differs, plus any
+// that are newly present. Sorted, so successive log lines are comparable by eye.
+//
+// play_time_seconds is deliberately excluded by the caller: it changes on every
+// single update and would bury everything else.
+func changedFields(before, after map[string]uint32) []string {
+	var out []string
+	for k, nv := range after {
+		if ov, had := before[k]; !had {
+			out = append(out, fmt.Sprintf("%s=+%d", k, nv))
+		} else if ov != nv {
+			out = append(out, fmt.Sprintf("%s=%d->%d", k, ov, nv))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // applyStatus MERGES an AllStatus blob into the profile. It must never replace
@@ -139,6 +176,74 @@ func (p *matchProfile) applyStatus(blob []byte) {
 		}
 		if loc.OnlineAreaId != nil {
 			p.onlineArea = *loc.OnlineAreaId
+		}
+	}
+
+	// Diagnostic capture of everything scalar, modelled or not. The unknown_N
+	// fields are the point: one of them is expected to hold whatever the client
+	// consults when it refuses an invasion we thought was legal.
+	if st := all.GetPlayerStatus(); st != nil {
+		type f struct {
+			name string
+			v    *uint32
+		}
+		for _, x := range []f{
+			{"ps.archetype", st.Archetype},
+			{"ps.covenant", st.Covenant},
+			{"ps.unknown_4", st.Unknown_4},
+			{"ps.unknown_5", st.Unknown_5},
+			{"ps.unknown_6", st.Unknown_6},
+			{"ps.sitting_at_bonfire", st.SittingAtBonfire},
+			{"ps.disable_cross_region", st.DisableCrossRegionPlay},
+			{"ps.human_effigy_burnt", st.HumanEffigyBurnt},
+			{"ps.unknown_13", st.Unknown_13},
+			{"ps.unknown_14", st.Unknown_14},
+			{"ps.soul_level", st.SoulLevel},
+			{"ps.unknown_16", st.Unknown_16},
+			{"ps.unknown_17", st.Unknown_17},
+			{"ps.unknown_20", st.Unknown_20},
+		} {
+			if x.v != nil {
+				p.setField(x.name, *x.v)
+			}
+		}
+		// Presence alone is the signal here — it is a timestamp, so its value
+		// would change constantly and tell us nothing.
+		if st.PhantomLeaveAt != nil {
+			p.setField("ps.phantom_leave_at_present", 1)
+		}
+	}
+	// Dried Fingers in particular changes invasion behaviour, so ItemUsingInfo
+	// belongs in the same sweep.
+	if it := all.GetItemUsingInfo(); it != nil {
+		type f struct {
+			name string
+			v    *uint32
+		}
+		for _, x := range []f{
+			{"item.named_ring_god", it.NamedRingGod},
+			{"item.dried_fingers", it.UsingDriedFingers},
+			{"item.unknown_3", it.Unknown_3},
+			{"item.guardians_seal", it.GuardiansSeal},
+			{"item.bell_keepers_seal", it.BellKeepersSeal},
+			{"item.crest_of_the_rat", it.CrestOfTheRat},
+			{"item.unknown_7", it.Unknown_7},
+			{"item.unknown_8", it.Unknown_8},
+		} {
+			if x.v != nil {
+				p.setField(x.name, *x.v)
+			}
+		}
+	}
+	if loc := all.GetPlayerLocation(); loc != nil {
+		if loc.OnlineAreaId != nil {
+			p.setField("loc.online_area", *loc.OnlineAreaId)
+		}
+		if loc.OnlineActivityAreaId != nil {
+			p.setField("loc.activity_area", *loc.OnlineActivityAreaId)
+		}
+		if loc.CellId != nil {
+			p.setField("loc.cell", *loc.CellId)
 		}
 	}
 	if it := all.GetItemUsingInfo(); it != nil {

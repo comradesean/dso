@@ -3,6 +3,7 @@ package game
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -93,7 +94,27 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 	// and it is the first thing to check when one "does nothing".
 	prevPool := visitorPoolFor(cs.profile)
 	prevArea := cs.profile.onlineActivityArea
+
+	// Snapshot the diagnostic fields so the change can be reported as a delta.
+	// Copied rather than aliased, since applyStatus mutates the map in place.
+	prevFields := make(map[string]uint32, len(cs.profile.statusFields))
+	for k, v := range cs.profile.statusFields {
+		prevFields[k] = v
+	}
+
 	cs.profile.applyStatus(req.GetStatus())
+
+	// Report which status fields moved. This is the tool for finding gates we do
+	// not yet model: stand somewhere the client refuses an invasion, step out,
+	// and whichever field flips is the one to read. That is exactly how
+	// online_activity_area_id was identified.
+	//
+	// Only fields that actually changed are printed, so a quiet client is quiet
+	// in the log too.
+	if changed := changedFields(prevFields, cs.profile.statusFields); len(changed) > 0 {
+		log.Info("status fields changed",
+			"player_id", cs.playerID, "changed", strings.Join(changed, " "))
+	}
 
 	// Log every activity-area change, not just pool changes. Walking into a zone
 	// we do not recognise produces no pool transition at all — None to None —
