@@ -277,7 +277,7 @@ Empty responses come in three flavours in the reference and the distinction matt
 - `RequestGetDeadingGhost` (DS2P:302) `online_area_id, cell_id, bloodstain_id` → (DS2P:308) same three + `bytes data`. If the stain isn't found the server still replies, with an empty `data` (`DS2_BloodstainManager.cpp:282-285`).
 - `GhostData` (DS2P:775) `cell_id, ghost_id, bytes data`.
 - `RequestCreateGhostData` (DS2P:792) `online_area_id, cell_id, bytes data` → empty. Handler `.../Ghosts/DS2_GhostManager.cpp:83`.
-- `RequestGetGhostDataList` (DS2P:781) `online_area_id, max_ghosts, repeated CellLimitData search_areas` → (DS2P:787) `required uint32 online_area_id = 1; repeated GhostData ghosts = 3;` — **tag 2 is skipped**; writing `ghosts = 2` breaks wire compatibility. Handler `:153`.
+- `RequestGetGhostDataList` (DS2P:781) `online_area_id, max_ghosts, repeated CellLimitData search_areas` → `required uint32 online_area_id = 1; repeated GhostData ghosts = 2;` — **`ghosts` is field 2 on PS3.** This entry previously said field 3 and that "writing `ghosts = 2` breaks wire compatibility"; that is the PC/reference shape and is **exactly backwards for BLUS41045**. The client's parser (v1.10 `0x1685110`) tests only fields 1 and 2 and sends anything else to `SkipField`, and its serialiser (`0x1634668`) emits `li r3,2`. A list written as field 3 is discarded whole — which is why no ghost was ever seen in game despite 80 recorded and lists returning 8. Identical in v1.00. Handler `:153`.
 
 ### 4.6 Summon signs (co-op brokering)
 

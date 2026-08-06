@@ -6905,9 +6905,21 @@ func (x *RequestGetGhostDataList) GetSearchAreas() []*CellLimitData {
 }
 
 type RequestGetGhostDataListResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	OnlineAreaId  *uint32                `protobuf:"varint,1,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"`
-	Ghosts        []*GhostData           `protobuf:"bytes,3,rep,name=ghosts" json:"ghosts,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	OnlineAreaId *uint32                `protobuf:"varint,1,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"`
+	// FIELD 2 ON PS3, NOT 3. The PC/reference proto says 3 and is wrong here.
+	//
+	// Recovered from BLUS41045 and identical in v1.00 and v1.10. The client's
+	// parser (v1.10 0x1685110) tests only field 1 and field 2 and sends anything
+	// else to SkipField; the serialiser (0x1634668) emits `li r3,2` into
+	// WriteMessage. So a list written as field 3 is silently discarded in full,
+	// which is exactly what happened: eighty ghosts recorded, lists returning up
+	// to eight, and not one ever seen in game.
+	//
+	// The working RequestGetBloodMessageListResponse has the identical
+	// {1 uint32, 2 repeated} shape, which is why messages render and ghosts did
+	// not.
+	Ghosts        []*GhostData `protobuf:"bytes,2,rep,name=ghosts" json:"ghosts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11931,7 +11943,7 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\fsearch_areas\x18\x03 \x03(\v2&.DS2_Frpg2RequestMessage.CellLimitDataR\vsearchAreas\"\x83\x01\n" +
 	"\x1fRequestGetGhostDataListResponse\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\rR\fonlineAreaId\x12:\n" +
-	"\x06ghosts\x18\x03 \x03(\v2\".DS2_Frpg2RequestMessage.GhostDataR\x06ghosts\"k\n" +
+	"\x06ghosts\x18\x02 \x03(\v2\".DS2_Frpg2RequestMessage.GhostDataR\x06ghosts\"k\n" +
 	"\x16RequestCreateGhostData\x12$\n" +
 	"\x0eonline_area_id\x18\x01 \x02(\rR\fonlineAreaId\x12\x17\n" +
 	"\acell_id\x18\x02 \x02(\rR\x06cellId\x12\x12\n" +

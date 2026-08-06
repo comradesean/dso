@@ -402,6 +402,54 @@ by character alone). Since character ids are still per-run and in memory, a reus
 inherit a previous character's score. That is the id-reuse hazard again, and persisting
 characters is the fix.
 
+## 7b. Ghosts — wire bug FOUND AND FIXED (2026-08-05)
+
+Ghosts had never once been seen in game, despite 80 recorded and lists returning up to 8 per
+request. The server was storing and returning them correctly the whole time.
+
+**`RequestGetGhostDataListResponse.ghosts` is field 2 on PS3, not field 3.** We took field 3 from
+the PC/reference proto. The client's parser (v1.10 `0x1685110`, same shape in v1.00) tests only
+fields 1 and 2 and sends everything else to `SkipField`; its serialiser (`0x1634668`) emits
+`li r3,2`. So every list we ever sent was discarded in full, silently.
+
+A comment in `ghost.go` asserted the opposite — that field 3 was correct and field 2 "would produce
+a message the client silently ignores". Confidently wrong, and it is why this survived so long. The
+regression test now asserts on the **wire bytes** rather than through the generated API, since the
+Go struct will happily round-trip whatever number the proto declares.
+
+The working `RequestGetBloodMessageListResponse` has the identical `{1 uint32, 2 repeated}` shape,
+which is exactly why blood messages rendered and ghosts did not.
+
+`online_area_id` is `required` and not decorative: the client stamps it into every ghost record it
+builds from the reply.
+
+## 7c. Bloodstains — still unexplained
+
+The same investigation **cleared** the bloodstain wire shapes. `RequestGetBloodstainListResponse`
+really does carry only `repeated BloodstainInfo = 1` with no area echo — confirmed three ways in
+both builds — and `BloodstainInfo` is exactly `{1 area, 2 cell, 3 id, 4 data}` as we send it. The
+asymmetry with every other list response is real and intentional, not a proto error.
+
+So the earlier suspicion recorded here, that a missing area echo was to blame, is **wrong**.
+
+Also ruled out from the binary: there is no count cap, cell filter, distance check or `data`
+predicate in the client's network layer. The `0x0392` poll wrapper copies every returned element
+into its output vector, using the same plumbing as the blood-message path.
+
+Where the client drops them is **above the network API**, reached only through an interface vtable
+with no direct callers, and was not traced. Two facts worth carrying:
+
+- The client has **never** sent `0x0393 RequestGetDeadingGhost` in any logged session, so it never
+  had a stain object to touch. The loss is at or before stain creation, not at replay fetch.
+- All four `BloodstainInfo` fields are `required` and the response's `IsInitialized` walks every
+  element, so one element missing one field voids the entire list.
+
+Two defects were fixed on the way, neither proven to be the cause: ids started at 1 where every
+other store starts at 100000, and players were being handed back their own death markers.
+
+**Fidelity gap, both features:** `CellLimitData` field 2 is a PER-CELL cap (the client asks for 5
+per cell, 40 total). `inCells` ignores it and applies only the global maximum.
+
 ## 8. Pushes we never send
 
 | Opcode | Message | Note |

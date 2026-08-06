@@ -795,7 +795,19 @@ message RequestGetGhostDataList {
 
 message RequestGetGhostDataListResponse {
 	required uint32 online_area_id = 1;
-	repeated GhostData ghosts = 3;
+	// FIELD 2 ON PS3, NOT 3. The PC/reference proto says 3 and is wrong here.
+	//
+	// Recovered from BLUS41045 and identical in v1.00 and v1.10. The client's
+	// parser (v1.10 0x1685110) tests only field 1 and field 2 and sends anything
+	// else to SkipField; the serialiser (0x1634668) emits `li r3,2` into
+	// WriteMessage. So a list written as field 3 is silently discarded in full,
+	// which is exactly what happened: eighty ghosts recorded, lists returning up
+	// to eight, and not one ever seen in game.
+	//
+	// The working RequestGetBloodMessageListResponse has the identical
+	// {1 uint32, 2 repeated} shape, which is why messages render and ghosts did
+	// not.
+	repeated GhostData ghosts = 2;
 }
 
 message RequestCreateGhostData {

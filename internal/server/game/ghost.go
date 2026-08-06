@@ -169,9 +169,14 @@ func (s *Service) handleGetGhostDataList(log logger, cs *clientSession, payload 
 		"player_id", cs.playerID, "area_id", req.GetOnlineAreaId(),
 		"cells_requested", len(cells), "max", req.GetMaxGhosts(), "returned", len(items))
 
-	// Note the wire tag: `ghosts` is field 3 and field 2 is skipped. The
-	// generated code has this right; hand-rolling it as field 2 would produce a
-	// message the client silently ignores.
+	// `ghosts` is field 2. An earlier comment here asserted it was field 3 and
+	// that field 2 "would produce a message the client silently ignores" —
+	// precisely backwards, and it was the reason no ghost was ever seen in game.
+	// The client's parser tests only fields 1 and 2 and skips everything else,
+	// so every list we sent was discarded whole. See the proto for the addresses.
+	//
+	// online_area_id is `required` and is not decorative: the client stamps it
+	// into every ghost record it builds from this reply.
 	resp := &ds2pb.RequestGetGhostDataListResponse{
 		OnlineAreaId: proto.Uint32(req.GetOnlineAreaId()),
 		Ghosts:       items,
