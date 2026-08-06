@@ -78,9 +78,9 @@ client's 214-class message set.
 
 **That candidate is now traced end to end: see `tasks/regulation-push-038b.md`.** The client applies
 pushed resources on the next frame, in memory, no restart — so FromSoftware could replace
-`OnlineEventParam.param` at runtime and never touch the S3 calibration channel. Note the write-up
-also *corrects* the theory that `start_at`/`end_at` scheduled the rotation: those fields are never
-read. Any scheduling was server-side.
+`OnlineEventParam.param` at runtime and never touch the S3 calibration channel. The theory that
+`start_at`/`end_at` scheduled the rotation is **unsupported but not refuted**: no reader was found,
+and the search shape could not have seen the likely one. See that doc.
 
 Constraint that matters here: the pushed payload must be **exactly the same size** as the loaded
 resource. Flipping the `u16` at `OnlineEventParam` row 0 `+2` qualifies. Creating a missing row does

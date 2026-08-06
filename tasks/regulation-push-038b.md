@@ -14,7 +14,8 @@ disassembly; INFERRED and UNKNOWN are called out.
 - `diff_data` is **not a diff**. It is the raw bytes of **one whole resource file** — no BND4, no
   DCX, no zlib, no delta format.
 - The param route requires the payload size to **equal the loaded resource's size exactly**.
-- `start_at` / `end_at` are **never read**. There is no activation window.
+- `start_at` / `end_at`: **no reader found**, but treat that as unresolved rather than dead — the
+  handler defaults them to meaningful "always valid" sentinels, which argues something reads them.
 - `importance` (field 1) is the **new** regulation version; `target_regulation_version` (field 2) is
   the **prerequisite**. It is a version chain, not a priority.
 - Applied **every frame** from the per-tick update, in place, in the live resource.
@@ -160,18 +161,32 @@ replace), then:
 **INFERRED:** send `path = "OnlineEventParam.param"` bare, since the client prepends the prefix
 itself. The normalisation stage `0x76FF50`–`0x770200` is undecoded, so **test both forms**.
 
-## `start_at` / `end_at` are never evaluated (CONFIRMED for the module)
+## `start_at` / `end_at` — no comparison found in this module (TREAT AS UNRESOLVED)
 
 Across the whole holder/applier module (`0x76E000`–`0x773500`), every access to element `+56` and
 `+72` is a 16-byte copy in a copy-ctor, assign, or vector-grow (`0x76F640`, `0x76FA64`, `0x7718FC`,
 `0x771CA4`, `0x772624`, `0x7727C8`, `0x772BD0`, `0x772D2C`, `0x7730B0`). **No compare, no `cellRtc`
 call, no arming or disarming.** The applier `0x76FE84` contains zero references to those offsets.
 
-INFERRED (not globally proven): the window is dead data, and the handler's 2000-01-01 / 2100-01-01
-defaults exist only so the protobuf parse never leaves them uninitialised.
+**Do not treat this as "the fields are dead."** Two reasons to keep it open:
 
-**This corrects an earlier working theory in `tasks/majula-event-chest.md` that per-diff activation
-windows were how the weekly rotation was scheduled.** They are not. Any scheduling was server-side.
+- **The handler goes out of its way to default them** to 2000-01-01 and 2100-01-01 via `cellRtc`.
+  Those are "always valid" sentinels. Zeroing would satisfy an uninitialised-parse concern for free;
+  constructing meaningful dates costs work that only pays off if something compares them. That is
+  evidence *for* a reader, from inside the same investigation that failed to find one.
+- **The search shape cannot see the likely pattern.** These are 16-byte structs, so a comparison
+  takes their address — `addi r3,r26,56; bl <compare>` — and the comparator may live anywhere. To an
+  offset scan, address-taken-and-passed is indistinguishable from a struct copy. The scan was also
+  scoped to one module (`0x76E000`–`0x773500`); the poll `0x771330`, `Append`, and the applier gate
+  `obj->vtbl[+200]` are all plausible homes for a window check.
+
+This is the same class of miss that declared the bell receive path dead: a store encoded as
+`stw rS,0(rA)` after an `lwzu` advanced the base, invisible to every search keyed on the
+displacement. See `tasks/bell-broadcast.md`.
+
+So: **no comparison was found**, which is not the same as none existing. The earlier theory in
+`tasks/majula-event-chest.md` that per-diff activation windows scheduled the weekly rotation is
+unsupported, but it is not refuted either.
 
 ## `importance` and `target_regulation_version` — a version chain (CONFIRMED)
 
