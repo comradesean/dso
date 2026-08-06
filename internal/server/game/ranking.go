@@ -44,6 +44,14 @@ const maxScoreIncrement = 1000000
 // enormous reply.
 const maxRankingPage = 100
 
+// powerStoneBlobLen is the size of a real record's opaque blob, measured from
+// live submissions (56 bytes, carrying a couple of counters and the player's
+// name in UTF-16).
+//
+// It matters because the client reads a FIXED 50 bytes out of this field with no
+// length check, so anything shorter is an out-of-bounds read on its side.
+const powerStoneBlobLen = 56
+
 // rankingToProto renders a stored board row for the wire.
 func rankingToProto(r *store.PowerStoneRanking) *ds2pb.PowerStoneRankingData {
 	return &ds2pb.PowerStoneRankingData{
@@ -155,13 +163,25 @@ func (s *Service) handleGetPowerStoneMyRanking(log logger, cs *clientSession, pa
 	if found {
 		data = rankingToProto(r)
 	} else {
+		// The placeholder blob is ZERO-FILLED TO FULL LENGTH, not empty.
+		//
+		// The client's my-ranking result handler copies a FIXED 50 bytes out of
+		// this field with no length check (v1.10 0x319CE8-0x319D24). Handing it
+		// an empty byte string means it reads 50 bytes past the end of a
+		// zero-length buffer — an out-of-bounds read on every not-found reply,
+		// which is a plausible cause of the RPCS3 access violation seen while a
+		// player was browsing this very screen.
+		//
+		// A real record carries 56 bytes, so that is what we send: the same
+		// shape, all zeroes. Costs nothing and removes the hazard whether or not
+		// it was the crash.
 		data = &ds2pb.PowerStoneRankingData{
 			PlayerId:    proto.Uint32(cs.playerID),
 			CharacterId: proto.Uint32(req.GetCharacterId()),
 			SerialRank:  proto.Uint32(0),
 			Rank:        proto.Uint32(0),
 			Score:       proto.Uint32(0),
-			Data:        []byte{},
+			Data:        make([]byte, powerStoneBlobLen),
 		}
 	}
 

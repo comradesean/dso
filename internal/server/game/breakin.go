@@ -23,19 +23,18 @@ const (
 // The PC value from the protos is 0x3FB, useless here: no code exists for 0x3FB,
 // 0x3FC or 0x3FD anywhere in this client.
 
-// SIN IS NOT MODELLED, and it gates the Cracked Blue Eye Orb.
+// SIN IS ENFORCED HERE, because the client does not enforce it.
 //
-// That orb searches only for hosts who have accumulated enough sin to be a
-// Sinner or worse, and it is the one break-in type restricted to a covenant —
-// only Blue Sentinels can use it. We track neither, so a blue orb is offered
-// every otherwise-eligible player regardless of their sin.
+// The Cracked Blue Eye Orb targets only hosts carrying enough sin to be a
+// Sinner. Left ungated, a Blue Sentinel invaded a player with no sin at all
+// simply for sharing a zone — so the rule has to live on this side. sinner_points
+// comes from StatsInfo in the status blob, a sub-message the profile had not been
+// reading, which is why an earlier hunt for a sin counter across PlayerStatus and
+// ItemUsingInfo found nothing while a player was actively earning it.
 //
-// The consequence is offering targets the host's client will refuse, which is
-// the familiar failure: the invader sees an instant "unable to find a world"
-// that looks like nobody being online. Sin most likely lives in the status blob
-// among the fields we do not decode, so this is findable the same way the
-// invadability gate was — watch which field moves when a player becomes a
-// sinner.
+// The orb's other restriction — that only Blue Sentinels may use it — is NOT
+// enforced. Nothing has been seen violating it, and covenant membership is the
+// invader's own client's business.
 func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestGetBreakInTargetList
 	if err := proto.Unmarshal(payload, &req); err != nil {
@@ -49,7 +48,7 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 	invaderSM := req.GetMatchingParameter().GetSoulMemory()
 	cs.profile.applyMatchingParameter(req.GetMatchingParameter())
 
-	var skippedNotInvadable, skippedLocation, skippedSoul int
+	var skippedNotInvadable, skippedLocation, skippedSoul, skippedNoSin int
 	// Cells of hosts who pass every check except position — the evidence for
 	// whether the client ever asks about a cell someone is actually in.
 	var availableCells []uint32
@@ -87,7 +86,27 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 				skippedSoul++
 				continue
 			}
-			// Deliberately NOT filtered on cell.
+			// A Cracked Blue Eye Orb hunts SINNERS, and THE CLIENT DOES NOT
+			// ENFORCE THAT — we must.
+			//
+			// Proven live: a Blue Sentinel invaded a player with no sin at all,
+			// purely because they shared a zone. A gate was briefly left out of
+			// here on the reasoning that the orb worked without one and the
+			// client presumably applied its own rules. It does not, and that
+			// reasoning was wrong.
+			//
+			// Fails OPEN when StatsInfo has never arrived for that player, so an
+			// absent field cannot silently exclude everybody — the failure this
+			// project keeps producing by guessing strict. A player we have stats
+			// for and who has no sin is excluded; a player we know nothing about
+			// is still offered.
+			if req.GetType() == ds2pb.BreakInType_BreakInType_BlueEyeOrb &&
+				other.profile.statsSeen && other.profile.sinnerPoints == 0 {
+				skippedNoSin++
+				continue
+			}
+
+			// Deliberately NOT filtered on cell either.
 			//
 			// A Cracked Red Eye Orb is supposed to reach any of the three Dark
 			// Chasms in a single use. Filtering by cell made that false: each use
@@ -133,6 +152,7 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 		"filtering", filtering, "invader_soul_memory", invaderSM,
 		"skipped_not_invadable", skippedNotInvadable,
 		"skipped_location", skippedLocation, "skipped_soul_memory", skippedSoul,
+		"skipped_no_sin", skippedNoSin,
 		// The decisive pair. "asked for 400320, hosts are at [400330]" over many
 		// queries tells us whether the client cycles cells at all, and whether it
 		// ever names its own — which is the thing still unexplained.

@@ -78,6 +78,18 @@ type matchProfile struct {
 	nameEngravedRing   uint32
 	disableCrossRegion bool
 
+	// sinnerPoints is DS2's sin counter, and it gates the Cracked Blue Eye Orb —
+	// that orb targets only hosts carrying enough sin to be a Sinner.
+	//
+	// It lives in StatsInfo, a sub-message the profile did not read, which is why
+	// a search for a moving "sin" field across PlayerStatus and ItemUsingInfo
+	// found nothing while a player was actively accruing it.
+	sinnerPoints uint32
+	// statsSeen records whether StatsInfo has ever arrived for this player, so
+	// "no sin" can be told from "no data yet". Without it, gating on sin would
+	// silently exclude everyone whose StatsInfo we have not received.
+	statsSeen bool
+
 	// Mirrors of the same two values from MatchingParameter, used only until the
 	// status blob supplies them. Kept separate rather than merged so the source
 	// of a matching decision stays visible.
@@ -178,6 +190,12 @@ func (p *matchProfile) applyStatus(blob []byte) {
 			p.onlineArea = *loc.OnlineAreaId
 		}
 	}
+	if st := all.GetStatsInfo(); st != nil {
+		if st.SinnerPoints != nil {
+			p.sinnerPoints = *st.SinnerPoints
+			p.statsSeen = true
+		}
+	}
 
 	// Diagnostic capture of everything scalar, modelled or not. The unknown_N
 	// fields are the point: one of them is expected to hold whatever the client
@@ -229,6 +247,29 @@ func (p *matchProfile) applyStatus(blob []byte) {
 			{"item.crest_of_the_rat", it.CrestOfTheRat},
 			{"item.unknown_7", it.Unknown_7},
 			{"item.unknown_8", it.Unknown_8},
+		} {
+			if x.v != nil {
+				p.setField(x.name, *x.v)
+			}
+		}
+	}
+	// StatsInfo was missing from this sweep, which is why a hunt for a moving
+	// sin counter across PlayerStatus and ItemUsingInfo came up empty while a
+	// player was actively earning it.
+	if st := all.GetStatsInfo(); st != nil {
+		type f struct {
+			name string
+			v    *uint32
+		}
+		for _, x := range []f{
+			{"stats.sinner_points", st.SinnerPoints},
+			{"stats.unknown_1", st.Unknown_1},
+			{"stats.unknown_2", st.Unknown_2},
+			{"stats.unknown_5", st.Unknown_5},
+			{"stats.unknown_10", st.Unknown_10},
+			{"stats.unknown_12", st.Unknown_12},
+			{"stats.unknown_13", st.Unknown_13},
+			{"stats.unknown_14", st.Unknown_14},
 		} {
 			if x.v != nil {
 				p.setField(x.name, *x.v)

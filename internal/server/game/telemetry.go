@@ -84,6 +84,8 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 //	           9  Mirror Knight squire
 //	          10  Dragon Remnants duel via a Dragon Eye sign (sign_type 6)
 //	          11  Blue Sentinels covenant defence
+//	          12  Cracked Blue Eye Orb invasion — a Blue Sentinel hunting a
+//	              sinner, push 0x03C1
 //	          13  seen once alongside 14 during a Bell Keeper summon, unattributed
 //	          14  Bell Keeper covenant defence (the grey-spirit visit)
 //	          15  Rat King prey
