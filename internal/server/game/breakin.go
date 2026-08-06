@@ -15,6 +15,17 @@ const (
 	opRequestRejectBreakInTarget  uint32 = 0x03D4
 )
 
+// minSinForBlueOrb is how much sin a host must carry to be a valid Cracked Blue
+// Eye Orb target: at least ten points, earned by killing NPCs or by successful
+// red invasions.
+//
+// The gate first used "any sin at all", which was the loosest reading that meant
+// anything and was chosen while the field itself was still unverified. Ten is
+// the documented figure and it fits what we watched: the one player ever invaded
+// this way was carrying exactly 10, and the Sentinel's kill took them to 9 —
+// which should now put them below the bar until they sin again.
+const minSinForBlueOrb = 10
+
 // CONFIRMED 2026-08-05: 0x03B9 is PushRequestBreakInTarget for mode 0 (Red Eye
 // Orb). A real invader selected a target, the server pushed with this id, and the
 // target's client tunnelled its "allow" back through RequestSendMessageToPlayers
@@ -112,7 +123,8 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 			// for and who has no sin is excluded; a player we know nothing about
 			// is still offered.
 			if req.GetType() == ds2pb.BreakInType_BreakInType_BlueEyeOrb &&
-				other.profile.statsSeen && other.profile.sinnerPoints == 0 {
+				other.profile.statsSeen &&
+				other.profile.sinnerPoints < minSinForBlueOrb {
 				skippedNoSin++
 				continue
 			}
