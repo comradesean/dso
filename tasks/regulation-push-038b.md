@@ -119,11 +119,12 @@ Layout: `+0` current regulation version, `+8` mutex, `+40` `vector<DiffData>`.
 
 Applier **`0x76FE84`**. Two terminal routes.
 
-**`.fmg` route — `0x76A0F0`:**
+**`.fmg` route — `0x76A0F0`:** (the size annotation below was originally written backwards; `ble`
+takes the **work** branch, so <= 1024 is ACCEPTED and > 1024 returns 0)
 
 ```
 76a108: cmpwi r0,1024        ; size
-76a11c: ble   0x76a13c       ; >1024 -> return 0 (rejected)
+76a11c: ble   0x76a13c       ; <= 1024 -> do the work; otherwise fall through, return 0
 76a140: lwz   r3,8(r29)      ; r29 = res+144  => dst = *(res+152)
 76a144: bl    0x184DD1C      ; memcpy(dst, data, size)
 76a158..68: *(dst+20) += dst ; relocate one embedded offset->pointer
@@ -407,6 +408,45 @@ Method note: three live tests produced "no change" and distinguished nothing bet
 every failure mode in this message is silent and identical from outside. One memory read produced
 both the answer and a proof that everything upstream works. When the unknown is the contents of a
 global rather than a branch, reach for the debugger first — the same lesson the bell taught.
+
+## STILL OPEN — the obelisk
+
+The chest works; the obelisk does not. With `path = text:/Text/English/regulation.fmg` the text is
+still the stock "The letters are worn beyond recognition."
+
+What is ruled out:
+
+- **Size.** `0x76A0F0` accepts <= 1024 and our payload is 128. Had it been found, the memcpy and the
+  `+20` relocation would have rewritten exactly the bytes we want.
+- **The language token.** The table at `0x1888EF0`-`0x1888F98` is `Japanese, English, French,
+  Germany, Italian, Spanish, Korean, Chinese, Russian, Polish, Portuguese` — exactly the eleven
+  `regulation<Lang>.fmg` files in the archive. `English` is right.
+- **The version.** The same sweep lands the chest's params in the same session.
+
+So the repository lookup at `0xC169E8` is returning NULL and `0x770858` skips the apply. Either the
+resource is registered under a different key, or the regulation FMG is not registered as a resource
+at all and the game copies its strings elsewhere at load.
+
+Sibling templates use other schemes — `dlc_data:/Menu/Text/%s/bloodmes/%s.fmg` (`0x1888E30`),
+`gamedata_patch:/Menu/Text/%s/bloodmes/%s.fmg` (`0x1888E80`), `title_patch:/param/` (`0x1871460`) —
+so a patched 1.10 install may register it under one of those. `DSO_REGULATION_PUSH_PATH` now takes a
+comma-separated list and sends one push per candidate.
+
+**The decisive test is a memory search**, not more guessing. In RPCS3's memory viewer, search the
+UTF-16BE bytes of `regulation.fmg`:
+
+```
+0072006500670075006c006100740069006f006e002e0066006d0067
+```
+
+and read the whole wide string around each hit — that is the key as actually registered. Searching
+for the obelisk text itself confirms which side of the lookup failed:
+
+```
+0054006800650020006c006500740074006500720073002000610072006500200077006f0072006e
+```
+
+Present and unmodified means the buffer is loaded and our memcpy never ran.
 
 ## OPEN — resolve before building a payload
 

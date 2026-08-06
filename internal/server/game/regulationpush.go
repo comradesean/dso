@@ -103,16 +103,34 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 		return
 	}
 
-	// The client prepends L"param:/" itself for anything that is not a .fmg, so
-	// the bare file name is what it expects. The normalisation stage between
-	// 0x76FF50 and 0x770200 is undecoded, though, so this stays overridable —
-	// if a bare name does nothing, the prefixed form is the next thing to try.
-	path := cfg.RegulationPushPath
-	if path == "" {
-		path = filepath.Base(cfg.RegulationPushFile)
+	// For a param the client prepends L"param:/" itself, so the bare file name is
+	// correct and is what armed the chest. For an FMG it prepends nothing and
+	// looks the string up as-is, and an FMG's resource path is nothing like its
+	// name inside the archive — see tasks/regulation-push-038b.md.
+	//
+	// Accepts a comma-separated list so several candidate paths can be tried in
+	// one login. A missed lookup is skipped in silence (0x770858), so a wrong path
+	// costs nothing and there is no way to tell one apart from a right one except
+	// by the effect. Sent as separate pushes rather than separate entries in one:
+	// entries share the version chain and at most one is accepted per pass, so
+	// bundling them would test exactly one path and quietly discard the rest.
+	paths := parsePushPaths(cfg.RegulationPushPath)
+	if len(paths) == 0 {
+		paths = []string{filepath.Base(cfg.RegulationPushFile)}
 	}
+	for _, path := range paths {
+		s.pushResource(log, cs, path, data)
+	}
+}
 
-	s.pushResource(log, cs, path, data)
+func parsePushPaths(spec string) []string {
+	var out []string
+	for _, f := range strings.Split(spec, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // pushResource sends one resource file to one client.
