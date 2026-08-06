@@ -135,7 +135,27 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 // way, since the entries are compressed". That was wrong and nothing had checked
 // the header — the index is plaintext and carries every filename.
 //
-// THE CONDITION IS HOST DEATH, NOT RINGING THE BELL.
+// OBSERVED LIVE 2026-08-06, the first and so far only time in this project:
+//
+//	payload_hex = 08 80 8f ec 04 12 00
+//
+// which is field 1 = 10160000 (Belfry Luna's map id) and field 2 empty. That is
+// EXACTLY the shape reconstructed from the serialiser before any frame had ever
+// been seen — `08 <varint mapid> 12 00` — so the decompiled payload layout is
+// confirmed byte for byte, including that field 2 is always sent empty.
+//
+// The sequence it arrived in:
+//
+//	02:48:46  Bell Keeper session forms in Belfry Luna (kind 14)
+//	02:50:10  the HOST dies; the Bell Keeper reports the kill
+//	02:50:17  the HOST's client sends 0x03EE, 6.3s later
+//
+// HOST DEATH IS NECESSARY BUT NOT SUFFICIENT. An identical host death eight
+// minutes earlier, same pair, same session kind, same map, produced no bell at
+// all. So something else gates the final step, and one capture cannot say what.
+// Note also that the sender is the player who DIED, not the victor.
+//
+// THE CONDITION INVOLVES HOST DEATH, NOT MERELY RINGING THE BELL.
 //
 // The send branch is gated behind 「ホスト死亡判定」 — host death determination —
 // and the bell object's action prompt is disabled from map load until that same
