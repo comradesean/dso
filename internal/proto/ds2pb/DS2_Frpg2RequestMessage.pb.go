@@ -657,12 +657,19 @@ func (x *RequestWaitForUserLoginResponse) GetPlayerId() uint32 {
 	return 0
 }
 
+// Field names recovered from BLUS41045; the previous ones (player_data_mask,
+// upload_interval) were the reference's guesses.
+//
+// Carried by 0x038C PlayerInfoUploadConfigPushMessage, which is UPLOAD SCHEDULING
+// AND NOTHING ELSE — see the note on that message. Its handler applies only lower
+// bounds: upload_period >= 5, char_data >= 60, enemy_kill >= 5. There is no upper
+// clamp, contrary to an earlier note here.
 type PlayerStatusUploadConfig struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	PlayerDataMask []uint32               `protobuf:"varint,1,rep,name=player_data_mask,json=playerDataMask" json:"player_data_mask,omitempty"`
-	UploadInterval *uint32                `protobuf:"varint,2,req,name=upload_interval,json=uploadInterval" json:"upload_interval,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ElementIdList []uint32               `protobuf:"varint,1,rep,name=element_id_list,json=elementIdList" json:"element_id_list,omitempty"` // packed or unpacked, both accepted
+	UploadPeriod  *uint32                `protobuf:"varint,2,req,name=upload_period,json=uploadPeriod" json:"upload_period,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PlayerStatusUploadConfig) Reset() {
@@ -695,16 +702,16 @@ func (*PlayerStatusUploadConfig) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *PlayerStatusUploadConfig) GetPlayerDataMask() []uint32 {
+func (x *PlayerStatusUploadConfig) GetElementIdList() []uint32 {
 	if x != nil {
-		return x.PlayerDataMask
+		return x.ElementIdList
 	}
 	return nil
 }
 
-func (x *PlayerStatusUploadConfig) GetUploadInterval() uint32 {
-	if x != nil && x.UploadInterval != nil {
-		return *x.UploadInterval
+func (x *PlayerStatusUploadConfig) GetUploadPeriod() uint32 {
+	if x != nil && x.UploadPeriod != nil {
+		return *x.UploadPeriod
 	}
 	return 0
 }
@@ -11599,10 +11606,10 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\tunknown_6\x18\a \x01(\rR\bunknown6\"U\n" +
 	"\x1fRequestWaitForUserLoginResponse\x12\x15\n" +
 	"\x06psn_id\x18\x01 \x02(\tR\x05psnId\x12\x1b\n" +
-	"\tplayer_id\x18\x02 \x02(\rR\bplayerId\"m\n" +
-	"\x18PlayerStatusUploadConfig\x12(\n" +
-	"\x10player_data_mask\x18\x01 \x03(\rR\x0eplayerDataMask\x12'\n" +
-	"\x0fupload_interval\x18\x02 \x02(\rR\x0euploadInterval\"\xd2\x01\n" +
+	"\tplayer_id\x18\x02 \x02(\rR\bplayerId\"g\n" +
+	"\x18PlayerStatusUploadConfig\x12&\n" +
+	"\x0felement_id_list\x18\x01 \x03(\rR\relementIdList\x12#\n" +
+	"\rupload_period\x18\x02 \x02(\rR\fuploadPeriod\"\xd2\x01\n" +
 	"\x13AnnounceMessageData\x12\x1b\n" +
 	"\tunknown_1\x18\x01 \x02(\rR\bunknown1\x12\x14\n" +
 	"\x05index\x18\x02 \x02(\rR\x05index\x12\x1b\n" +

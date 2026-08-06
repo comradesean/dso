@@ -83,9 +83,16 @@ message RequestWaitForUserLoginResponse {
 	required uint32 player_id = 2;
 }
 
+// Field names recovered from BLUS41045; the previous ones (player_data_mask,
+// upload_interval) were the reference's guesses.
+//
+// Carried by 0x038C PlayerInfoUploadConfigPushMessage, which is UPLOAD SCHEDULING
+// AND NOTHING ELSE — see the note on that message. Its handler applies only lower
+// bounds: upload_period >= 5, char_data >= 60, enemy_kill >= 5. There is no upper
+// clamp, contrary to an earlier note here.
 message PlayerStatusUploadConfig {
-	repeated uint32 player_data_mask = 1;
-	required uint32 upload_interval = 2;
+	repeated uint32 element_id_list = 1; // packed or unpacked, both accepted
+	required uint32 upload_period = 2;
 }
 
 // ------------------------------------------------------------------------------------------------------------

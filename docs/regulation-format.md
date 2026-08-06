@@ -516,9 +516,25 @@ of the whole inflated BND4 for `11000`, `11180`, `11240`, `11250`, `11280` finds
 - `11000`–`11240` in steps of 10, **except 11040 which does not exist** — 25 lots. Each is bound
   by `ResultEventParam` to one (occasionally two or three) result-event rows. Three of them
   (`11090`, `11100`, `11130`) are empty in every version.
-- `10045500` — one guaranteed item `60420000`, unchanged in all ten calibrations. The id decodes
-  as map **m10_04** (Majula) entity **5500**, i.e. almost certainly the mansion chest object
-  itself. **INFERRED**
+- `10045500` — one guaranteed item `60420000` (**Torch ×1**), unchanged in all ten calibrations.
+  **NOW CONFIRMED as the mansion event chest**, not merely inferred (2026-08-06):
+
+  Majula is `m10_04_00_00`, and the mansion holds **two chest objects at identical coordinates**,
+  both model `o04_0230`, entries #563/#564 of `map\m10_04_00_00\m10_04_00_00.msb`:
+
+  | object | MSB name | selector byte | item lot |
+  |---|---|---|---|
+  | `10045500` | `o04_0230_0000` | `0x1C`, shared with 167 objects | `10045600` → Soul Vessel ×1 |
+  | **`10045510`** | `o04_0230_0001` | **`0x24`, unique across all 3641 map objects** | **`10045500`** |
+
+  So the ordinary chest is `10045500` (Soul Vessel, matching the wiki's "by default the chest
+  always contains 1 Soul Vessel") and the EVENT chest is `10045510`, whose lot `10045500` is the
+  only map-object row present in `ItemLotParam2_SvrEvent`. `MapObjectInstanceParam.+0x24` is the
+  item lot id, validated by 889 of 924 non-zero values across all maps resolving to real
+  `ItemLotParam2_Other` rows.
+
+  The uniqueness of selector `0x24` is an empirical fact; that it *means* "server event chest"
+  is inference.
 - `90000000` / `90000001` — soul lots (item 1000000 / 2610000, x10/x20/x30, weight
   100 / 0.25 / 0.25).
 
@@ -547,8 +563,26 @@ perfect lockstep — every 11xxx lot has a byte-identical 10xxx twin.
 
 **This closes the gap the earlier analysis left open in the wrong direction.** The regulation
 0114 wiring is complete: lot table, twin table, and the selector that binds lots to events all
-shipped together. So the reason the chest stayed empty is *not* a missing lot and *not* missing
-wiring — it is that **the result event itself never fires**.
+shipped together.
+
+### CORRECTION (2026-08-06): none of this is about the chest
+
+The conclusion above — "the reason the chest stayed empty is that the result event never fires" —
+is **wrong**, and so is the premise that the chest is `ResultEventParam`-gated at all.
+
+All 82 `ResultEventParam` rows were read. **Not one references lot `10045500` or `10045600`.**
+The `11xxx` lots that table binds are post-session and covenant rewards — Awestone, Sunlight
+Medal, Token of Fidelity and Spite, Smooth & Silky Stone, Human Effigy, Bonfire Ascetic, Pharros'
+Lockstone, Dragon Scale, cracked eye orbs. That is the results screen after an online session,
+not a chest in Majula.
+
+The claim that "every 11xxx lot has a byte-identical 10xxx twin" is also imprecise: `11000`–`11280`
+exist **only** in `_SvrEvent`, and `10045500` is the only id present in both tables.
+
+**No scripting is involved either.** The three ids appear in exactly two files across the whole
+v1.10 archive set — the m10_04 MSB and `MapObjectInstanceParam_m10_04_00_00.param` — and in none
+of the 584 EzState scripts, and nowhere as immediates in the executable. The chest is native
+component behaviour reading param data.
 
 ### 11.3 What we could not determine
 
