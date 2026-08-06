@@ -293,21 +293,38 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 //	field 3  the literal 0. INVENTED, because proto2 required something.
 //	field 4  an empty byte string. INVENTED, mirroring the request's empty blob.
 //
-// FIELD 2 IS THE MAP, AND THE CLIENT FILTERS ON IT. A synthetic toll carrying
-// 10160000 was broadcast every 45 seconds to a player free to roam: they heard
-// it in the Lost Bastille — the map that contains Belfry Luna — and nowhere
-// else. So the client plays a toll only when the listener is in the map named
-// by this field, which is exactly the behaviour the game should have and why
-// relaying the RINGER's map id is correct.
+// EVERY FIELD OF THIS MESSAGE IS INERT ON PS3. The body is never read.
 //
-// That refines rather than contradicts the decompilation, which established that
-// the 0x03EF HANDLER performs no comparison of any kind. True — the comparison
-// is in the consumer behind the vtable dispatch, the one link that analysis
-// could not resolve. Both findings hold.
+// The consumer was resolved by breakpoint (CTR at the dispatch gave 0x68BCC8, a
+// pointer-to-member thunk, forwarding to the real handler at v1.10 0x6E4F14 /
+// v1.00 0x6AD174). That function takes the payload pointer and size as arguments
+// and NEVER REFERENCES EITHER — verified across the whole function in both
+// builds. Its entire effect is:
 //
-// Fields 3 and 4 remain unknown. The bell plays with 0 and empty, so neither is
-// required for playback, but either could still select something that is
-// currently defaulting.
+//	this->0x10 = 1       a boolean latch
+//
+// A per-frame poll then does TestAndClear on that latch and forwards it, and the
+// script running in the loaded map asks IsBellRung() — the same script-command
+// interpreter that sends 0x03EE in the first place.
+//
+// SO THE MAP SPECIFICITY IS SCRIPT-DRIVEN, NOT MESSAGE-DRIVEN. A synthetic toll
+// carrying 10160000 was heard in the Lost Bastille and nowhere else, and this
+// file previously recorded that as "field 2 is the map and the client filters on
+// it". The observation is real; that explanation is wrong. Nothing reads field
+// 2. Lost Bastille's script asks whether a bell rang; scripts in other maps do
+// not ask, so nothing plays.
+//
+// Consequences worth knowing:
+//
+//   - The invented values in fields 3 and 4 carry no risk, and equally no
+//     meaning. Field 2 is kept as the ringer's map id only so a PC client or a
+//     future consumer would have it — nothing on PS3 acts on it.
+//   - THE LATCH IS A BOOLEAN, NOT A COUNTER. Two pushes arriving between script
+//     polls collapse into one toll, so a burst of genuine rings under-reports.
+//
+// Still unknown: whether the polling script uses map or bell identity from its
+// own local state. That lives in the event-script data rather than the
+// executable, so it is the one place a Luna/Sol distinction could hide.
 //
 // What the handler does, recovered statically and now known to run: field 1 is
 // never read at all; fields 2 and 3 are copied into a 24-byte payload struct
@@ -352,11 +369,17 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 
 	// Only send to players in the map the bell is in.
 	//
-	// The client discards a toll for a map it is not in — proven in game, where
-	// a synthetic toll carrying Belfry Luna's map was audible in the Lost
-	// Bastille and silent everywhere else. So sending it to the whole server was
-	// always going to be thrown away by everyone out of earshot, and the traffic
-	// bought nothing.
+	// The saving is real but the REASON is not what it first appeared. The
+	// client does not filter on field 2 — it does not read the message body at
+	// all. A toll sets a boolean latch, and only the script in a belfry map ever
+	// asks whether that latch is set. So a player elsewhere hears nothing
+	// because their script never asks, not because the message named a map they
+	// were not in.
+	//
+	// Either way the packet is wasted on them, so it is still worth not sending.
+	// But note this filter is a PROXY: it works because our idea of a player's
+	// area matches the map whose script would poll. If those ever disagree, a
+	// player could miss a bell they should have heard.
 	//
 	// Worth trimming rather than shrugging at: a push to every session is the
 	// same shape as the burst that killed a session earlier — four large replies
