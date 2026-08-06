@@ -225,9 +225,22 @@ that against where it actually was, disagreed, and refused in ~100ms — read by
 "unable to find a world to invade". The push now carries the **host's** area and cell, since the
 invader travels to the host.
 
-**CONFIRMED LIVE:** `requested_cell=400320 pushed_cell=400330` → pushed → guest joined → session
-kind 7. One orb reaching a host in a different chasm, which is the documented behaviour and had
-never worked before.
+**CONFIRMED LIVE across the full matrix: 5 invasions, 5 joins, 0 rejections.** All three cells
+exercised as both the requested and the pushed value, same-cell and cross-cell:
+
+| requested | pushed | result |
+|---|---|---|
+| `400320` | `400330` | joined |
+| `400310` | `400310` | joined |
+| `400330` | `400320` | joined |
+| `400320` | `400320` | joined |
+
+One orb reaching a host in a different chasm is the documented behaviour and had never worked
+before. Join latency is a near-constant ~14.5s (14.1 / 14.6 / 14.7 observed), so it is a fixed
+client-side handshake rather than anything load-dependent.
+
+No transport warnings during any of it, which also exercises the send pacing — these sessions carry
+the large ghost-list replies that killed a session before the fix.
 
 **A cell FILTER was added twice and was wrong both times.** It hid the symptom by only ever
 offering same-cell hosts, but each orb use is a single query for a single cell and the client does
