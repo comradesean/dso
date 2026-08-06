@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -102,9 +103,30 @@ func TestRegulationPushWireFormat(t *testing.T) {
 //
 // The armed payload must therefore be byte-for-byte the same length as the file
 // it was derived from, and differ only in the claim threshold.
+//
+// The payloads are derived from game data, which /data/ keeps out of the repo,
+// so this skips where they are absent rather than failing a clean checkout.
+// tools/gamedata/regparam.py rebuilds them; see tasks/regulation-push-038b.md.
+//
+// The two live in stock/ and armed/ under the SAME file name deliberately. The
+// `path` we send defaults to the payload's base name, and it has to be the
+// resource's real name — a payload called OnlineEventParam.armed.param makes the
+// client look up param:/OnlineEventParam.armed.param, find nothing, and discard
+// the push without a word. That cost a live test.
 func TestRegulationPushPayloadSizeUnchanged(t *testing.T) {
-	stock := mustReadFile(t, "../../../data/regpush/OnlineEventParam.param")
-	armed := mustReadFile(t, "../../../data/regpush/OnlineEventParam.armed.param")
+	const stockPath = "../../../data/regpush/stock/OnlineEventParam.param"
+	const armedPath = "../../../data/regpush/armed/OnlineEventParam.param"
+
+	if _, err := os.Stat(stockPath); err != nil {
+		t.Skipf("payloads not built: %v", err)
+	}
+	if filepath.Base(stockPath) != filepath.Base(armedPath) {
+		t.Fatalf("payload base names differ (%s vs %s); the pushed path would be wrong",
+			filepath.Base(stockPath), filepath.Base(armedPath))
+	}
+
+	stock := mustReadFile(t, stockPath)
+	armed := mustReadFile(t, armedPath)
 
 	if len(stock) != len(armed) {
 		t.Fatalf("armed payload is %d bytes, stock is %d — the client would discard it",
