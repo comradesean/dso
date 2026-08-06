@@ -255,6 +255,42 @@ Hard constraints from the disassembly:
   field 1 with field 2 chained correctly.
 - A `.fmg` payload is capped at **1024 bytes**.
 
+## IMPLEMENTED — how to run the live test
+
+`internal/server/game/regulationpush.go`, sent from the login handler right after the management
+text. Off unless `DSO_REGULATION_PUSH_FILE` is set.
+
+The payload is already built: **`data/regpush/OnlineEventParam.armed.param`** is 0114's own
+`OnlineEventParam.param` with the claim threshold at row 0 `+2` raised from `0` to `1`, and nothing
+else touched. `data/regpush/OnlineEventParam.param` is the untouched original for comparison, and
+`TestRegulationPushPayloadSizeUnchanged` enforces that the two differ in exactly those two bytes and
+not in length.
+
+```
+DSO_REGULATION_PUSH_FILE=data/regpush/OnlineEventParam.armed.param
+DSO_REGULATION_PUSH_VERSION_REQUIRED=0     # 0 makes the client skip the version check
+DSO_REGULATION_PUSH_DELAY_SECONDS=0
+```
+
+Build a different payload with `tools/gamedata/regparam.py` — it refuses to change a file's length,
+which is the constraint that otherwise fails in silence.
+
+**Procedure.** The chest's arm method `0x58E360` is not known to re-run on its own; it may only fire
+when the object is registered at map load. So: log in somewhere other than Majula, confirm the push
+in the server log, then travel to Majula so the map loads *after* the data changed, and open the far
+chest (object `10045510`, the pair-mate of the ordinary Soul Vessel one).
+
+**Reading the result.**
+
+- **Chest gives something** → the applier's repository and the chest's are the same, `0x038B` works
+  end to end, and open item 1 below is answered.
+- **Nothing** → try `DSO_REGULATION_PUSH_PATH=param:/OnlineEventParam.param` (open item 2), then
+  suspect open item 1 or GATE A in `tasks/majula-event-chest.md`.
+
+Everything about this push fails **silently** on the client — wrong size, wrong path, wrong version,
+wrong repository all look identical from outside. A negative result therefore isolates nothing on its
+own; change one variable at a time.
+
 ## OPEN — resolve before building a payload
 
 1. **Repository identity — the big one.** The applier reaches its repo via `*(*(0x1E1D810)) + 24`.

@@ -103,6 +103,32 @@ type Config struct {
 	ManagementText         string
 	ManagementTextLanguage uint64
 
+	// RegulationPush* drive the 0x038B RegulationFileUpdatePushMessage, which
+	// replaces one whole resource file in the running client — no restart, no
+	// calibration download. See tasks/regulation-push-038b.md.
+	//
+	// RegulationPushFile is the payload; empty disables the push. For a .param
+	// it MUST be exactly the same size as the resource it replaces, or the
+	// client skips it in silence.
+	//
+	// RegulationPushPath is the `path` field. Empty uses the payload's base
+	// name, which is what the client expects — it prepends "param:/" itself for
+	// anything that is not a .fmg. Overridable because the client's path
+	// normalisation was never fully decoded.
+	//
+	// RegulationPushVersionRequired must match the regulation version the client
+	// already holds; 0 makes the client skip the check. RegulationPushVersionNew
+	// becomes its new version and defaults to required+1.
+	//
+	// RegulationPushDelaySeconds delays the push after login, so it can be timed
+	// against a deliberate area reload — some consumers may only re-read their
+	// param when their object is registered at map load.
+	RegulationPushFile            string
+	RegulationPushPath            string
+	RegulationPushVersionRequired uint64
+	RegulationPushVersionNew      uint64
+	RegulationPushDelaySeconds    uint64
+
 	// Bootstrap HTTP: the DS2 PS3 client does an HTTP "calibration" check before
 	// going online. BootstrapHTTPEnabled starts an HTTP server (port 80 by
 	// default, needs privilege) that answers it; BootstrapContentsFile is an
@@ -222,6 +248,12 @@ func Load() (Config, error) {
 	c.BreakInRejectPushID = envUint("DSO_BREAKIN_REJECT_PUSH_ID", c.BreakInRejectPushID)
 	c.ManagementText = envStr("DSO_MANAGEMENT_TEXT", c.ManagementText)
 	c.ManagementTextLanguage = envUint("DSO_MANAGEMENT_TEXT_LANGUAGE", c.ManagementTextLanguage)
+
+	c.RegulationPushFile = envStr("DSO_REGULATION_PUSH_FILE", c.RegulationPushFile)
+	c.RegulationPushPath = envStr("DSO_REGULATION_PUSH_PATH", c.RegulationPushPath)
+	c.RegulationPushVersionRequired = envUint("DSO_REGULATION_PUSH_VERSION_REQUIRED", c.RegulationPushVersionRequired)
+	c.RegulationPushVersionNew = envUint("DSO_REGULATION_PUSH_VERSION_NEW", c.RegulationPushVersionNew)
+	c.RegulationPushDelaySeconds = envUint("DSO_REGULATION_PUSH_DELAY_SECONDS", c.RegulationPushDelaySeconds)
 	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)
 	c.BootstrapHTTPPort = envInt("DSO_BOOTSTRAP_HTTP_PORT", c.BootstrapHTTPPort)
 	c.BootstrapContentsFile = envStr("DSO_BOOTSTRAP_CONTENTS_FILE", c.BootstrapContentsFile)

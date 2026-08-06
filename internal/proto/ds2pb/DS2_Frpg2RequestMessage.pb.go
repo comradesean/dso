@@ -8004,10 +8004,44 @@ func (*RequestGetRegulationFileResponse) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{132}
 }
 
+// RegulationFileDiffData carries one whole replacement resource.
+//
+// RECOVERED FROM THE PS3 CLIENT (v1.10). See tasks/regulation-push-038b.md for
+// the full trace; the load-bearing points:
+//
+//   - diff_data is NOT a diff. There is no BND4/DCX/PARAM magic check, no CRC,
+//     no zlib and no delta decoder anywhere on the apply path (0x76FE84). It is
+//     the literal bytes of a single resource file.
+//   - For a .param the payload size must EQUAL the loaded resource's size
+//     exactly (0x770DE4) or the entry is skipped in silence. Rows can be edited
+//     but not added or removed.
+//   - For a .fmg the payload is capped at 1024 bytes (0x76A0F0).
+//   - version_new (field 1, "importance" in the reference schema) becomes the
+//     client's new regulation version; version_required (field 2) must equal the
+//     version it already holds. They form a chain, not a priority. version_new
+//     must be <= 999999.
+//   - path is normalised, and if the extension is not .fmg the client prepends
+//     L"param:/" itself, so send the bare file name.
+//
+// start_at/end_at: no reader was found anywhere in the holder/applier module,
+// but do NOT treat them as dead. The handler spends cellRtc calls defaulting
+// them to 2000-01-01 and 2100-01-01 -- "always valid" sentinels that only pay
+// off if something compares them. They are also 16-byte structs, so a compare
+// would take their address and could sit outside the module scanned. Send the
+// sentinels rather than omitting them: it costs nothing, it matches what the
+// client would have constructed anyway, and it cannot trip a required-field
+// check if these turn out to be required.
 type RegulationFileDiffData struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	VersionNew      *uint32                `protobuf:"varint,1,req,name=version_new,json=versionNew" json:"version_new,omitempty"`
+	VersionRequired *uint32                `protobuf:"varint,2,req,name=version_required,json=versionRequired" json:"version_required,omitempty"`
+	Path            *string                `protobuf:"bytes,3,req,name=path" json:"path,omitempty"`
+	DiffData        []byte                 `protobuf:"bytes,4,req,name=diff_data,json=diffData" json:"diff_data,omitempty"`
+	StartAt         *ds2datapb.DateTime    `protobuf:"bytes,5,opt,name=start_at,json=startAt" json:"start_at,omitempty"`
+	EndAt           *ds2datapb.DateTime    `protobuf:"bytes,6,opt,name=end_at,json=endAt" json:"end_at,omitempty"`
+	Unknown_7       *uint32                `protobuf:"varint,7,opt,name=unknown_7,json=unknown7" json:"unknown_7,omitempty"` // parsed, never read
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *RegulationFileDiffData) Reset() {
@@ -8038,6 +8072,55 @@ func (x *RegulationFileDiffData) ProtoReflect() protoreflect.Message {
 // Deprecated: Use RegulationFileDiffData.ProtoReflect.Descriptor instead.
 func (*RegulationFileDiffData) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{133}
+}
+
+func (x *RegulationFileDiffData) GetVersionNew() uint32 {
+	if x != nil && x.VersionNew != nil {
+		return *x.VersionNew
+	}
+	return 0
+}
+
+func (x *RegulationFileDiffData) GetVersionRequired() uint32 {
+	if x != nil && x.VersionRequired != nil {
+		return *x.VersionRequired
+	}
+	return 0
+}
+
+func (x *RegulationFileDiffData) GetPath() string {
+	if x != nil && x.Path != nil {
+		return *x.Path
+	}
+	return ""
+}
+
+func (x *RegulationFileDiffData) GetDiffData() []byte {
+	if x != nil {
+		return x.DiffData
+	}
+	return nil
+}
+
+func (x *RegulationFileDiffData) GetStartAt() *ds2datapb.DateTime {
+	if x != nil {
+		return x.StartAt
+	}
+	return nil
+}
+
+func (x *RegulationFileDiffData) GetEndAt() *ds2datapb.DateTime {
+	if x != nil {
+		return x.EndAt
+	}
+	return nil
+}
+
+func (x *RegulationFileDiffData) GetUnknown_7() uint32 {
+	if x != nil && x.Unknown_7 != nil {
+		return *x.Unknown_7
+	}
+	return 0
 }
 
 type RegulationFileMessage struct {
@@ -8077,7 +8160,8 @@ func (*RegulationFileMessage) Descriptor() ([]byte, []int) {
 }
 
 type RegulationFileUpdateMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	DiffDataList  []*RegulationFileDiffData `protobuf:"bytes,1,rep,name=diff_data_list,json=diffDataList" json:"diff_data_list,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8112,8 +8196,17 @@ func (*RegulationFileUpdateMessage) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{135}
 }
 
+func (x *RegulationFileUpdateMessage) GetDiffDataList() []*RegulationFileDiffData {
+	if x != nil {
+		return x.DiffDataList
+	}
+	return nil
+}
+
 type RegulationFileUpdatePushMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state         protoimpl.MessageState       `protogen:"open.v1"`
+	PushMessageId *PushMessageId               `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
+	UpdateMsg     *RegulationFileUpdateMessage `protobuf:"bytes,2,req,name=update_msg,json=updateMsg" json:"update_msg,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8146,6 +8239,20 @@ func (x *RegulationFileUpdatePushMessage) ProtoReflect() protoreflect.Message {
 // Deprecated: Use RegulationFileUpdatePushMessage.ProtoReflect.Descriptor instead.
 func (*RegulationFileUpdatePushMessage) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{136}
+}
+
+func (x *RegulationFileUpdatePushMessage) GetPushMessageId() PushMessageId {
+	if x != nil && x.PushMessageId != nil {
+		return *x.PushMessageId
+	}
+	return PushMessageId_PushID_PushRequestRemoveSign
+}
+
+func (x *RegulationFileUpdatePushMessage) GetUpdateMsg() *RegulationFileUpdateMessage {
+	if x != nil {
+		return x.UpdateMsg
+	}
+	return nil
 }
 
 type RankingRecordCount struct {
@@ -12103,11 +12210,23 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\afield_2\x18\x02 \x01(\fR\x06field2\"\x1f\n" +
 	"\x1dRequestNotifyRingBellResponse\"\x1a\n" +
 	"\x18RequestGetRegulationFile\"\"\n" +
-	" RequestGetRegulationFileResponse\"\x18\n" +
-	"\x16RegulationFileDiffData\"\x17\n" +
-	"\x15RegulationFileMessage\"\x1d\n" +
-	"\x1bRegulationFileUpdateMessage\"!\n" +
-	"\x1fRegulationFileUpdatePushMessage\"\x14\n" +
+	" RequestGetRegulationFileResponse\"\xa2\x02\n" +
+	"\x16RegulationFileDiffData\x12\x1f\n" +
+	"\vversion_new\x18\x01 \x02(\rR\n" +
+	"versionNew\x12)\n" +
+	"\x10version_required\x18\x02 \x02(\rR\x0fversionRequired\x12\x12\n" +
+	"\x04path\x18\x03 \x02(\tR\x04path\x12\x1b\n" +
+	"\tdiff_data\x18\x04 \x02(\fR\bdiffData\x128\n" +
+	"\bstart_at\x18\x05 \x01(\v2\x1d.DS2_Frpg2PlayerData.DateTimeR\astartAt\x124\n" +
+	"\x06end_at\x18\x06 \x01(\v2\x1d.DS2_Frpg2PlayerData.DateTimeR\x05endAt\x12\x1b\n" +
+	"\tunknown_7\x18\a \x01(\rR\bunknown7\"\x17\n" +
+	"\x15RegulationFileMessage\"t\n" +
+	"\x1bRegulationFileUpdateMessage\x12U\n" +
+	"\x0ediff_data_list\x18\x01 \x03(\v2/.DS2_Frpg2RequestMessage.RegulationFileDiffDataR\fdiffDataList\"\xc6\x01\n" +
+	"\x1fRegulationFileUpdatePushMessage\x12N\n" +
+	"\x0fpush_message_id\x18\x01 \x02(\x0e2&.DS2_Frpg2RequestMessage.PushMessageIdR\rpushMessageId\x12S\n" +
+	"\n" +
+	"update_msg\x18\x02 \x02(\v24.DS2_Frpg2RequestMessage.RegulationFileUpdateMessageR\tupdateMsg\"\x14\n" +
 	"\x12RankingRecordCount\"\x13\n" +
 	"\x11RankingRotationID\"\xb6\x01\n" +
 	"\x15PowerStoneRankingData\x12\x1b\n" +
@@ -12619,34 +12738,39 @@ var file_DS2_Frpg2RequestMessage_proto_depIdxs = []int32{
 	0,   // 59: DS2_Frpg2RequestMessage.PushRequestVisit.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
 	4,   // 60: DS2_Frpg2RequestMessage.PushRequestVisit.type:type_name -> DS2_Frpg2RequestMessage.VisitorType
 	0,   // 61: DS2_Frpg2RequestMessage.PushRequestNotifyRingBell.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
-	145, // 62: DS2_Frpg2RequestMessage.RequestGetPowerStoneMyRankingResponse.data:type_name -> DS2_Frpg2RequestMessage.PowerStoneRankingData
-	145, // 63: DS2_Frpg2RequestMessage.RequestGetPowerStoneRankingResponse.data:type_name -> DS2_Frpg2RequestMessage.PowerStoneRankingData
-	0,   // 64: DS2_Frpg2RequestMessage.PushRequestAllowQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
-	0,   // 65: DS2_Frpg2RequestMessage.PushRequestJoinQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
-	5,   // 66: DS2_Frpg2RequestMessage.PushRequestJoinQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	0,   // 67: DS2_Frpg2RequestMessage.PushRequestRejectQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
-	5,   // 68: DS2_Frpg2RequestMessage.PushRequestRejectQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	0,   // 69: DS2_Frpg2RequestMessage.PushRequestRemoveQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
-	5,   // 70: DS2_Frpg2RequestMessage.PushRequestRemoveQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	72,  // 71: DS2_Frpg2RequestMessage.QuickMatchData.matching_parameter:type_name -> DS2_Frpg2RequestMessage.MatchingParameter
-	5,   // 72: DS2_Frpg2RequestMessage.QuickMatchData.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	5,   // 73: DS2_Frpg2RequestMessage.RequestJoinQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	72,  // 74: DS2_Frpg2RequestMessage.RequestRegisterQuickMatch.matching_parameter:type_name -> DS2_Frpg2RequestMessage.MatchingParameter
-	5,   // 75: DS2_Frpg2RequestMessage.RequestRegisterQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	5,   // 76: DS2_Frpg2RequestMessage.RequestRejectQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	72,  // 77: DS2_Frpg2RequestMessage.RequestSearchQuickMatch.matching_parameter:type_name -> DS2_Frpg2RequestMessage.MatchingParameter
-	5,   // 78: DS2_Frpg2RequestMessage.RequestSearchQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	159, // 79: DS2_Frpg2RequestMessage.RequestSearchQuickMatchResponse.matches:type_name -> DS2_Frpg2RequestMessage.QuickMatchData
-	5,   // 80: DS2_Frpg2RequestMessage.RequestUnregisterQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	5,   // 81: DS2_Frpg2RequestMessage.RequestUpdateQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
-	0,   // 82: DS2_Frpg2RequestMessage.PushRequestHeader.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
-	0,   // 83: DS2_Frpg2RequestMessage.ManagementTextMessage.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
-	219, // 84: DS2_Frpg2RequestMessage.ManagementTextMessage.timestamp:type_name -> DS2_Frpg2PlayerData.DateTime
-	85,  // [85:85] is the sub-list for method output_type
-	85,  // [85:85] is the sub-list for method input_type
-	85,  // [85:85] is the sub-list for extension type_name
-	85,  // [85:85] is the sub-list for extension extendee
-	0,   // [0:85] is the sub-list for field type_name
+	219, // 62: DS2_Frpg2RequestMessage.RegulationFileDiffData.start_at:type_name -> DS2_Frpg2PlayerData.DateTime
+	219, // 63: DS2_Frpg2RequestMessage.RegulationFileDiffData.end_at:type_name -> DS2_Frpg2PlayerData.DateTime
+	139, // 64: DS2_Frpg2RequestMessage.RegulationFileUpdateMessage.diff_data_list:type_name -> DS2_Frpg2RequestMessage.RegulationFileDiffData
+	0,   // 65: DS2_Frpg2RequestMessage.RegulationFileUpdatePushMessage.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
+	141, // 66: DS2_Frpg2RequestMessage.RegulationFileUpdatePushMessage.update_msg:type_name -> DS2_Frpg2RequestMessage.RegulationFileUpdateMessage
+	145, // 67: DS2_Frpg2RequestMessage.RequestGetPowerStoneMyRankingResponse.data:type_name -> DS2_Frpg2RequestMessage.PowerStoneRankingData
+	145, // 68: DS2_Frpg2RequestMessage.RequestGetPowerStoneRankingResponse.data:type_name -> DS2_Frpg2RequestMessage.PowerStoneRankingData
+	0,   // 69: DS2_Frpg2RequestMessage.PushRequestAllowQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
+	0,   // 70: DS2_Frpg2RequestMessage.PushRequestJoinQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
+	5,   // 71: DS2_Frpg2RequestMessage.PushRequestJoinQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	0,   // 72: DS2_Frpg2RequestMessage.PushRequestRejectQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
+	5,   // 73: DS2_Frpg2RequestMessage.PushRequestRejectQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	0,   // 74: DS2_Frpg2RequestMessage.PushRequestRemoveQuickMatch.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
+	5,   // 75: DS2_Frpg2RequestMessage.PushRequestRemoveQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	72,  // 76: DS2_Frpg2RequestMessage.QuickMatchData.matching_parameter:type_name -> DS2_Frpg2RequestMessage.MatchingParameter
+	5,   // 77: DS2_Frpg2RequestMessage.QuickMatchData.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	5,   // 78: DS2_Frpg2RequestMessage.RequestJoinQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	72,  // 79: DS2_Frpg2RequestMessage.RequestRegisterQuickMatch.matching_parameter:type_name -> DS2_Frpg2RequestMessage.MatchingParameter
+	5,   // 80: DS2_Frpg2RequestMessage.RequestRegisterQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	5,   // 81: DS2_Frpg2RequestMessage.RequestRejectQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	72,  // 82: DS2_Frpg2RequestMessage.RequestSearchQuickMatch.matching_parameter:type_name -> DS2_Frpg2RequestMessage.MatchingParameter
+	5,   // 83: DS2_Frpg2RequestMessage.RequestSearchQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	159, // 84: DS2_Frpg2RequestMessage.RequestSearchQuickMatchResponse.matches:type_name -> DS2_Frpg2RequestMessage.QuickMatchData
+	5,   // 85: DS2_Frpg2RequestMessage.RequestUnregisterQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	5,   // 86: DS2_Frpg2RequestMessage.RequestUpdateQuickMatch.mode:type_name -> DS2_Frpg2RequestMessage.QuickMatchGameMode
+	0,   // 87: DS2_Frpg2RequestMessage.PushRequestHeader.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
+	0,   // 88: DS2_Frpg2RequestMessage.ManagementTextMessage.push_message_id:type_name -> DS2_Frpg2RequestMessage.PushMessageId
+	219, // 89: DS2_Frpg2RequestMessage.ManagementTextMessage.timestamp:type_name -> DS2_Frpg2PlayerData.DateTime
+	90,  // [90:90] is the sub-list for method output_type
+	90,  // [90:90] is the sub-list for method input_type
+	90,  // [90:90] is the sub-list for extension type_name
+	90,  // [90:90] is the sub-list for extension extendee
+	0,   // [0:90] is the sub-list for field type_name
 }
 
 func init() { file_DS2_Frpg2RequestMessage_proto_init() }

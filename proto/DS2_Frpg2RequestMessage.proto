@@ -990,8 +990,41 @@ message RequestGetRegulationFileResponse {
     // TODO
 }
 
+// RegulationFileDiffData carries one whole replacement resource.
+//
+// RECOVERED FROM THE PS3 CLIENT (v1.10). See tasks/regulation-push-038b.md for
+// the full trace; the load-bearing points:
+//
+//   - diff_data is NOT a diff. There is no BND4/DCX/PARAM magic check, no CRC,
+//     no zlib and no delta decoder anywhere on the apply path (0x76FE84). It is
+//     the literal bytes of a single resource file.
+//   - For a .param the payload size must EQUAL the loaded resource's size
+//     exactly (0x770DE4) or the entry is skipped in silence. Rows can be edited
+//     but not added or removed.
+//   - For a .fmg the payload is capped at 1024 bytes (0x76A0F0).
+//   - version_new (field 1, "importance" in the reference schema) becomes the
+//     client's new regulation version; version_required (field 2) must equal the
+//     version it already holds. They form a chain, not a priority. version_new
+//     must be <= 999999.
+//   - path is normalised, and if the extension is not .fmg the client prepends
+//     L"param:/" itself, so send the bare file name.
+//
+// start_at/end_at: no reader was found anywhere in the holder/applier module,
+// but do NOT treat them as dead. The handler spends cellRtc calls defaulting
+// them to 2000-01-01 and 2100-01-01 -- "always valid" sentinels that only pay
+// off if something compares them. They are also 16-byte structs, so a compare
+// would take their address and could sit outside the module scanned. Send the
+// sentinels rather than omitting them: it costs nothing, it matches what the
+// client would have constructed anyway, and it cannot trip a required-field
+// check if these turn out to be required.
 message RegulationFileDiffData {
-    // TODO
+    required uint32   version_new      = 1;
+    required uint32   version_required = 2;
+    required string   path             = 3;
+    required bytes    diff_data        = 4;
+    optional DS2_Frpg2PlayerData.DateTime start_at = 5;
+    optional DS2_Frpg2PlayerData.DateTime end_at   = 6;
+    optional uint32   unknown_7        = 7;   // parsed, never read
 }
 
 message RegulationFileMessage {
@@ -999,11 +1032,12 @@ message RegulationFileMessage {
 }
 
 message RegulationFileUpdateMessage {
-    // TODO
+    repeated RegulationFileDiffData diff_data_list = 1;
 }
 
 message RegulationFileUpdatePushMessage {
-    // TODO
+    required PushMessageId              push_message_id = 1;
+    required RegulationFileUpdateMessage update_msg     = 2;
 }
 
 // ------------------------------------------------------------------------------------------------------------
