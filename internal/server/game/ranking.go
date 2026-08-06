@@ -44,6 +44,25 @@ const maxScoreIncrement = 1000000
 // enormous reply.
 const maxRankingPage = 100
 
+// NOT A SERVER BUG: the Company of Champions tablet's "Profile" option hangs on
+// a loading spinner under RPCS3, and no protocol change can fix it.
+//
+// The button is not a game-data lookup at all — it calls into the PSN overlay.
+// RPCS3's log at the moment it is pressed:
+//
+//	sceNp TODO: sceNpLookupNpIdAsync(...)
+//	sceNp TODO: sceNpLookupPollAsync(...)
+//	sceNp TODO: sceNpProfileCallGui(npid=..., handler=..., ...)
+//
+// All three are unimplemented stubs, so the completion handler never runs and
+// the spinner never clears. The adjacent "Confirm" option, which shows Player
+// Info from the record we serve, works fine.
+//
+// Worth recording because it cost a decompilation pass. That pass verified every
+// message in this cluster against the binary and found our shapes correct, which
+// was useful, but the answer was never on the wire: the client had already
+// finished talking to us before the spinner appeared.
+//
 // powerStoneBlobLen is the size of a real record's opaque blob, measured from
 // live submissions (56 bytes, carrying a couple of counters and the player's
 // name in UTF-16).
