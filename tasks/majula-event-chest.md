@@ -1,4 +1,36 @@
-# The Majula event chest — the gate is found
+# The Majula event chest — SOLVED
+
+**Status: SOLVED AND REPRODUCED LIVE (2026-08-06).** The chest reset visibly and handed over a
+Torch, the prize sitting in stock 0114's `ItemLotParam2_SvrEvent[10045500]`.
+
+The full chain, every step now observed rather than inferred:
+
+```
+server pushes 0x038B carrying a replacement OnlineEventParam.param,
+  with version_required = the client's BUILD version (11500 = 1.15)
+    -> listener at PushMessageManager+76 fires
+    -> RegulationDiffHolder::Append queues the 88-byte record
+    -> the per-frame applier reloads OnlineEventParam.param in place
+    -> row 0, u16 at +2, goes 0 -> 1
+    -> chest arm method 0x58E360: stored(0) >= threshold(1) is now FALSE
+    -> chest arms and visibly resets
+    -> claim reads ItemLotParam2_SvrEvent[10045500] -> Torch x1
+```
+
+Two open items closed by that run: the applier's resource repository **is** the one the chest's
+threshold reader uses (they are reached through different globals and might not have been), and
+**GATE A was already satisfied** — no separate condition to solve.
+
+To change the prize, edit `ItemLotParam2_SvrEvent` row `10045500` and push that file too; the size
+must stay identical, so rows can be rewritten but not added. To re-arm the chest afterwards, push a
+higher threshold — the claim writes the threshold into the per-object counter, so each bump reopens
+it exactly once. That is the weekly rotation, and it is now ours to drive.
+
+See `tasks/regulation-push-038b.md` for the transport.
+
+---
+
+## How it was found (kept: the method matters)
 
 **Status: the chest is identified, the prize lives in one param row, and the gate that keeps it
 shut is a threshold in a second param row that is zero in every file we hold.**
