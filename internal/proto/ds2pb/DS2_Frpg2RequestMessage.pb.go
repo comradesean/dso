@@ -3569,11 +3569,30 @@ func (*RequestNotifyKillEnemyResponse) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{55}
 }
 
+// Sent by the KILLER after killing another player.
+//
+// Decoded from a live PS3 capture on 2026-08-06 with known ground truth: player
+// 100000 killed player 100005 in a Bell Keeper session (kind 14) in Belfry Luna.
+// The frame was 08 00 10 a5 8d 06 18 0e 20 00 28 00, giving
+//
+//	field_1 = 0
+//	field_2 = 100005   the VICTIM's player id -- a5 8d 06 is exactly that
+//	field_3 = 14       the session kind, matching the kind logged for that fight
+//	field_4 = 0
+//	field_5 = 0
+//
+// field_2 is certain. field_3 is one sample, but 14 matching the session kind of
+// the very session it was sent from is hard to write off as coincidence.
+//
+// Note the PC capture comments retained below disagree on placement -- they show
+// 14/0/5 in field_1 and 0/10/13 in field_3, i.e. the session-kind-looking values
+// in the OTHER field. Either the layout differs on PS3 or those samples were
+// read wrongly. The PS3 wire above is what we follow.
 type RequestNotifyKillPlayer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Field_1       *int64                 `protobuf:"varint,1,req,name=field_1,json=field1" json:"field_1,omitempty"` // 14, 0, 5
-	Field_2       *int64                 `protobuf:"varint,2,req,name=field_2,json=field2" json:"field_2,omitempty"` // 290333
-	Field_3       *int64                 `protobuf:"varint,3,req,name=field_3,json=field3" json:"field_3,omitempty"` // 0, 10, 13
+	Field_1       *int64                 `protobuf:"varint,1,req,name=field_1,json=field1" json:"field_1,omitempty"` // PC captures: 14, 0, 5. PS3 live: 0
+	Field_2       *int64                 `protobuf:"varint,2,req,name=field_2,json=field2" json:"field_2,omitempty"` // victim player id (CONFIRMED live)
+	Field_3       *int64                 `protobuf:"varint,3,req,name=field_3,json=field3" json:"field_3,omitempty"` // session kind (PS3 live: 14). PC captures: 0, 10, 13
 	Field_4       *int64                 `protobuf:"varint,4,req,name=field_4,json=field4" json:"field_4,omitempty"` // 0, 1
 	Field_5       *int64                 `protobuf:"varint,5,req,name=field_5,json=field5" json:"field_5,omitempty"` // 0
 	unknownFields protoimpl.UnknownFields

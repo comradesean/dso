@@ -96,8 +96,14 @@ func (s *Service) handleNotifyKillPlayer(log logger, cs *clientSession, payload 
 	if err := proto.Unmarshal(payload, &req); err != nil {
 		return nil, fmt.Errorf("parse RequestNotifyKillPlayer: %w", err)
 	}
+	// field_3 carries the session kind, so a kill can be attributed to the mode
+	// it happened in — 14 is a Bell Keeper defence, 7 an invasion, 8 an arena
+	// duel. Decoded from a live capture against a known kill; see the proto.
 	log.Info("player killed another player",
-		"killer_player_id", cs.playerID, "victim_player_id", req.GetField_2())
+		"killer_player_id", cs.playerID, "victim_player_id", req.GetField_2(),
+		"session_kind", req.GetField_3(),
+		"field_1", req.GetField_1(), "field_4", req.GetField_4(),
+		"field_5", req.GetField_5())
 	return nil, nil
 }
 
