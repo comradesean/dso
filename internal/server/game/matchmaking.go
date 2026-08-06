@@ -53,6 +53,12 @@ type matchProfile struct {
 
 	sittingAtBonfire bool
 
+	// humanEffigyBurnt is DS2's deliberate opt-out of invasion: burn an effigy at
+	// a bonfire and nobody can break into that world. Nothing else in the profile
+	// reflects it, so without reading it we would keep offering a player who has
+	// explicitly bought their way out of being invaded.
+	humanEffigyBurnt bool
+
 	// Covenant items. A covenant alone is not enough — the seal or crest has to
 	// be equipped for the player to take part.
 	guardiansSeal   bool
@@ -111,6 +117,9 @@ func (p *matchProfile) applyStatus(blob []byte) {
 		}
 		if st.SittingAtBonfire != nil {
 			p.sittingAtBonfire = *st.SittingAtBonfire != 0
+		}
+		if st.HumanEffigyBurnt != nil {
+			p.humanEffigyBurnt = *st.HumanEffigyBurnt != 0
 		}
 		if st.DisableCrossRegionPlay != nil {
 			p.disableCrossRegion = *st.DisableCrossRegionPlay != 0
@@ -265,6 +274,33 @@ func visitorPoolFor(p matchProfile) ds2pb.VisitorType {
 	}
 	return ds2pb.VisitorType_VisitorType_None
 }
+
+// isInvadable reports whether a player can be broken into at all.
+//
+// Three ways out, and all three are the player's own doing rather than
+// matchmaking policy:
+//
+//   - resting at a bonfire
+//   - having burnt a Human Effigy, DS2's explicit opt-out of invasion
+//   - activity area 0, meaning not anywhere the game hosts sessions
+//
+// Offering a player in any of those states produces an invasion the client
+// refuses within a couple of hundred milliseconds, which the invader sees as
+// "unable to find a world to invade" — indistinguishable from there being
+// nobody online.
+func (p matchProfile) isInvadable() bool {
+	if !p.received {
+		return false
+	}
+	return !p.sittingAtBonfire && !p.humanEffigyBurnt && p.onlineActivityArea != 0
+}
+
+// breakInTierWindow is the invasion soul memory window.
+//
+// 0 below, 4 above: an invader reaches UP only, never down. This is DS2's
+// anti-twink rule and the best-evidenced figure in the whole system — the
+// Cracked Red Eye Orb was the probe used to derive the tier table itself.
+var breakInTierWindow = tierWindow{below: 0, above: 4}
 
 // Soul memory tiers — the end value of each band, ascending.
 //

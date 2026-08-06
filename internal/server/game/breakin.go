@@ -30,15 +30,45 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 	}
 	cs.areaID = req.GetOnlineAreaId()
 
-	// Candidate hosts are other live players. Matchmaking filters (soul memory
-	// band, area, covenant) come from the status blob, which nothing consumes
-	// yet — so for now every other online player is offered, which is the right
-	// behaviour for a two-player test server and obviously not for a busy one.
 	var targets []*ds2pb.BreakInTargetData
 	max := int(req.GetMaxTargets())
+	filtering := matchmakingEnabled()
+	invaderSM := req.GetMatchingParameter().GetSoulMemory()
+	cs.profile.applyMatchingParameter(req.GetMatchingParameter())
+
+	var skippedNotInvadable, skippedLocation, skippedSoul int
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.playerID == cs.playerID {
 			continue
+		}
+		if filtering {
+			// Bonfire, burnt effigy, or nowhere online.
+			if !other.profile.isInvadable() {
+				skippedNotInvadable++
+				continue
+			}
+			// The host must be in the place being asked about.
+			//
+			// This is what broke Dark Chasm of Old invasions. A Cracked Red Eye
+			// Orb cycles the three chasms, so the client asks about cells the
+			// invader is NOT standing in — and with no location filter we
+			// answered every one of them with a host who was somewhere else. The
+			// host's client then received an invasion tagged for a chasm it was
+			// not in and refused inside 120ms, which the invader reads as
+			// "unable to find a world to invade".
+			//
+			// online_activity_area_id and the request's cell_id share an id
+			// space: both are the 6-digit mmmmbb form, and the chasm cells
+			// 400310/400320/400330 appeared in both during the same session.
+			if other.profile.onlineActivityArea != uint32(req.GetCellId()) {
+				skippedLocation++
+				continue
+			}
+			if !soulMemoryMatches(invaderSM, other.profile.effectiveSoulMemory(),
+				breakInTierWindow) {
+				skippedSoul++
+				continue
+			}
 		}
 		targets = append(targets, &ds2pb.BreakInTargetData{
 			PlayerId: proto.Uint32(other.playerID),
@@ -66,7 +96,10 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 	log.Info("break-in target list",
 		"player_id", cs.playerID, "area_id", req.GetOnlineAreaId(),
 		"cell_id", req.GetCellId(), "type", req.GetType(),
-		"max", req.GetMaxTargets(), "returned", len(targets))
+		"max", req.GetMaxTargets(), "returned", len(targets),
+		"filtering", filtering, "invader_soul_memory", invaderSM,
+		"skipped_not_invadable", skippedNotInvadable,
+		"skipped_location", skippedLocation, "skipped_soul_memory", skippedSoul)
 
 	return proto.Marshal(&ds2pb.RequestGetBreakInTargetListResponse{
 		OnlineAreaId: proto.Uint32(req.GetOnlineAreaId()),
