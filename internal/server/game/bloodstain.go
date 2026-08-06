@@ -20,11 +20,23 @@ const (
 	opRequestGetDeadingGhost   uint32 = 0x0393
 )
 
+// firstBloodstainID keeps bloodstain ids clear of the low numbers, for the same
+// reason signs and ghosts do: the client caches state by server-assigned id, and
+// small or reused ids risk being confused with sentinels or with stale entries.
+//
+// Bloodstains were the one store that never got this and were handing out ids
+// starting at 1. Whether that is why stains never render is UNPROVEN — it is
+// simply the one place this store disagreed with every other one.
+const firstBloodstainID = 100000
+
 // bloodstain is one death marker. Both blobs are the game's own opaque encodings:
-// data is what the stain shows, ghostData is the replay of the death that another
-// player watches when they touch it.
+// data is the marker itself — 16 bytes in every observed message, so position
+// and little else — and ghostData is the ~1.5 KB replay of the death that
+// another player watches when they touch it, fetched separately via
+// RequestGetDeadingGhost rather than being included in the list.
 type bloodstain struct {
 	id        uint32
+	ownerID   uint32 // player who died here; never offered back to them
 	areaID    uint32
 	cellID    uint32
 	data      []byte
@@ -40,7 +52,10 @@ type bloodstainStore struct {
 }
 
 func newBloodstainStore() *bloodstainStore {
-	return &bloodstainStore{byID: make(map[uint32]*bloodstain)}
+	return &bloodstainStore{
+		nextID: firstBloodstainID - 1,
+		byID:   make(map[uint32]*bloodstain),
+	}
 }
 
 func (s *bloodstainStore) add(b *bloodstain) uint32 {
@@ -61,12 +76,19 @@ func (s *bloodstainStore) get(id uint32) (*bloodstain, bool) {
 
 // inCells returns up to limit stains in the area, restricted to the requested
 // cells. An empty cells map means any cell in the area.
-func (s *bloodstainStore) inCells(areaID uint32, cells map[uint32]bool, limit int) []*bloodstain {
+func (s *bloodstainStore) inCells(areaID uint32, cells map[uint32]bool, excludePlayer uint32, limit int) []*bloodstain {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []*bloodstain
 	for _, b := range s.byID {
 		if b.areaID != areaID {
+			continue
+		}
+		// Never hand a player their own death back. The client draws its own
+		// soul-retrieval stain locally, so a server copy is at best redundant
+		// and at worst two markers fighting over one spot. Observed live: a
+		// player was returned the stain they had just created.
+		if excludePlayer != 0 && b.ownerID == excludePlayer {
 			continue
 		}
 		if len(cells) > 0 && !cells[b.cellID] {
@@ -89,6 +111,7 @@ func (s *Service) handleCreateBloodstain(log logger, cs *clientSession, payload 
 	}
 
 	b := &bloodstain{
+		ownerID:   cs.playerID,
 		areaID:    req.GetOnlineAreaId(),
 		cellID:    req.GetCellId(),
 		data:      append([]byte(nil), req.GetData()...),
@@ -113,7 +136,7 @@ func (s *Service) handleGetBloodstainList(log logger, cs *clientSession, payload
 	for _, a := range req.GetSearchAreas() {
 		cells[a.GetCellId()] = true
 	}
-	found := s.bloodstains.inCells(req.GetOnlineAreaId(), cells, int(req.GetMaxStains()))
+	found := s.bloodstains.inCells(req.GetOnlineAreaId(), cells, cs.playerID, int(req.GetMaxStains()))
 
 	items := make([]*ds2pb.BloodstainInfo, 0, len(found))
 	for _, b := range found {
