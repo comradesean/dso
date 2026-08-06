@@ -490,6 +490,21 @@ other store starts at 100000, and players were being handed back their own death
 **Fidelity gap, both features:** `CellLimitData` field 2 is a PER-CELL cap (the client asks for 5
 per cell, 40 total). `inCells` ignores it and applies only the global maximum.
 
+## 7d. The belfry bell — WORKING, one open question
+
+Full write-up in **`tasks/bell-broadcast.md`**.
+
+The chain is confirmed end to end: a covenant defender wins a belfry duel, the lever unlocks,
+pulling it sends `0x03EE`, and we relay `0x03EF` to other players. The receiving client reads
+**none** of the message — it sets a boolean latch, and the script in whatever belfry map is
+loaded plays that map's own bell.
+
+**OPEN and not guessable: did FromSoftware's server filter these, and by what predicate?** We
+currently send only to players in the ringing bell's map. That is inference — the client cannot
+distinguish bells, so the server is the only place the decision can be made — and inference of
+exactly the kind that has been wrong repeatedly here. The discriminating question is whether any
+retail player ever heard a belfry bell while nowhere near a belfry.
+
 ## 8. Pushes we never send
 
 | Opcode | Message | Note |
