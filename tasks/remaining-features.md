@@ -219,28 +219,35 @@ bonfire, while their activity area is 0, or **after burning a Human Effigy** —
 opt-out of invasion, which we had been ignoring entirely. Symptom to remember: the invasion becomes
 possible the moment the host's state changes, with nothing changing server-side.
 
-**Targets are matched on activity CELL, and this is settled.** Offering a host from another cell
-does not produce a cross-chasm invasion — it produces a rejection, because the host's client
-refuses an invasion tagged for a chasm it is not in. Evidence across seven attempts before the
-filter: cell `400330` succeeded 4 of 4 while the host stood there, `400310` and `400320` were
-refused 3 of 3, in both directions and with both players taking each role.
+**RESOLVED: we were telling the host the wrong location.** The push echoed the *invader's* requested
+`cell_id`, so a host standing in `400330` was told it was being invaded in `400310`. It compared
+that against where it actually was, disagreed, and refused in ~100ms — read by the invader as
+"unable to find a world to invade". The push now carries the **host's** area and cell, since the
+invader travels to the host.
 
-**The client cycles cells, and its own cell is in the rotation.** This was the open question and it
-is now answered directly. With both players at `400330`, the invader queried `400310`, `400310`,
-then `400330` — its own — and connected. Roughly three queries and ~45s. So no chasm is
-unreachable, and same-chasm invasion works.
+**CONFIRMED LIVE:** `requested_cell=400320 pushed_cell=400330` → pushed → guest joined → session
+kind 7. One orb reaching a host in a different chasm, which is the documented behaviour and had
+never worked before.
 
-An earlier note here claimed the client "excludes the chasm it is standing in". That was invented
-from a four-query sample and is **wrong**; it is disproved above with the invader's own position
-known.
+**A cell FILTER was added twice and was wrong both times.** It hid the symptom by only ever
+offering same-cell hosts, but each orb use is a single query for a single cell and the client does
+not keep searching within a use — so a miss burned the attempt and the player retried until the
+assigned cell happened to match. That directly contradicts "a Cracked Red Eye Orb can invade any of
+the three Chasms regardless of which one you're in".
 
-With the filter in place there are **zero** `host rejected break-in` events. What a player sees as
-an instant decline is now an empty list — the client reporting it found nobody in the cell it asked
-about, which is true — rather than us handing out a target that was always going to refuse.
+The client does cycle cells across attempts, and its own cell is in the rotation — verified with
+both players at `400330`, where the invader queried `400310`, `400310`, then `400330`. An earlier
+note claiming the client "excludes the chasm it is standing in" was invented from a four-query
+sample and is wrong.
 
-The list logs `available_cells` (the cells of hosts passing every check but position) next to the
-queried `cell_id`. If those ever stop intersecting over a long run, the client is not cycling and
-this rule needs revisiting.
+The list logs `available_cells` beside the queried `cell_id`, and the push logs `requested_cell`
+and `pushed_cell` side by side — so if a host ever refuses while those two differ, the cell echo
+was not the cause and this whole explanation needs revisiting.
+
+**An empty list produces an instant in-game failure, and that is the CLIENT.** When `returned=0`
+the client never sends `RequestBreakInTarget` at all; it prints "unable to find a world to invade"
+by itself. We answer list requests in 1–2ms and have no way to make it wait. Any "searching…"
+period would have to be the client's, and this one does not have it for an empty list.
 
 Worth recording as a process note: the invadability gate and the location rule shipped together,
 and the improvement was initially credited to the wrong one. Two filters in one deploy cannot be
