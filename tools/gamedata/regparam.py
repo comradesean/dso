@@ -142,6 +142,85 @@ def cmd_patch(args):
     raise SystemExit(f"row {args.row} not found")
 
 
+
+# ---------------------------------------------------------------------------
+# FMG
+#
+# The 0x038B push has a second route for .fmg resources: the client memcpys the
+# payload straight into the already-loaded buffer and relocates the one embedded
+# offset at +20 into a pointer (0x76A0F0). It caps the payload at 1024 bytes but
+# does NOT require the size to match, unlike the param route.
+#
+# Keeping the size identical anyway is the safe choice -- the destination is the
+# buffer the original was loaded into, and nothing here proves a larger payload
+# would not run off the end of it.
+#
+# Layout (big-endian), from docs/regulation-format.md:
+#   +0x00 version   +0x04 fileSize   +0x08 flags
+#   +0x0C groupCount +0x10 stringCount +0x14 stringOffsetsStart +0x18 0
+#   +0x1C groups: (index, firstId, lastId) x groupCount, 12 bytes each
+#   then u32 string offsets, then NUL-terminated UTF-16BE strings
+
+
+def fmg_strings(data):
+    """Yield (id, offset, text) for every string in an FMG."""
+    group_count, string_count, offsets_at = struct.unpack(">III", data[0x0C:0x18])
+
+    ids = []
+    for i in range(group_count):
+        g = 0x1C + i * 12
+        index, first_id, last_id = struct.unpack(">III", data[g : g + 12])
+        ids.extend(range(first_id, last_id + 1))
+
+    for i in range(string_count):
+        off = struct.unpack(">I", data[offsets_at + i * 4 : offsets_at + i * 4 + 4])[0]
+        end = off
+        while data[end : end + 2] != b"\x00\x00":
+            end += 2
+        text = data[off:end].decode("utf-16-be")
+        yield (ids[i] if i < len(ids) else -1), off, text
+
+
+def cmd_fmgshow(args):
+    data = open(args.fmg, "rb").read()
+    print(f"{args.fmg}: {len(data)} bytes")
+    for sid, off, text in fmg_strings(data):
+        print(f"  id={sid:<8} @{off:#x}  {len(text):>3} chars  {text!r}")
+
+
+def cmd_fmgset(args):
+    data = bytearray(open(args.fmg, "rb").read())
+    original_len = len(data)
+
+    for sid, off, text in fmg_strings(bytes(data)):
+        if sid != args.id:
+            continue
+
+        # Same character count means same byte count means the file length and
+        # every offset in it stay valid. Anything else would need the offsets
+        # rebuilt, and the destination buffer is the one the original was loaded
+        # into -- not somewhere to be adventurous.
+        if len(args.text) != len(text):
+            raise SystemExit(
+                f"replacement is {len(args.text)} chars, original is {len(text)}; "
+                "they must match exactly"
+            )
+
+        encoded = args.text.encode("utf-16-be")
+        data[off : off + len(encoded)] = encoded
+        assert len(data) == original_len, "edit changed the file size"
+
+        out = args.out or args.fmg
+        open(out, "wb").write(data)
+        print(f"id {sid} @{off:#x}")
+        print(f"  before {text!r}")
+        print(f"  after  {args.text!r}")
+        print(f"wrote {len(data)} bytes to {out} (size unchanged)")
+        return
+
+    raise SystemExit(f"string id {args.id} not found")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -171,6 +250,17 @@ def main():
     g.add_argument("--u32", type=int)
     p.add_argument("-o", "--out")
     p.set_defaults(func=cmd_patch)
+
+    p = sub.add_parser("fmgshow", help="show FMG strings")
+    p.add_argument("fmg")
+    p.set_defaults(func=cmd_fmgshow)
+
+    p = sub.add_parser("fmgset", help="replace an FMG string, same length only")
+    p.add_argument("fmg")
+    p.add_argument("--id", type=int, required=True)
+    p.add_argument("--text", required=True)
+    p.add_argument("-o", "--out")
+    p.set_defaults(func=cmd_fmgset)
 
     args = ap.parse_args()
     args.func(args)
