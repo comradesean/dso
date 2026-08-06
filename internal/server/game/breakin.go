@@ -36,7 +36,7 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 	invaderSM := req.GetMatchingParameter().GetSoulMemory()
 	cs.profile.applyMatchingParameter(req.GetMatchingParameter())
 
-	var skippedNotInvadable, skippedLocation, skippedSoul, skippedCell int
+	var skippedNotInvadable, skippedLocation, skippedSoul int
 	// Cells of hosts who pass every check except position — the evidence for
 	// whether the client ever asks about a cell someone is actually in.
 	var availableCells []uint32
@@ -50,18 +50,8 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 				skippedNotInvadable++
 				continue
 			}
-			// Same AREA, deliberately not the same cell.
-			//
-			// An earlier version required the host's activity cell to equal the
-			// request's cell_id. That is too strict and enforces a rule the game
-			// does not have: a Cracked Red Eye Orb reaches any of the three Dark
-			// Chasms regardless of which one the invader is standing in, so a
-			// host one chasm over is a legitimate target. With cell equality on,
-			// two players in the Chasm complex could never find each other and
-			// the client simply searched forever.
-			//
-			// Area is the coarse 8-digit id (40030000 for the whole Chasm
-			// complex); the cell is the 6-digit one within it.
+			// Same area — the coarse 8-digit id, 40030000 for the whole Dark
+			// Chasm complex. The 6-digit cell within it is handled below.
 			if other.profile.onlineArea != req.GetOnlineAreaId() {
 				skippedLocation++
 				continue
@@ -71,31 +61,21 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 				skippedSoul++
 				continue
 			}
-			// Everything except position now passes, so this host is genuinely
-			// invadable and merely somewhere else. Record where, because that is
-			// the open question: the client picks which cell to ask about, and we
-			// need to know whether it ever names the one a host is standing in.
+			// Deliberately NOT filtered on cell.
+			//
+			// A Cracked Red Eye Orb is supposed to reach any of the three Dark
+			// Chasms in a single use. Filtering by cell made that false: each use
+			// is one query for one cell, the client does not keep searching
+			// within a use, so a miss burned the attempt and the player had to
+			// retry until the cell they were assigned happened to match where
+			// the target stood.
+			//
+			// Cross-cell targets WERE being refused, but the cause was ours: the
+			// push echoed the invader's requested cell, so a host in 400330 was
+			// told it was being invaded in 400310 and correctly refused a
+			// location it was not in. handleBreakInTarget now sends the host's
+			// own cell instead. See the note there.
 			availableCells = append(availableCells, other.profile.onlineActivityArea)
-
-			// The host must be in the cell being asked about.
-			//
-			// Offering someone from a different cell does not produce a
-			// cross-chasm invasion — it produces a rejection. The host's client
-			// receives an invasion tagged for a chasm it is not in and refuses
-			// inside ~100ms, which the invader reads as "unable to find a world".
-			// Confirmed across seven attempts: cell 400330 succeeded 4 of 4 while
-			// the host stood there, 400310 and 400320 were refused 3 of 3.
-			//
-			// This does NOT make any chasm unreachable. A host in any of the
-			// three is offered the moment the client asks about that one, which
-			// is what "invade any of the three" requires. If the log below ever
-			// shows available_cells never intersecting the queried cell over a
-			// long run, then the client is not cycling and this rule is wrong —
-			// that is the specific thing to watch.
-			if other.profile.onlineActivityArea != uint32(req.GetCellId()) {
-				skippedCell++
-				continue
-			}
 		}
 		targets = append(targets, &ds2pb.BreakInTargetData{
 			PlayerId: proto.Uint32(other.playerID),
@@ -127,7 +107,6 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 		"filtering", filtering, "invader_soul_memory", invaderSM,
 		"skipped_not_invadable", skippedNotInvadable,
 		"skipped_location", skippedLocation, "skipped_soul_memory", skippedSoul,
-		"skipped_wrong_cell", skippedCell,
 		// The decisive pair. "asked for 400320, hosts are at [400330]" over many
 		// queries tells us whether the client cycles cells at all, and whether it
 		// ever names its own — which is the thing still unexplained.
@@ -169,13 +148,34 @@ func (s *Service) handleBreakInTarget(log logger, cs *clientSession, payload []b
 	// but the rejection push must use the same mode's alias.
 	cs.breakInType = req.GetType()
 
+	// Tell the host where the session actually happens: THEIR cell, not the one
+	// the invader's client happened to ask about.
+	//
+	// Echoing the invader's cell is what caused cross-chasm invasions to fail. A
+	// Cracked Red Eye Orb reaches any of the three Dark Chasms, so the invader
+	// routinely queries a cell it is not standing in and gets matched to a host
+	// elsewhere. Sending that queried cell told a host in 400330 it was being
+	// invaded in 400310; it checked where it was, disagreed, and refused inside
+	// ~100ms — which the invader read as "unable to find a world to invade".
+	//
+	// The invader travels to the host, so the host's location is the correct
+	// one for both parties. Falls back to the request when we have no profile
+	// for the host, which is only the case before their first status blob.
+	areaID, cellID := req.GetOnlineAreaId(), req.GetCellId()
+	if target.profile.onlineActivityArea != 0 {
+		cellID = target.profile.onlineActivityArea
+		if target.profile.onlineArea != 0 {
+			areaID = target.profile.onlineArea
+		}
+	}
+
 	push := &ds2pb.PushRequestBreakInTarget{
 		PushMessageId: ds2pb.PushMessageId(breakInPushIDFor(req.GetType(), breakInRoleTarget)).Enum(),
 		PlayerId:      proto.Uint32(cs.playerID),
 		PsnId:         proto.String(cs.accountID),
 		Type:          req.GetType().Enum(),
-		OnlineAreaId:  proto.Uint32(req.GetOnlineAreaId()),
-		CellId:        proto.Uint32(req.GetCellId()),
+		OnlineAreaId:  proto.Uint32(areaID),
+		CellId:        proto.Uint32(cellID),
 	}
 	body, err := proto.Marshal(push)
 	if err != nil {
@@ -186,7 +186,10 @@ func (s *Service) handleBreakInTarget(log logger, cs *clientSession, payload []b
 	log.Info("pushed break-in to target",
 		"invader_player_id", cs.playerID, "target_player_id", req.GetPlayerId(),
 		"push_id", fmt.Sprintf("%#04x", breakInPushIDFor(req.GetType(), breakInRoleTarget)),
-		"type", req.GetType(), "payload_bytes", len(body))
+		"type", req.GetType(), "payload_bytes", len(body),
+		// Both, so a rejection can be attributed immediately: if these differ and
+		// the host still refuses, the cell echo was not the cause.
+		"requested_cell", req.GetCellId(), "pushed_cell", cellID)
 
 	return proto.Marshal(&ds2pb.RequestBreakInTargetResponse{})
 }
