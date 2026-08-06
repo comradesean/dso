@@ -71,6 +71,44 @@ func TestGhostListResponseRequiresArea(t *testing.T) {
 	}
 }
 
+// TestGhostPerCellCaps — the client asks for a few ghosts PER CELL across ~27
+// cells with a smaller overall maximum. Ignoring the per-cell figure let one
+// busy cell consume the whole quota and starve every other one, which is
+// visible in game as phantoms clustering in a single spot.
+func TestGhostPerCellCaps(t *testing.T) {
+	st := newGhostStore()
+	// Six recordings in one cell, one in another.
+	for i := 0; i < 6; i++ {
+		st.add(&ghost{ownerID: 1, areaID: 10, cellID: 100, data: []byte{1}})
+	}
+	st.add(&ghost{ownerID: 1, areaID: 10, cellID: 200, data: []byte{1}})
+
+	// Cap of 2 per cell, 10 overall: the crowded cell must not swamp the other.
+	got := st.inCells(10, map[uint32]int{100: 2, 200: 2}, 0, 10)
+	byCell := map[uint32]int{}
+	for _, g := range got {
+		byCell[g.cellID]++
+	}
+	if byCell[100] != 2 {
+		t.Errorf("cell 100 returned %d, want 2 (its cap)", byCell[100])
+	}
+	if byCell[200] != 1 {
+		t.Errorf("cell 200 returned %d, want 1 — the crowded cell starved it",
+			byCell[200])
+	}
+
+	// A cap of 0 means no per-cell limit, not "none from here".
+	got = st.inCells(10, map[uint32]int{100: 0, 200: 0}, 0, 10)
+	if len(got) != 7 {
+		t.Errorf("cap 0 returned %d, want all 7; 0 must not be read as a ban", len(got))
+	}
+
+	// The overall limit still applies on top.
+	if got = st.inCells(10, map[uint32]int{100: 5, 200: 5}, 0, 3); len(got) != 3 {
+		t.Errorf("overall limit ignored: got %d, want 3", len(got))
+	}
+}
+
 // TestGhostDataWireTags pins the element shape too — all three fields are
 // `required` on PS3, and the response's IsInitialized walks every element, so a
 // single element missing a single field silently voids the entire list.

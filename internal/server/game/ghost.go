@@ -93,15 +93,29 @@ func (s *ghostStore) evictLocked(areaID uint32) {
 	}
 }
 
-// inCells returns up to limit ghosts in the area, restricted to the requested
-// cells. An empty cells map means any cell in the area.
-// inCells returns up to limit ghosts in the area, restricted to the requested
-// cells and excluding the viewer's own. An empty cells map means any cell.
+// inCells returns ghosts in the area, excluding the viewer's own, honouring BOTH
+// the per-cell caps the client sends and the overall limit. An empty cells map
+// means any cell.
 //
-// Newest first. Map iteration in Go is randomised, so taking the first `limit`
-// hits previously returned an arbitrary sample of the whole store — which, with
-// few players and no eviction, was mostly the viewer's own stale recordings.
-func (s *ghostStore) inCells(areaID uint32, cells map[uint32]bool, excludePlayer uint32, limit int) []*ghost {
+// Newest first. Go randomises map iteration, so taking the first `limit` hits
+// previously returned an arbitrary sample of the store.
+//
+// It honours BOTH the per-cell caps the
+// client sends and the overall limit.
+//
+// cells maps cell id to that cell's cap — CellLimitData.max_items, which was
+// previously discarded by collapsing the request into a set. The client asks for
+// a handful per cell across ~27 cells with a smaller overall maximum, so
+// ignoring the per-cell figure let a single busy cell consume the entire quota
+// and starve every other one. That matters for where phantoms actually appear:
+// the game shows more detailed phantoms around bonfires, and a bonfire cell that
+// loses its share to a neighbour simply shows nothing.
+//
+// A cap of 0 is treated as "no per-cell limit" rather than "none from this
+// cell". Reading it literally would be the stricter interpretation, and every
+// time this project has guessed toward strictness it has silently broken a
+// working feature.
+func (s *ghostStore) inCells(areaID uint32, cells map[uint32]int, excludePlayer uint32, limit int) []*ghost {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []*ghost
@@ -109,16 +123,29 @@ func (s *ghostStore) inCells(areaID uint32, cells map[uint32]bool, excludePlayer
 		if g.areaID != areaID || g.ownerID == excludePlayer {
 			continue
 		}
-		if len(cells) > 0 && !cells[g.cellID] {
-			continue
+		if len(cells) > 0 {
+			if _, ok := cells[g.cellID]; !ok {
+				continue
+			}
 		}
 		out = append(out, g)
 	}
+	// Newest first, so the per-cell caps keep the most recent recordings.
 	sort.Slice(out, func(i, j int) bool { return out[i].seq > out[j].seq })
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
+
+	perCell := make(map[uint32]int, len(cells))
+	kept := out[:0]
+	for _, g := range out {
+		if cap, ok := cells[g.cellID]; ok && cap > 0 && perCell[g.cellID] >= cap {
+			continue
+		}
+		perCell[g.cellID]++
+		kept = append(kept, g)
+		if limit > 0 && len(kept) >= limit {
+			break
+		}
 	}
-	return out
+	return kept
 }
 
 func (s *Service) handleCreateGhostData(log logger, cs *clientSession, payload []byte) ([]byte, error) {
@@ -150,9 +177,11 @@ func (s *Service) handleGetGhostDataList(log logger, cs *clientSession, payload 
 		return nil, fmt.Errorf("parse RequestGetGhostDataList: %w", err)
 	}
 
-	cells := make(map[uint32]bool, len(req.GetSearchAreas()))
+	// cell id -> that cell's cap. max_items is the client's per-cell limit and
+	// was previously thrown away by storing a bare set.
+	cells := make(map[uint32]int, len(req.GetSearchAreas()))
 	for _, a := range req.GetSearchAreas() {
-		cells[a.GetCellId()] = true
+		cells[a.GetCellId()] = int(a.GetMaxItems())
 	}
 	found := s.ghosts.inCells(req.GetOnlineAreaId(), cells, cs.playerID, int(req.GetMaxGhosts()))
 

@@ -77,9 +77,13 @@ func (s *bloodstainStore) get(id uint32) (*bloodstain, bool) {
 
 // inCells returns up to limit stains in the area, restricted to the requested
 // cells. An empty cells map means any cell in the area.
-func (s *bloodstainStore) inCells(areaID uint32, cells map[uint32]bool, excludePlayer uint32, limit int) []*bloodstain {
+// cells maps cell id to that cell's cap (CellLimitData.max_items), which was
+// previously discarded. A cap of 0 means no per-cell limit — see the note on
+// ghostStore.inCells for why that reading rather than the strict one.
+func (s *bloodstainStore) inCells(areaID uint32, cells map[uint32]int, excludePlayer uint32, limit int) []*bloodstain {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	perCell := make(map[uint32]int, len(cells))
 	var out []*bloodstain
 	for _, b := range s.byID {
 		if b.areaID != areaID {
@@ -92,9 +96,16 @@ func (s *bloodstainStore) inCells(areaID uint32, cells map[uint32]bool, excludeP
 		if excludePlayer != 0 && b.ownerID == excludePlayer {
 			continue
 		}
-		if len(cells) > 0 && !cells[b.cellID] {
-			continue
+		if len(cells) > 0 {
+			cap, ok := cells[b.cellID]
+			if !ok {
+				continue
+			}
+			if cap > 0 && perCell[b.cellID] >= cap {
+				continue
+			}
 		}
+		perCell[b.cellID]++
 		out = append(out, b)
 		if limit > 0 && len(out) >= limit {
 			break
@@ -147,9 +158,11 @@ func (s *Service) handleGetBloodstainList(log logger, cs *clientSession, payload
 		return nil, fmt.Errorf("parse RequestGetBloodstainList: %w", err)
 	}
 
-	cells := make(map[uint32]bool, len(req.GetSearchAreas()))
+	// cell id -> that cell's cap. max_items is the client's per-cell limit and
+	// was previously thrown away by storing a bare set.
+	cells := make(map[uint32]int, len(req.GetSearchAreas()))
 	for _, a := range req.GetSearchAreas() {
-		cells[a.GetCellId()] = true
+		cells[a.GetCellId()] = int(a.GetMaxItems())
 	}
 	found := s.bloodstains.inCells(req.GetOnlineAreaId(), cells, cs.playerID, int(req.GetMaxStains()))
 
