@@ -148,7 +148,49 @@ Applier **`0x76FE84`**. Two terminal routes.
 **There is no BND4/DCX/PARAM magic check, no CRC, no zlib/inflate, and no delta decoder anywhere on
 this path.** The name "diff" is a misnomer at the client end — it is a whole-resource replacement.
 
-## What `path` selects (CONFIRMED mechanism, INFERRED exact string)
+## What `path` selects — the two branches are ASYMMETRIC (CONFIRMED)
+
+**This is the trap.** For a param the client prepends `param:/` to whatever you send, so a bare
+`OnlineEventParam.param` is correct. **For an FMG it prepends nothing** — the lookup uses your string
+as-is, so you must send the resource's *full* path.
+
+And an FMG's resource path is nothing like its name inside the archive. The BND4 entry is
+`regulationEnglish.fmg`, but the loaded resource is registered from the template at `0x1881580`:
+
+```
+text:/Text/%s/regulation.fmg        %s = "English" (literal at 0x1888F08)
+```
+
+so the key is **`text:/Text/English/regulation.fmg`**. Sending `regulationEnglish.fmg` can never
+match, which is why our first obelisk push did nothing. Siblings at `0x18813E0`
+(`text:/Text/%s/Staffroll.fmg`) and `0x18815C0` (`text:/Text/%s/%s.fmg`) confirm the shape.
+
+### The branch, disassembled
+
+```
+770800: bl 0xde50f8    ; GetExtension(path)
+770810: bl 0x184df2c   ; wcscmp against L".fmg" @ 0x1871570
+77081c: bne 0x770c08   ; not .fmg -> param route (prepends param:/)
+770830: bl 0x76b514    ; resource type = MessageResourceObject_ForRegulation
+                       ;   (class string @ 0x1871400, truncated to "ageResourceObject_ForRegulation")
+770844: stw r31,128(r1); lookup key = {path, type}
+770848: bl 0xc169e8    ; case-folding repository lookup
+770850: cmpwi r3,0
+770854: mr r31,r3
+770858: beq 0x7708c4   ; NOT FOUND -> SKIP, silently, and carry on with the loop
+7708bc: bl 0x76a0f0    ; apply: memcpy into the live buffer
+```
+
+That `beq` at `0x770858` is the whole failure: a missed lookup costs nothing and reports nothing.
+
+### It also means the version bump proves less than it looks
+
+`current_version` is written at `0x770480`, **after** the entry loop, and records that an entry
+passed the version and bounds checks — not that its resource was found or overwritten. So an
+incremented counter with no visible effect is exactly what a wrong `path` produces. The chest is the
+only case where we have independent proof of application.
+
+## What `path` selects — original notes (superseded above for FMGs)
 
 `path` is copied to a wide string, separator-normalised (`0x43D60C`, `0xE721A8` find, `0xE72070`
 replace), then:
@@ -159,8 +201,9 @@ replace), then:
   `0x770C3C`–`0x770D5C`) and looks the result up in the resource repository via `0xC169E8`
   (case-folding wide-string lookup; repo = `*(*(0x1E1D810)) + 24`).
 
-**INFERRED:** send `path = "OnlineEventParam.param"` bare, since the client prepends the prefix
-itself. The normalisation stage `0x76FF50`–`0x770200` is undecoded, so **test both forms**.
+**CONFIRMED for params:** send `path = "OnlineEventParam.param"` bare — the client prepends
+`param:/` itself, and this is the form that armed the chest. **For FMGs send the full resource
+path**, per the section above.
 
 ## `start_at` / `end_at` — no comparison found in this module (TREAT AS UNRESOLVED)
 
