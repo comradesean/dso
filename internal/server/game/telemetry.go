@@ -395,10 +395,21 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 		if other.playerID == 0 || other.playerID == from.playerID {
 			continue
 		}
-		if other.profile.onlineArea != 0 && other.profile.onlineArea != mapID {
-			skipped++
-			continue
-		}
+		// DISABLED while the mechanism is under test — see the note above.
+		//
+		// The filter is a proxy for "would this player's script poll the latch",
+		// and it is only as good as our idea of where they are. With the body
+		// proven inert and the latch global, the interesting questions are what
+		// a foreign map id does and whether a Sol ring sounds Luna's bell to
+		// someone in the Lost Bastille — and both need every client to receive
+		// the toll regardless of where we think they are.
+		//
+		// Restore once those are settled; the traffic saving is real.
+		//
+		// if other.profile.onlineArea != 0 && other.profile.onlineArea != mapID {
+		// 	skipped++
+		// 	continue
+		// }
 		other.conn.SendPush(body)
 		sent++
 	}
