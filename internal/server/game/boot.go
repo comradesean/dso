@@ -281,6 +281,7 @@ func (s *Service) handleWaitForUserLogin(log logger, cs *clientSession, payload 
 	// will not proceed while a request/response is outstanding.
 	s.sendManagementText(log, cs)
 	s.maybeSendRegulationPush(log, cs)
+	s.sendEventChestRotation(log, cs)
 
 	resp := &ds2pb.RequestWaitForUserLoginResponse{
 		PsnId:    proto.String(accountID),

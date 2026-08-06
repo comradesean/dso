@@ -105,6 +105,11 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 		path = filepath.Base(cfg.RegulationPushFile)
 	}
 
+	s.pushResource(log, cs, path, data)
+}
+
+// pushResource sends one resource file to one client.
+func (s *Service) pushResource(log logger, cs *clientSession, path string, data []byte) {
 	entries := s.regulationPushEntries(log, path, data)
 	if len(entries) == 0 {
 		return
@@ -126,8 +131,7 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 		"path", path,
 		"payload_bytes", len(data),
 		"entries", len(entries),
-		"versions_required", cfg.RegulationPushVersionRequired,
-		"sweep", cfg.RegulationPushVersionSweep)
+		"sweep", s.srv.Config.RegulationPushVersionSweep)
 }
 
 // regulationPushEntries builds the diff list.

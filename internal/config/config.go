@@ -140,6 +140,30 @@ type Config struct {
 	RegulationPushVersionSweep string
 	RegulationPushDelaySeconds uint64
 
+	// EventChest* drive the Majula event chest, which is solved: a u16 claim
+	// threshold in OnlineEventParam row 0 gates it, and the prize is one row of
+	// ItemLotParam2_SvrEvent. Both are pushed over 0x038B. See
+	// tasks/majula-event-chest.md.
+	//
+	// EventChestRotation is the item ids to cycle through, one per period; empty
+	// disables the whole feature. EventChestPeriod is a Go duration ("168h" is
+	// weekly, as the original event ran). EventChestEpoch anchors the cycle.
+	//
+	// EventChestThresholdBase is where thresholds start. It must exceed any
+	// threshold already claimed on the save, because the game writes the
+	// threshold into its per-object counter on claim and will not re-arm while
+	// counter >= threshold. We cannot read that counter, so this is set by hand.
+	//
+	// The two *File entries are the stock params the payloads are built from.
+	// They are edited in place and must stay byte-identical in length to what the
+	// client loaded, or it discards them in silence.
+	EventChestRotation        []uint64
+	EventChestPeriod          string
+	EventChestEpoch           string
+	EventChestThresholdBase   uint64
+	EventChestLotParamFile    string
+	EventChestOnlineEventFile string
+
 	// Bootstrap HTTP: the DS2 PS3 client does an HTTP "calibration" check before
 	// going online. BootstrapHTTPEnabled starts an HTTP server (port 80 by
 	// default, needs privilege) that answers it; BootstrapContentsFile is an
@@ -265,6 +289,13 @@ func Load() (Config, error) {
 	c.RegulationPushVersionRequired = envUint("DSO_REGULATION_PUSH_VERSION_REQUIRED", c.RegulationPushVersionRequired)
 	c.RegulationPushVersionNew = envUint("DSO_REGULATION_PUSH_VERSION_NEW", c.RegulationPushVersionNew)
 	c.RegulationPushVersionSweep = envStr("DSO_REGULATION_PUSH_VERSION_SWEEP", c.RegulationPushVersionSweep)
+
+	c.EventChestRotation = envUintList("DSO_EVENT_CHEST_ROTATION", c.EventChestRotation)
+	c.EventChestPeriod = envStr("DSO_EVENT_CHEST_PERIOD", c.EventChestPeriod)
+	c.EventChestEpoch = envStr("DSO_EVENT_CHEST_EPOCH", c.EventChestEpoch)
+	c.EventChestThresholdBase = envUint("DSO_EVENT_CHEST_THRESHOLD_BASE", c.EventChestThresholdBase)
+	c.EventChestLotParamFile = envStr("DSO_EVENT_CHEST_LOT_PARAM_FILE", c.EventChestLotParamFile)
+	c.EventChestOnlineEventFile = envStr("DSO_EVENT_CHEST_ONLINE_EVENT_FILE", c.EventChestOnlineEventFile)
 	c.RegulationPushDelaySeconds = envUint("DSO_REGULATION_PUSH_DELAY_SECONDS", c.RegulationPushDelaySeconds)
 	c.BootstrapHTTPEnabled = envBool("DSO_BOOTSTRAP_HTTP", c.BootstrapHTTPEnabled)
 	c.BootstrapHTTPPort = envInt("DSO_BOOTSTRAP_HTTP_PORT", c.BootstrapHTTPPort)
@@ -329,6 +360,28 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+// envUintList parses a comma-separated list of unsigned integers. A malformed
+// element is skipped rather than failing the whole list: these lists are edited
+// by hand in dso.env, and losing every item because one has a stray character
+// would be a worse failure than losing that one.
+func envUintList(key string, def []uint64) []uint64 {
+	raw, ok := os.LookupEnv(key)
+	if !ok {
+		return def
+	}
+	var out []uint64
+	for _, f := range strings.Split(raw, ",") {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		if v, err := strconv.ParseUint(f, 10, 64); err == nil {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func envUint(key string, def uint64) uint64 {

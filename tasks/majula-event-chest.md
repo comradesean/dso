@@ -26,7 +26,46 @@ must stay identical, so rows can be rewritten but not added. To re-arm the chest
 higher threshold — the claim writes the threshold into the per-object counter, so each bump reopens
 it exactly once. That is the weekly rotation, and it is now ours to drive.
 
-See `tasks/regulation-push-038b.md` for the transport.
+See `tasks/regulation-push-038b.md` for the transport and `docs/item-ids-0114.md` for the menu of
+1888 item ids calibration 0114 defines.
+
+## The rotation, implemented
+
+`internal/server/game/eventchest.go`, sent at login. Off unless `DSO_EVENT_CHEST_ROTATION` is set.
+
+```
+DSO_EVENT_CHEST_ROTATION=5600000,5610000,5620000,5650000   # Longsword, Murakumo,
+                                                           # Blacksteel Katana, Great Club
+DSO_EVENT_CHEST_PERIOD=168h                                # weekly, as FromSoftware ran it
+DSO_EVENT_CHEST_EPOCH=2026-08-06T00:00:00Z
+DSO_EVENT_CHEST_THRESHOLD_BASE=2
+```
+
+Per period it computes `index`, then pushes two files:
+
+1. `ItemLotParam2_SvrEvent.param` with row `10045500`'s item at `+0x2C` set to
+   `rotation[index % len]`
+2. `OnlineEventParam.param` with row 0's `u16` at `+2` set to `base + index`
+
+**Two pushes, not one entry each in a single push.** The applier tracks a "best" entry within a pass
+and rejects any whose version is not strictly greater than the best accepted so far (`0x770438`);
+whether several accepted entries all apply is untraced. Betting on that branch would be exactly the
+kind of guess this file exists to record the cost of. The version sweep absorbs the increment the
+first push causes.
+
+**The lot is pushed first.** If only one lands, the chest stays shut rather than opening on the
+wrong prize.
+
+### `THRESHOLD_BASE` has to be set by hand
+
+The threshold must exceed the per-object claim counter, and **nothing reports that counter**. It is
+written from the threshold on each claim, so it equals the last threshold successfully claimed on
+that save. Base 2 is correct here because 1 was spent on the first live test.
+
+If the chest stops arming, that counter has caught up — raise the base.
+
+**Unknown: whether the counter survives a game restart.** If it does not, a fixed threshold re-arms
+the chest once per boot rather than once ever. Testable by quitting to the dashboard and returning.
 
 ---
 
