@@ -284,17 +284,30 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // exists. Static "nothing ever writes this" is a claim about what the analysis
 // could find, not about the program.
 //
-// WHAT WE SEND, and where each value actually comes from — worth stating
-// plainly, because "it works" hides how little of this is known:
+// WHAT WE SEND, and how well each value is actually understood:
 //
 //	field 1  the push id. CONFIRMED from the binary.
-//	field 2  the map id lifted from the ringer's own 0x03EE. Forwarding it is an
-//	         assumption about where it belongs, not an observation.
+//	field 2  the map id lifted from the ringer's own 0x03EE. CONFIRMED
+//	         SEMANTICALLY 2026-08-06 — see below. Forwarding it here was a guess
+//	         and the guess was right.
 //	field 3  the literal 0. INVENTED, because proto2 required something.
 //	field 4  an empty byte string. INVENTED, mirroring the request's empty blob.
 //
-// The client compares NONE of them, so the bell would most likely have played
-// with all three zeroed. Working code is not evidence the schema is right.
+// FIELD 2 IS THE MAP, AND THE CLIENT FILTERS ON IT. A synthetic toll carrying
+// 10160000 was broadcast every 45 seconds to a player free to roam: they heard
+// it in the Lost Bastille — the map that contains Belfry Luna — and nowhere
+// else. So the client plays a toll only when the listener is in the map named
+// by this field, which is exactly the behaviour the game should have and why
+// relaying the RINGER's map id is correct.
+//
+// That refines rather than contradicts the decompilation, which established that
+// the 0x03EF HANDLER performs no comparison of any kind. True — the comparison
+// is in the consumer behind the vtable dispatch, the one link that analysis
+// could not resolve. Both findings hold.
+//
+// Fields 3 and 4 remain unknown. The bell plays with 0 and empty, so neither is
+// required for playback, but either could still select something that is
+// currently defaulting.
 //
 // What the handler does, recovered statically and now known to run: field 1 is
 // never read at all; fields 2 and 3 are copied into a 24-byte payload struct
