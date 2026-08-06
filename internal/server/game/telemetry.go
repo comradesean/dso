@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -251,36 +252,32 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // is the mechanism behind the long-standing reports of hearing bells with no
 // invasion of one's own underway.
 //
-// DEFAULTS OFF, because the retail client CANNOT RECEIVE THIS.
+// THIS WORKS, CONFIRMED IN GAME 2026-08-06. A player who was not in the belfry
+// session, and not in the belfry, HEARD THE BELL when we sent this.
 //
-// The 0x03EF handler (v1.10 0x15D0528) tests a listener pointer at manager+0x80
-// and returns early when it is null. The constructor sets that field to null
-// (0x15CFC9C) and NOTHING in either executable ever assigns it — no store to
-// +0x80 through that object exists anywhere in the net library, and none of the
-// 219 call sites of the manager accessor writes through the returned pointer.
-// The null check runs BEFORE ParseFromArray, so the frame is dropped whole and
-// no field is even decoded.
+// The test was clean: the two other clients were muted at the OS level, so the
+// only machine capable of producing sound was the listener's own, and it was a
+// recipient of the push rather than a participant in the fight. Their client
+// played a bell because of this message and nothing else.
 //
-// So field values are irrelevant: no assignment of fields 2-4 can produce any
-// effect. Tuning them would have been wasted effort, and the guesses below are
-// left only so the runtime experiment can be run.
+// THAT REFUTES A DECOMPILATION RESULT, and the refutation is worth keeping
+// because the analysis was careful and still wrong. It found the handler
+// (v1.10 0x15D0528) testing a listener pointer at manager+0x80, saw the
+// constructor null it (0x15CFC9C), searched for stores to that offset and found
+// none anywhere in the net library, and checked all 219 call sites of the
+// manager accessor without finding a write. It concluded the frame was dropped
+// before parsing and the feature was receive-side dead — while flagging, to its
+// credit, that a store it could not attribute was the residual risk. That store
+// exists. Static "nothing ever writes this" is a claim about what the analysis
+// could find, not about the program.
 //
-// The code stays for exactly that: pointing a client at breakpoint 0x15D05A4
-// (v1.00: 0x156645C) and reading r0 while we send one settles empirically what
-// the disassembly says. r0 == 0 means the listener really is null and the
-// feature is receive-side dead. The residual doubt is a store the analysis could
-// not attribute, which is small but not zero.
-//
-// What the handler WOULD do if a listener existed, recovered anyway: field 1 is
-// never read; fields 2 and 3 are copied verbatim into a 24-byte struct with no
-// comparison of any kind — notably NO map check, so a toll from another map
-// would not be filtered; field 4 is byte-copied and an EMPTY one is safe, since
-// the constructor points it at the shared empty-string singleton.
-//
-// This also revives ghost replay as the explanation for players hearing bells
-// with no invasion underway. There is no server-driven bell broadcast to hear,
-// and ghosts now actually work — a bell pull inside a recording would reach a
-// listener with no bell-specific message involved.
+// Fields 2-4 are still of unknown meaning: what we send is reasoned from the
+// request's layout, not observed, and the client evidently accepts it. What the
+// handler does with them, recovered statically and now known to actually run:
+// field 1 is never read; fields 2 and 3 are copied verbatim into a 24-byte
+// struct with NO comparison of any kind — notably no map check, which is why a
+// listener far from the belfry still hears it; field 4 is byte-copied and an
+// empty one is safe.
 //
 // Sent to everyone EXCEPT the ringer. Their own client already played the bell
 // locally, and a relay would give them a second one.
@@ -313,13 +310,68 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 		"recipients", sent, "payload_bytes", len(body))
 }
 
-// bellBroadcastEnabled gates the relay. Defaults OFF: the client discards 0x03EF
-// before parsing it, so sending one is pure wasted traffic. Set
-// DSO_BELL_BROADCAST=1 to send anyway, which is how the breakpoint experiment
-// described above gets its frame.
+// maybeSendTestBellToll fires a synthetic toll on a timer, when
+// DSO_BELL_TEST_SECONDS is set to a positive number.
+//
+// This exists to remove a confound that a real bell cannot. When a player rings
+// a bell, THEIR client plays the sound locally no matter what the network does —
+// and if that client shares speakers with another (a VM whose audio routes to
+// the host, say), a listener can hear a bell that never crossed the wire. A
+// server-generated toll with nobody ringing anything anywhere is the only clean
+// test of whether 0x03EF does anything on the receiving end.
+//
+// Off unless explicitly set. Sends to every player, since there is no ringer to
+// exclude.
+func (s *Service) maybeSendTestBellToll(log logger) {
+	every := testBellInterval()
+	if every <= 0 || !bellBroadcastEnabled() {
+		return
+	}
+	if !s.lastTestBell.IsZero() && time.Since(s.lastTestBell) < every {
+		return
+	}
+	s.lastTestBell = time.Now()
+
+	body, err := proto.Marshal(&ds2pb.PushRequestNotifyRingBell{
+		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell.Enum(),
+		Field_2:       proto.Uint32(10160000), // Belfry Luna
+		Field_3:       proto.Uint32(0),
+		Field_4:       []byte{},
+	})
+	if err != nil {
+		return
+	}
+	var sent int
+	for _, other := range s.sessions {
+		if other.playerID == 0 {
+			continue
+		}
+		other.conn.SendPush(body)
+		sent++
+	}
+	if sent > 0 {
+		log.Info("TEST bell toll sent with no bell rung anywhere",
+			"recipients", sent, "map_id", 10160000)
+	}
+}
+
+func testBellInterval() time.Duration {
+	n, err := strconv.Atoi(os.Getenv("DSO_BELL_TEST_SECONDS"))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return time.Duration(n) * time.Second
+}
+
+// bellBroadcastEnabled gates the relay. Defaults ON: this is confirmed working
+// in game, and it reproduces a behaviour players remember. Set to 0 to silence.
 func bellBroadcastEnabled() bool {
-	on, err := strconv.ParseBool(os.Getenv("DSO_BELL_BROADCAST"))
-	return err == nil && on
+	v := os.Getenv("DSO_BELL_BROADCAST")
+	if v == "" {
+		return true
+	}
+	on, err := strconv.ParseBool(v)
+	return err != nil || on
 }
 
 // handleNotifyKillEnemy adds to the world enemy-kill counter.

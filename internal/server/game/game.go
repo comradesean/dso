@@ -65,6 +65,10 @@ type Service struct {
 	// quickMatch holds Undead Match arena registrations. Unlike the brokered
 	// modes this one is advertised and therefore stateful.
 	quickMatch *quickMatchStore
+
+	// lastTestBell paces the synthetic bell toll used to test whether the client
+	// reacts to 0x03EF at all. Only used when DSO_BELL_TEST_SECONDS is set.
+	lastTestBell time.Time
 }
 
 // clientSession is one client's reliable-UDP session and its crypto state.
@@ -293,6 +297,7 @@ func (s *Service) pumpLoop(ctx context.Context) {
 			return
 		case <-t.C:
 			s.pumpOnce()
+			s.maybeSendTestBellToll(s.srv.Logger)
 		}
 	}
 }
