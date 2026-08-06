@@ -70,7 +70,8 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 //	field_2  the session kind, observed live: 5 = ordinary summon sign,
 //	         8 = arena duel, 9 = Mirror Knight squire, 13 and 14 seen during Bell
 //	         Keeper covenant summons (14 confirmed as the grey-spirit visit; 13
-//	         seen once alongside it and not yet attributed), 15 = Rat King prey.
+//	         seen once alongside it and not yet attributed), 15 = Rat King prey,
+//	         10 = Dragon Remnants duel via a Dragon Eye sign (sign_type 6).
 //
 // The Rat King case is the one that inverts: the covenant member is the HOST and
 // the victim is the guest pulled into their world, the opposite of Bell Keepers

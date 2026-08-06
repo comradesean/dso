@@ -41,11 +41,14 @@ const firstMirrorKnightSignID = 500000
 // playerStruct is the game's own opaque blob describing the host character. It is
 // stored and handed to the summoner verbatim; the server never interprets it.
 type sign struct {
-	id       uint32
-	ownerID  uint32 // player id of the host who placed it
-	owner    *clientSession
-	areaID   uint32
-	cellID   uint32
+	id      uint32
+	ownerID uint32 // player id of the host who placed it
+	owner   *clientSession
+	areaID  uint32
+	cellID  uint32
+	// signType is stored and echoed back, never branched on — every sign
+	// variety uses this same path. Observed live: 6 = Dragon Eye, the Dragon
+	// Remnants duel sign, which produces a session of kind 10.
 	signType uint32
 	matching *ds2pb.MatchingParameter
 	player   []byte
