@@ -115,11 +115,32 @@ func (s *Service) handleNotifyLeaveGuestPlayer(log logger, cs *clientSession, pa
 // The decompilation explains why. The send at 0x15D0178 is reached only from a
 // data-driven script command interpreter, gated on command id 130631 (0x1FE47).
 // That constant occurs EXACTLY ONCE in the whole executable — at the dispatcher
-// comparison — so there is no second producer and no table. Whether the opcode
-// can fire at all therefore depends on whether any shipped script issues command
-// 130631, which lives in GameData.bdt rather than in code. Both v1.00 and v1.10
+// comparison — so there is no second producer and no table. Both v1.00 and v1.10
 // are instruction-for-instruction identical here, so this is not a version
-// difference. Closing the last step means grepping the script data for 130631.
+// difference.
+//
+// THE SCRIPT SIDE IS NOW CONFIRMED TOO. The PS3 GameData archive is a plain
+// unencrypted BXF4 pair and can be read directly (tools/gamedata/bhf4.py).
+// Scanning all 475 EzState scripts for command 130631 finds it in exactly two:
+//
+//	ezstate\event_m10_16_00_00.esd   Belfry Luna   x2
+//	ezstate\event_m10_19_00_00.esd   Belfry Sol    x2
+//
+// and nowhere else in the game. So the opcode IS reachable in retail, it IS the
+// bell, and it is issued only in the two belfries. Both call sites in a file are
+// byte-identical, so which one runs cannot be told apart without an EzState
+// decompiler.
+//
+// An earlier note here said a scan of the archive "would not settle it either
+// way, since the entries are compressed". That was wrong and nothing had checked
+// the header — the index is plaintext and carries every filename.
+//
+// What remains unexplained is the CONDITION. A player rang Belfry Luna five
+// times consecutively with full packet logging and 0x03EE never appeared. The
+// leading theory is that the script fires once — a bell is a one-shot in DS2,
+// the gate it opens stays open — so a character who has already rung that bell
+// can never trigger it again. Testing that needs a character who has rung
+// neither bell.
 //
 // Payload, recovered from the serialiser rather than guessed:
 //
