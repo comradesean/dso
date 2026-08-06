@@ -109,11 +109,19 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 	// name inside the archive — see tasks/regulation-push-038b.md.
 	//
 	// Accepts a comma-separated list so several candidate paths can be tried in
-	// one login. A missed lookup is skipped in silence (0x770858), so a wrong path
-	// costs nothing and there is no way to tell one apart from a right one except
-	// by the effect. Sent as separate pushes rather than separate entries in one:
+	// one login. Sent as separate pushes rather than separate entries in one:
 	// entries share the version chain and at most one is accepted per pass, so
 	// bundling them would test exactly one path and quietly discard the rest.
+	//
+	// DANGER, for .fmg payloads only: DO NOT list speculative paths. A wrong path
+	// that MISSES is harmless, but a wrong path that HITS is memory corruption —
+	// 0x76A0F0 checks only that the payload is <= 1024 bytes and never compares it
+	// against the destination, so it memcpys over whatever resource matched and
+	// leaves everything past your bytes stale with a string table pointing into
+	// garbage. Sending nine candidates crashed the client twice on load.
+	//
+	// Params are safe to sweep this way: their route requires an exact size match,
+	// so a wrong destination is skipped rather than clobbered.
 	paths := parsePushPaths(cfg.RegulationPushPath)
 	if len(paths) == 0 {
 		paths = []string{filepath.Base(cfg.RegulationPushFile)}

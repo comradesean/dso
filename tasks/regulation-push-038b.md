@@ -409,6 +409,28 @@ every failure mode in this message is silent and identical from outside. One mem
 both the answer and a proof that everything upstream works. When the unknown is the contents of a
 global rather than a branch, reach for the debugger first — the same lesson the bell taught.
 
+## HAZARD — a wrong `.fmg` path can CRASH the client
+
+**Learned the hard way, 2026-08-06: the game crashed twice on load after we sent nine candidate FMG
+paths in one login.**
+
+The two routes fail very differently:
+
+| | wrong path that misses | wrong path that HITS |
+|---|---|---|
+| param | lookup fails, entry skipped, harmless | size must match exactly or it is skipped — also harmless |
+| **fmg** | lookup fails, harmless | **memcpy of your bytes over that resource, NO size check** |
+
+`0x76A0F0` checks only that the payload is <= 1024 bytes. It does **not** compare against the
+destination's size. It memcpys into `*(res+152)` and relocates `*(dst+20)`. So overwriting a large
+text resource with a small FMG leaves everything past your payload stale and the string offset table
+pointing into garbage — and the client dies when it next reads that text, which is during a load.
+
+**Do not shotgun candidate paths for FMGs.** One at a time, chosen for a reason. Params are safe to
+sweep; FMGs are not.
+
+Recovery is a restart: the apply path writes only to memory, so nothing survives the process.
+
 ## STILL OPEN — the obelisk
 
 The chest works; the obelisk does not. With `path = text:/Text/English/regulation.fmg` the text is
