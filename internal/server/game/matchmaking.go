@@ -417,32 +417,11 @@ func (p matchProfile) isInvadable() bool {
 // anti-twink rule and the best-evidenced figure in the whole system — the
 // Cracked Red Eye Orb was the probe used to derive the tier table itself.
 //
-// Overridable for TESTING, because two test accounts cannot always be put in
-// range of each other: a character built for one experiment can easily end up
-// several bands away from the other, and rebuilding a save is far more work than
-// widening a window. DSO_BREAKIN_TIERS_ABOVE / _BELOW do that.
-//
-// These are a deliberate deviation from the game's behaviour, not a correction
-// to it. Anything observed with them set is not evidence about real matchmaking.
-var breakInTierWindow = tierWindow{
-	below: envTiers("DSO_BREAKIN_TIERS_BELOW", 0),
-	above: envTiers("DSO_BREAKIN_TIERS_ABOVE", 4),
-}
-
-// envTiers reads a tier-count override, falling back to the documented value.
-// A malformed or negative setting is ignored rather than honoured: silently
-// matching nobody is a far worse failure than ignoring a typo.
-func envTiers(name string, def int) int {
-	v := os.Getenv(name)
-	if v == "" {
-		return def
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 {
-		return def
-	}
-	return n
-}
+// Briefly made overridable by env var so two out-of-range test characters could
+// be forced together. That was removed: a knob that makes the server report
+// matches the game would refuse is a trap, and the honest fix is to put the test
+// characters in range of each other instead.
+var breakInTierWindow = tierWindow{below: 0, above: 4}
 
 // Soul memory tiers — the end value of each band, ascending.
 //

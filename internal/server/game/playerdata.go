@@ -135,7 +135,10 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 	if pool := visitorPoolFor(cs.profile); pool != prevPool {
 		log.Info("visitor pool changed",
 			"player_id", cs.playerID, "from", prevPool, "to", pool,
-			"covenant", cs.profile.covenant,
+			// effectiveCovenant, not the field: covenant is a *uint32 so that
+			// "no covenant" can be told from "not told yet", and logging the
+			// field itself prints a pointer address.
+			"covenant", cs.profile.effectiveCovenant(),
 			"activity_area", cs.profile.onlineActivityArea,
 			"soul_memory", cs.profile.soulMemory,
 			"tier", soulMemoryTier(cs.profile.soulMemory),
