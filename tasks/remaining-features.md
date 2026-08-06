@@ -230,6 +230,25 @@ Worth recording as a process note: the invadability gate and the location rule s
 and the improvement was initially credited to the wrong one. Two filters in one deploy cannot be
 told apart by a single test.
 
+**OPEN: at least one invadability gate is still unmodelled, and it could not be reproduced.**
+At 21:29:04 the host's client refused an invasion while every check we have passed
+(`skipped_not_invadable=0`, not at a bonfire, no burnt effigy, activity area non-zero). Walking out
+of a particular spot made it work. Field-level status logging was added specifically to catch this,
+but by the time it was deployed the behaviour had stopped happening and repeated attempts could not
+bring it back — so we have no capture of the failing state and **no identified cause**.
+
+The logging stays in place and is silent until something moves, so a recurrence will be recorded
+without anyone having to remember this. If it does recur, the field that flips as invasion becomes
+possible is the answer.
+
+Candidates never ruled out: an area transition or fog gate, a post-session cooldown on the host, or
+a purely positional rule the client derives from geometry the server never sees. The last would
+explain the failure to reproduce and would mean there is nothing for us to model.
+
+**`PlayerLocation.cell_id` is NOT the `cell_id` in matchmaking requests.** It is a large opaque id
+(`37749729` observed) in a different space from the 6-digit `online_activity_area_id` (`400330`)
+that matching uses. Reading the wrong one would silently match nobody.
+
 Soul memory uses **0 tiers below, 4 above** — invaders reach up, never down. DS2's anti-twink rule,
 and the best-evidenced figure in the system, since the Cracked Red Eye Orb was the probe used to
 derive the tier table.

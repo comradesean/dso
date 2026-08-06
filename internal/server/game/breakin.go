@@ -36,7 +36,10 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 	invaderSM := req.GetMatchingParameter().GetSoulMemory()
 	cs.profile.applyMatchingParameter(req.GetMatchingParameter())
 
-	var skippedNotInvadable, skippedLocation, skippedSoul int
+	var skippedNotInvadable, skippedLocation, skippedSoul, skippedCell int
+	// Cells of hosts who pass every check except position — the evidence for
+	// whether the client ever asks about a cell someone is actually in.
+	var availableCells []uint32
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.playerID == cs.playerID {
 			continue
@@ -66,6 +69,31 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 			if !soulMemoryMatches(invaderSM, other.profile.effectiveSoulMemory(),
 				breakInTierWindow) {
 				skippedSoul++
+				continue
+			}
+			// Everything except position now passes, so this host is genuinely
+			// invadable and merely somewhere else. Record where, because that is
+			// the open question: the client picks which cell to ask about, and we
+			// need to know whether it ever names the one a host is standing in.
+			availableCells = append(availableCells, other.profile.onlineActivityArea)
+
+			// The host must be in the cell being asked about.
+			//
+			// Offering someone from a different cell does not produce a
+			// cross-chasm invasion — it produces a rejection. The host's client
+			// receives an invasion tagged for a chasm it is not in and refuses
+			// inside ~100ms, which the invader reads as "unable to find a world".
+			// Confirmed across seven attempts: cell 400330 succeeded 4 of 4 while
+			// the host stood there, 400310 and 400320 were refused 3 of 3.
+			//
+			// This does NOT make any chasm unreachable. A host in any of the
+			// three is offered the moment the client asks about that one, which
+			// is what "invade any of the three" requires. If the log below ever
+			// shows available_cells never intersecting the queried cell over a
+			// long run, then the client is not cycling and this rule is wrong —
+			// that is the specific thing to watch.
+			if other.profile.onlineActivityArea != uint32(req.GetCellId()) {
+				skippedCell++
 				continue
 			}
 		}
@@ -98,7 +126,12 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 		"max", req.GetMaxTargets(), "returned", len(targets),
 		"filtering", filtering, "invader_soul_memory", invaderSM,
 		"skipped_not_invadable", skippedNotInvadable,
-		"skipped_location", skippedLocation, "skipped_soul_memory", skippedSoul)
+		"skipped_location", skippedLocation, "skipped_soul_memory", skippedSoul,
+		"skipped_wrong_cell", skippedCell,
+		// The decisive pair. "asked for 400320, hosts are at [400330]" over many
+		// queries tells us whether the client cycles cells at all, and whether it
+		// ever names its own — which is the thing still unexplained.
+		"available_cells", fmt.Sprint(availableCells))
 
 	return proto.Marshal(&ds2pb.RequestGetBreakInTargetListResponse{
 		OnlineAreaId: proto.Uint32(req.GetOnlineAreaId()),

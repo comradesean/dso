@@ -353,6 +353,14 @@ func (s *Service) pumpOnce() {
 // in other players' worlds and summoning it fails in a way that looks like a
 // server bug rather than a player who logged off. Caller holds s.mu.
 func (s *Service) dropSession(key string, cs *clientSession) {
+	// Tell the client before we forget it. Dropping silently leaves the two
+	// sides disagreeing: the client keeps transmitting into a server that has no
+	// session for it, and since it believes it is connected it never re-SYNs.
+	// Live on 2026-08-05 that cost 52 seconds of a client shouting at a session
+	// that no longer existed, turning a recoverable stall into a 4 minute outage.
+	if cs.sess != nil {
+		cs.sess.SendReset()
+	}
 	delete(s.sessions, key)
 	if cs.playerID != 0 {
 		s.dropSignsForPlayer(s.srv.Logger, cs.playerID)

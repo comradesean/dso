@@ -42,6 +42,27 @@ const (
 	maxAckValue        = 4096
 	maxPacketsInFlight = 32
 
+	// maxPacketsPerPump paces the send queue. The in-flight cap alone bounds how
+	// many packets are UNACKNOWLEDGED at once, but says nothing about how fast
+	// they leave — so a full window used to go out back-to-back in microseconds.
+	//
+	// That killed a real session on 2026-08-05. Four RequestGetGhostDataList
+	// replies of ~10.7 KB arrived within 148 ms; at 900-byte fragments that is 13
+	// packets each, 54 in total, and they went out as one burst. The client
+	// NACKed 25 of them and never received 5. Its ack froze one packet short, we
+	// retransmitted that packet for the full 32-second budget, it was never
+	// accepted, and the session died.
+	//
+	// The other client survived the identical request pattern the same minute,
+	// because its replies were ~6 KB — 7 fragments each, 28 packets, inside the
+	// in-flight window. Burst size was the ONLY difference between the two.
+	//
+	// At the 100 ms pump interval this is 80 packets/sec, so a 13-fragment ghost
+	// list takes ~200 ms to clear and the 54-packet case ~700 ms. Slower than a
+	// burst, and slower is the entire point: the receiver is an emulated PS3
+	// network stack and it demonstrably cannot absorb a LAN-speed window.
+	maxPacketsPerPump = 8
+
 	retransmitInterval      = 1000 * time.Millisecond
 	retransmitCycleInterval = 200 * time.Millisecond
 	retransmitMaxAttempts   = 160
@@ -243,6 +264,30 @@ func (s *Session) handleIncomingPacket(p packet) {
 	s.lastPacketReceived = s.now()
 
 	if p.opcode.isSequenced() {
+		// A sequenced packet while we are not established means the two sides
+		// disagree about whether a connection exists: the client is sending game
+		// data, we have no session for it. Tell it so.
+		//
+		// Without this the disagreement is unresolvable. We answer with an ACK
+		// for sequence 0, which is meaningless to a client waiting on an ack for
+		// 753, and it has no reason to re-SYN because as far as it knows it is
+		// connected. Observed live on 2026-08-05: 52 seconds of the client
+		// retransmitting the same four sequences into a server that had silently
+		// replaced its session, until the client gave up and sent RST. A ~30
+		// second stall became a 4 minute outage.
+		//
+		// RST is what the client itself sends in this situation, and it makes the
+		// client tear down and reconnect promptly instead of waiting us out.
+		// Rate-limited on the same timer as the redundant ACK it replaces, so a
+		// retransmitting peer cannot make us flood.
+		if s.state == StateListening {
+			if s.now().Sub(s.lastAckSend) > minTimeBetweenResendAck {
+				s.sendRaw(packet{opcode: OpRST, local: 0, remote: s.remoteSequenceIndexAcked})
+				s.lastAckSend = s.now()
+			}
+			return
+		}
+
 		outOfSequence := false
 		if s.state != StateEstablished {
 			outOfSequence = true
@@ -425,6 +470,24 @@ func (s *Session) sendHBT() {
 	s.enqueue(packet{opcode: OpHBT, local: 0, remote: s.remoteSequenceIndexAcked})
 }
 
+// SendReset tells the peer the connection is gone.
+//
+// Called when the server abandons a session — a dead transport or an idle
+// timeout — so the client finds out immediately instead of discovering it by
+// being ignored. It bypasses the send queue deliberately: the queue is exactly
+// what has failed in the case this exists for, and the packet is unsequenced so
+// it needs no acknowledgement.
+//
+// errState is cleared for the duration because sendRaw refuses to transmit on a
+// failed session, and this is the one message that must still go out. Nothing
+// else runs against the session afterwards — the caller is discarding it.
+func (s *Session) SendReset() {
+	saved := s.errState
+	s.errState = nil
+	s.sendRaw(packet{opcode: OpRST, local: 0, remote: s.remoteSequenceIndexAcked})
+	s.errState = saved
+}
+
 func (s *Session) reset() {
 	s.sequenceIndex = randSequence()
 	s.sequenceIndexAcked = 0
@@ -515,12 +578,15 @@ func (s *Session) handleOutgoing() {
 		}
 	}
 
-	for !s.isRetransmit && len(s.sendQueue) > 0 && len(s.retransmitBuf) < maxPacketsInFlight {
+	sent := 0
+	for !s.isRetransmit && len(s.sendQueue) > 0 &&
+		len(s.retransmitBuf) < maxPacketsInFlight && sent < maxPacketsPerPump {
 		op := s.sendQueue[0]
 		s.sendQueue = s.sendQueue[1:]
 		op.rawSendTime = s.now()
 		s.retransmitBuf = append(s.retransmitBuf, op)
 		s.sendRaw(op.pkt)
+		sent++
 	}
 }
 
