@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"google.golang.org/protobuf/proto"
@@ -119,10 +120,24 @@ func (s *Service) handleCreateBloodstain(log logger, cs *clientSession, payload 
 	}
 	id := s.bloodstains.add(b)
 
+	// The 16 bytes are logged in full because the client validates them byte for
+	// byte before it will draw a stain, and it drops any entry that fails
+	// WITHOUT a log, a counter or any other side effect.
+	//
+	// The predicate is at v1.10 0x695D2C: buffer non-null, length exactly 16,
+	// and the leading u32 equal to 0x0039000B (0x0037000A in v1.00 — the stamp
+	// changed between title updates). Bloodstains are the only one of the three
+	// ground features that treats this as fatal; the ghost path runs the same
+	// check and stores the entry either way.
+	//
+	// So the first four bytes here answer the whole question: 00 39 00 0b means
+	// what we hold is valid and the loss is somewhere after that check, and
+	// anything else means we have found it.
 	log.Info("bloodstain recorded",
 		"player_id", cs.playerID, "bloodstain_id", id,
 		"area_id", b.areaID, "cell_id", b.cellID,
-		"data_bytes", len(b.data), "ghost_bytes", len(b.ghostData))
+		"data_bytes", len(b.data), "ghost_bytes", len(b.ghostData),
+		"data_hex", fmt.Sprintf("%x", b.data))
 	return nil, nil
 }
 
@@ -148,9 +163,17 @@ func (s *Service) handleGetBloodstainList(log logger, cs *clientSession, payload
 		})
 	}
 
+	// Log what we are actually putting on the wire, not just the count. If the
+	// stored blob is valid but the returned one is not, the corruption is ours
+	// and it is between these two log lines.
+	sent := make([]string, 0, len(items))
+	for _, it := range items {
+		sent = append(sent, fmt.Sprintf("%d:%x", it.GetBloodstainId(), it.GetData()))
+	}
 	log.Info("bloodstain list",
 		"player_id", cs.playerID, "area_id", req.GetOnlineAreaId(),
-		"cells_requested", len(cells), "max", req.GetMaxStains(), "returned", len(items))
+		"cells_requested", len(cells), "max", req.GetMaxStains(), "returned", len(items),
+		"sent", strings.Join(sent, " "))
 
 	resp := &ds2pb.RequestGetBloodstainListResponse{Bloodstains: items}
 	return proto.Marshal(resp)
