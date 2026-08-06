@@ -267,8 +267,8 @@ else touched. `data/regpush/OnlineEventParam.param` is the untouched original fo
 not in length.
 
 ```
-DSO_REGULATION_PUSH_FILE=data/regpush/OnlineEventParam.armed.param
-DSO_REGULATION_PUSH_VERSION_REQUIRED=0     # 0 makes the client skip the version check
+DSO_REGULATION_PUSH_FILE=data/regpush/armed/OnlineEventParam.param
+DSO_REGULATION_PUSH_VERSION_REQUIRED=11500   # the client's build version, read from the holder
 DSO_REGULATION_PUSH_DELAY_SECONDS=0
 ```
 
@@ -290,6 +290,42 @@ chest (object `10045510`, the pair-mate of the ordinary Soul Vessel one).
 Everything about this push fails **silently** on the client — wrong size, wrong path, wrong version,
 wrong repository all look identical from outside. A negative result therefore isolates nothing on its
 own; change one variable at a time.
+
+## SOLVED BY DEBUGGER — `current_version` is the client's build version
+
+**Read live from RPCS3 (2026-08-06).** `0x1E1D388` held `0x312813B0`; dumping the holder there:
+
+```
++0x00  0x00002CEC = 11500      <- current_version  (game build 1.15)
++0x04  0x00002C24 = 11300      <- second version-shaped field (1.13), unidentified
++0x08  0x01CBADB8              <- vtable pointer (the mutex object)
++0x28  allocator 0x30A00F1C
++0x2C  begin     0x312878A0
++0x30  end       0x312878A0    <- begin == end, EMPTY
++0x34  cap       0x31288710
+```
+
+Two things settled at once.
+
+**The version to send is 11500**, the game build number — 1.15, exactly as shown in the game's own
+menu. Not a calibration number, not the manifest's `Version` field (which is 1 in every published
+manifest and carries no information). Nothing in the protocol reports it, which is why three live
+tests sending `0` were rejected at the first comparison and looked identical to every other failure.
+
+**The whole receive chain is CONFIRMED WORKING.** Capacity is `0x31288710 - 0x312878A0` = 3696 bytes
+= exactly **42 x 88**, the record stride. A 1.5x-growth vector reaches 42 via `...19, 28, 42` — which
+is what appending the 30 sweep entries produces. So the vector grew to hold our entries and was then
+emptied: the push arrives, parses, the listener at `manager+76` is installed and firing, `Append`
+runs, and the applier runs and clears the list. Every entry was rejected at the version check and
+nothing else.
+
+This also **confirms the agent's identification of the holder global**, which had been inference from
+the referencing code: the layout at `0x1E1D388`'s target matches the recovered one field for field.
+
+Method note: three live tests produced "no change" and distinguished nothing between them, because
+every failure mode in this message is silent and identical from outside. One memory read produced
+both the answer and a proof that everything upstream works. When the unknown is the contents of a
+global rather than a branch, reach for the debugger first — the same lesson the bell taught.
 
 ## OPEN — resolve before building a payload
 
