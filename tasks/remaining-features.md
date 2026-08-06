@@ -426,7 +426,31 @@ which is exactly why blood messages rendered and ghosts did not.
 `online_area_id` is `required` and not decorative: the client stamps it into every ghost record it
 builds from the reply.
 
-## 7c. Bloodstains — still unexplained
+## 7c. Bloodstains — FIXED and CONFIRMED LIVE (2026-08-06)
+
+**The cause was the id floor.** Bloodstain ids started at 1; every other store (signs, ghosts,
+Mirror Knight) deliberately starts at 100000 because the client caches state by server-assigned id
+and small ids collide with sentinels or stale entries. Bloodstains were the one store that never
+got that treatment. Raising the floor made them appear.
+
+Evidence it is the id and not something else: same two players, same area, same cross-player
+selection, and a blob byte-identical to the one that had been failing — the only variable that
+changed is `bloodstain_id`, `1..6` before and `100000` after. Not formally A/B tested, so call it
+strongly indicated rather than proven.
+
+**Stains are also interactive.** `0x0393 RequestGetDeadingGhost` has now fired for the first time in
+the project's history — it had been zero in every prior session — which is the client fetching the
+~1.5 KB death replay when a player touches a stain. That exercises the whole feature, not just the
+marker.
+
+**The client's validator was innocent.** The decompilation found a byte-exact gate at v1.10
+`0x695D2C` — buffer non-null, length exactly 16, leading u32 equal to `0x0039000B` — and bloodstains
+are the only ground feature that *drops* an entry when it fails, silently. Live logging shows our
+blob is `0039000b000186a5f2a1015cfa52e500`: correct stamp, correct length, and identical between
+storage and the wire. The agent that found the gate explicitly declined to claim it was firing, and
+was right not to.
+
+### Historical: what was ruled out on the way
 
 The same investigation **cleared** the bloodstain wire shapes. `RequestGetBloodstainListResponse`
 really does carry only `repeated BloodstainInfo = 1` with no area echo — confirmed three ways in
