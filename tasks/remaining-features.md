@@ -225,7 +225,9 @@ that against where it actually was, disagreed, and refused in ~100ms — read by
 "unable to find a world to invade". The push now carries the **host's** area and cell, since the
 invader travels to the host.
 
-**CONFIRMED LIVE across the full matrix: 5 invasions, 5 joins, 0 rejections.** All three cells
+**DONE — Dark Chasm of Old invasions are fully working and signed off (2026-08-05).**
+
+**CONFIRMED LIVE across the full matrix: 7 invasions, 7 joins, 0 rejections.** All three cells
 exercised as both the requested and the pushed value, same-cell and cross-cell:
 
 | requested | pushed | result |
