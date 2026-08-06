@@ -23,6 +23,19 @@ const (
 // The PC value from the protos is 0x3FB, useless here: no code exists for 0x3FB,
 // 0x3FC or 0x3FD anywhere in this client.
 
+// SIN IS NOT MODELLED, and it gates the Cracked Blue Eye Orb.
+//
+// That orb searches only for hosts who have accumulated enough sin to be a
+// Sinner or worse, and it is the one break-in type restricted to a covenant —
+// only Blue Sentinels can use it. We track neither, so a blue orb is offered
+// every otherwise-eligible player regardless of their sin.
+//
+// The consequence is offering targets the host's client will refuse, which is
+// the familiar failure: the invader sees an instant "unable to find a world"
+// that looks like nobody being online. Sin most likely lives in the status blob
+// among the fields we do not decode, so this is findable the same way the
+// invadability gate was — watch which field moves when a player becomes a
+// sinner.
 func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payload []byte) ([]byte, error) {
 	var req ds2pb.RequestGetBreakInTargetList
 	if err := proto.Unmarshal(payload, &req); err != nil {
@@ -51,8 +64,21 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 				continue
 			}
 			// Same area — the coarse 8-digit id, 40030000 for the whole Dark
-			// Chasm complex. The 6-digit cell within it is handled below.
-			if other.profile.onlineArea != req.GetOnlineAreaId() {
+			// Chasm complex.
+			//
+			// EXCEPT for the Cracked Blue Eye Orb, which is explicitly not
+			// area-bound: it searches the invader's own area first and then
+			// looks elsewhere, and the game says outright that "you will not
+			// necessarily invade in the area where you used the Orb". Applying
+			// the Red Eye Orb's locality to it is the same error as the cell
+			// filter that once broke Dark Chasm invasions — a restriction we
+			// invented rather than one the game has.
+			//
+			// Observed live: a Blue Sentinel's orb returned nothing with
+			// skipped_location=1, i.e. we had a candidate and discarded them
+			// purely for being in another area.
+			if req.GetType() != ds2pb.BreakInType_BreakInType_BlueEyeOrb &&
+				other.profile.onlineArea != req.GetOnlineAreaId() {
 				skippedLocation++
 				continue
 			}

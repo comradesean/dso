@@ -300,22 +300,19 @@ func (p matchProfile) effectiveCovenant() uint32 {
 
 // DS2 covenant ids as they appear in PlayerStatus.covenant.
 //
-// NINE OF THE TEN ARE CONFIRMED on the wire, each read from a live status blob
-// for a player known to be in that covenant, or watched changing as they
-// switched: None (0), Heirs of the Sun (1), Blue Sentinels (2), Way of the Blue
-// (4), Rat King (5), Bell Keepers (6), Dragon Remnants (7), Company of Champions
-// (8), Pilgrims of Dark (9).
+// EVERY ONE OF THESE IS CONFIRMED on the wire (2026-08-06). Each was read from a
+// live status blob for a player known to be in that covenant, or watched
+// changing as they switched. Nothing here rests on the reference list.
 //
-// Blue Sentinels goes further than the number: the summon worked immediately
-// after the switch, so the pool rule is verified too. Rat King, Dragon Remnants
-// and Pilgrims of Dark were each seen alongside their own content working —
-// the rat zones, a Dragon Eye sign, and Dark Chasm invasions respectively.
+// Several are corroborated beyond the number itself, by their own content
+// working in the same session: Blue Sentinels was followed immediately by a
+// successful summon, Rat King by summons at both rat zones, Bell Keepers by a
+// defence and a bell, Dragon Remnants by a Dragon Eye sign, and Pilgrims of Dark
+// by Dark Chasm invasions.
 //
-// BROTHERHOOD OF BLOOD (3) IS THE ONLY UNVERIFIED ONE, and it is unverified in a
-// specific way worth noting: its content has been tested — Undead Purgatory
-// arena duels work — but never by a player actually in the covenant, so the id
-// itself rests on the reference list alone. A wrong value would surface only as
-// a covenant-gated path that never activates.
+// Brotherhood of Blood (3) was the last to land and is the weakest of the set:
+// the id was observed, but the covenant's own content — Undead Purgatory arena
+// duels — has only ever been tested by players outside it.
 const (
 	covenantNone               uint32 = 0
 	covenantHeirsOfTheSun      uint32 = 1
