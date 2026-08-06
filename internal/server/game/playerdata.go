@@ -225,8 +225,34 @@ func (s *Service) handleGetPlayerCharacter(log logger, cs *clientSession, payloa
 		return nil, fmt.Errorf("parse RequestGetPlayerCharacter: %w", err)
 	}
 
+	// character_id is the REQUESTER'S local slot number, and a client has no way
+	// to learn anyone else's. So when it fetches another player's record — which
+	// it does to render a summon sign's owner — it sends its own slot with their
+	// player id, and that only matches by luck.
+	//
+	// Observed live 2026-08-06: a player using slot 4 asked for slot 4 of a
+	// player whose only character is slot 3, and got nothing. The sign still
+	// worked, but the client had been handed an empty record where a 404-byte
+	// save blob belonged.
+	//
+	// So for a cross-player fetch the slot is meaningless and is ignored: look
+	// the player up and return the character they actually have. Own-player
+	// fetches keep using the slot, since there the client does know its own
+	// slots and may legitimately be asking for a specific one.
+	wantID := req.GetCharacterId()
+	crossPlayer := req.GetPlayerId() != cs.playerID
+	if crossPlayer {
+		ids, err := s.store.CharacterIDs(context.Background(), req.GetPlayerId())
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) > 0 {
+			wantID = ids[0]
+		}
+	}
+
 	data := []byte{}
-	c, ok, err := s.store.GetCharacter(context.Background(), req.GetPlayerId(), req.GetCharacterId())
+	c, ok, err := s.store.GetCharacter(context.Background(), req.GetPlayerId(), wantID)
 	if err != nil {
 		return nil, err
 	}
@@ -234,9 +260,10 @@ func (s *Service) handleGetPlayerCharacter(log logger, cs *clientSession, payloa
 		data = c.Data
 	}
 
-	log.Debug("player character requested",
+	log.Info("player character requested",
 		"by_player_id", cs.playerID, "for_player_id", req.GetPlayerId(),
-		"character_id", req.GetCharacterId(), "found", ok, "data_bytes", len(data))
+		"asked_character_id", req.GetCharacterId(), "served_character_id", wantID,
+		"cross_player", crossPlayer, "found", ok, "data_bytes", len(data))
 
 	return proto.Marshal(&ds2pb.RequestGetPlayerCharacterResponse{
 		PlayerId:      proto.Uint32(req.GetPlayerId()),

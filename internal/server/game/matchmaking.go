@@ -300,15 +300,22 @@ func (p matchProfile) effectiveCovenant() uint32 {
 
 // DS2 covenant ids as they appear in PlayerStatus.covenant.
 //
-// CONFIRMED on the wire, each watched as a player actually switched covenant and
-// the status blob changed: Heirs of the Sun (1), Blue Sentinels (2), Way of the
-// Blue (4), Rat King (5), Bell Keepers (6). The Blue Sentinel case goes further
-// — the summon worked immediately afterwards, so both the id and the pool rule
-// are verified rather than just the number.
+// NINE OF THE TEN ARE CONFIRMED on the wire, each read from a live status blob
+// for a player known to be in that covenant, or watched changing as they
+// switched: None (0), Heirs of the Sun (1), Blue Sentinels (2), Way of the Blue
+// (4), Rat King (5), Bell Keepers (6), Dragon Remnants (7), Company of Champions
+// (8), Pilgrims of Dark (9).
 //
-// Brotherhood of Blood (3), Company of Champions (8), Dragon Remnants (7) and
-// Pilgrims of Dark (9) are still taken from the reference list and unverified. A
-// wrong one would surface only as a covenant-gated pool that never activates.
+// Blue Sentinels goes further than the number: the summon worked immediately
+// after the switch, so the pool rule is verified too. Rat King, Dragon Remnants
+// and Pilgrims of Dark were each seen alongside their own content working —
+// the rat zones, a Dragon Eye sign, and Dark Chasm invasions respectively.
+//
+// BROTHERHOOD OF BLOOD (3) IS THE ONLY UNVERIFIED ONE, and it is unverified in a
+// specific way worth noting: its content has been tested — Undead Purgatory
+// arena duels work — but never by a player actually in the covenant, so the id
+// itself rests on the reference list alone. A wrong value would surface only as
+// a covenant-gated path that never activates.
 const (
 	covenantNone               uint32 = 0
 	covenantHeirsOfTheSun      uint32 = 1
