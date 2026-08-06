@@ -51,6 +51,14 @@ type matchProfile struct {
 	// walked away.
 	onlineActivityArea uint32
 
+	// onlineArea is the coarse area id (8-digit, e.g. 40030000 for the Dark
+	// Chasm complex), as opposed to onlineActivityArea's cell-level id. Invasion
+	// matching uses this rather than the cell: a Cracked Red Eye Orb explicitly
+	// reaches any of the three chasms regardless of which one the invader is
+	// standing in, so requiring cell equality would enforce a restriction the
+	// game does not have.
+	onlineArea uint32
+
 	sittingAtBonfire bool
 
 	// humanEffigyBurnt is DS2's deliberate opt-out of invasion: burn an effigy at
@@ -128,6 +136,9 @@ func (p *matchProfile) applyStatus(blob []byte) {
 	if loc := all.GetPlayerLocation(); loc != nil {
 		if loc.OnlineActivityAreaId != nil {
 			p.onlineActivityArea = *loc.OnlineActivityAreaId
+		}
+		if loc.OnlineAreaId != nil {
+			p.onlineArea = *loc.OnlineAreaId
 		}
 	}
 	if it := all.GetItemUsingInfo(); it != nil {

@@ -47,20 +47,19 @@ func (s *Service) handleGetBreakInTargetList(log logger, cs *clientSession, payl
 				skippedNotInvadable++
 				continue
 			}
-			// The host must be in the place being asked about.
+			// Same AREA, deliberately not the same cell.
 			//
-			// This is what broke Dark Chasm of Old invasions. A Cracked Red Eye
-			// Orb cycles the three chasms, so the client asks about cells the
-			// invader is NOT standing in — and with no location filter we
-			// answered every one of them with a host who was somewhere else. The
-			// host's client then received an invasion tagged for a chasm it was
-			// not in and refused inside 120ms, which the invader reads as
-			// "unable to find a world to invade".
+			// An earlier version required the host's activity cell to equal the
+			// request's cell_id. That is too strict and enforces a rule the game
+			// does not have: a Cracked Red Eye Orb reaches any of the three Dark
+			// Chasms regardless of which one the invader is standing in, so a
+			// host one chasm over is a legitimate target. With cell equality on,
+			// two players in the Chasm complex could never find each other and
+			// the client simply searched forever.
 			//
-			// online_activity_area_id and the request's cell_id share an id
-			// space: both are the 6-digit mmmmbb form, and the chasm cells
-			// 400310/400320/400330 appeared in both during the same session.
-			if other.profile.onlineActivityArea != uint32(req.GetCellId()) {
+			// Area is the coarse 8-digit id (40030000 for the whole Chasm
+			// complex); the cell is the 6-digit one within it.
+			if other.profile.onlineArea != req.GetOnlineAreaId() {
 				skippedLocation++
 				continue
 			}
