@@ -25,22 +25,23 @@ const (
 
 // SIN IS ENFORCED HERE, because the client does not enforce it.
 //
-// CONFIRMED WORKING 2026-08-06: with one sinner and one innocent online, a blue
-// orb reported skipped_no_sin=1 and returned only the sinner, and the resulting
-// session (kind 12) landed on the sinner. sinner_points was watched taking the
-// values 0, 1 and 10, and decreasing 10->9, so it tracks sin rather than merely
-// being named for it -- and sin is evidently spent or decays rather than only
-// accumulating.
-//
-// The same query also confirmed the area fix below: the invader was in area
-// 10100000 and the target in 10190000, with skipped_location=0.
-//
 // The Cracked Blue Eye Orb targets only hosts carrying enough sin to be a
 // Sinner. Left ungated, a Blue Sentinel invaded a player with no sin at all
 // simply for sharing a zone — so the rule has to live on this side. sinner_points
 // comes from StatsInfo in the status blob, a sub-message the profile had not been
 // reading, which is why an earlier hunt for a sin counter across PlayerStatus and
 // ItemUsingInfo found nothing while a player was actively earning it.
+//
+// CONFIRMED WORKING 2026-08-06. With one sinner and one innocent online, a blue
+// orb reported skipped_no_sin=1, returned only the sinner, and the resulting
+// session (kind 12) landed on the sinner. The same query also confirmed the area
+// fix below — invader in 10100000, target in 10190000, skipped_location=0.
+//
+// sinner_points tracks sin rather than merely being named for it: observed at 0,
+// 1 and 10, and observed FALLING 10->9 at the moment the Sentinel killed the
+// sinner. That is the mechanic, not decay — being slain by a Blue Sentinel
+// absolves a point of sin, which closes the loop the covenant exists for. The
+// client owns that arithmetic; we only read the result.
 //
 // The orb's other restriction — that only Blue Sentinels may use it — is NOT
 // enforced. Nothing has been seen violating it, and covenant membership is the
