@@ -70,13 +70,16 @@ func (s *Service) handleNotifyLeaveSession(log logger, cs *clientSession, payloa
 //
 //	field_1  the PEER's player id (the guest here, the host in JoinSession)
 //	field_7  the online area id, confirmed by matching the sign's own area
-//	field_2  the session kind. Observed live:
-//	           5  ordinary summon sign, AND Red Eye Orb invasions — an earlier
-//	              note here had 5 as sign-only, but a confirmed
-//	              BreakInType_RedEyeOrb invasion produced it, so the kind varies
-//	              by invasion TYPE rather than being one value for all break-ins
-//	           7  break-in invasion in the Dark Chasm of Old (a different
-//	              BreakInType from the above)
+//	field_2  the session kind. Each of these was pinned by the event logged
+//	         immediately before the join, not inferred:
+//	           1  ordinary co-op summon via a White Sign Soapstone (sign_type 0)
+//	           5  Red Eye Orb invasion. NOT the ordinary summon sign — an earlier
+//	              note here said so, from an older session that was misread. A
+//	              confirmed BreakInType_RedEyeOrb break-in produced this, and a
+//	              sign_type 0 summon produced 1, both in the same session
+//	           7  break-in invasion in the Dark Chasm of Old, a different
+//	              BreakInType from the above — so the kind varies by invasion
+//	              type rather than being one value for all break-ins
 //	           8  arena duel
 //	           9  Mirror Knight squire
 //	          10  Dragon Remnants duel via a Dragon Eye sign (sign_type 6)
