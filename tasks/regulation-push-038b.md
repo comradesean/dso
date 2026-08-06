@@ -1,8 +1,9 @@
 # `0x038B RegulationFileUpdatePushMessage` — live param replacement
 
-**Status: the receive path is traced end to end and is fully wired up. The client applies pushed
-resources on the next frame, in memory, with no restart. Three items remain open, one of which
-decides whether this reaches the Majula chest at all.**
+**Status: CONFIRMED WORKING END TO END on a live client (2026-08-06).** We pushed a replacement
+`regulationEnglish.fmg`, the client accepted it, and the applier wrote our `version_new` into the
+holder — 11500 became 11501 in memory. The whole chain from push dispatcher to applier is now
+observed behaviour, not inference.
 
 All addresses are v1.10 vaddrs unless noted. Everything marked CONFIRMED was read out of the
 disassembly; INFERRED and UNKNOWN are called out.
@@ -290,6 +291,33 @@ chest (object `10045510`, the pair-mate of the ordinary Soul Vessel one).
 Everything about this push fails **silently** on the client — wrong size, wrong path, wrong version,
 wrong repository all look identical from outside. A negative result therefore isolates nothing on its
 own; change one variable at a time.
+
+## CONFIRMED WORKING — the accept, observed
+
+Second read, after a push carrying `version_required = 11500`:
+
+```
++0x00  0x00002CED = 11501      <- was 11500; the applier wrote our version_new
+```
+
+**That is an accepted, applied entry.** Confirmed by it: `version_required` must equal the game's
+build version; a bare `regulationEnglish.fmg` is accepted as `path` with no `param:/` prefix needed
+for FMGs; the applier runs and writes field 1 back into the holder exactly as `0x770480` says.
+
+The obelisk text did **not** visibly change, and that is now explained rather than mysterious: the
+FMG route memcpys into `*(res+152)`, the buffer the file was loaded into, and Majula had already
+copied the string into its own display state. **A visible-text probe is therefore not a valid test
+of this message** — it can read "no change" on complete success. `current_version` is the correct
+readout, because the applier writes it before any display is involved.
+
+### `current_version` increments on every success
+
+It is 11500 at boot (seeded from the loaded regulation) and becomes whatever `version_new` we sent
+after each accepted push. A fixed `version_required` therefore works exactly **once** per session.
+
+The server sweeps a small window (`11500`-`11510`) rather than tracking it: at most one entry can
+match, the rest are dropped silently and harmlessly, and it self-heals across client restarts, which
+reset the value to 11500.
 
 ## SOLVED BY DEBUGGER — `current_version` is the client's build version
 
