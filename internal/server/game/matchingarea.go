@@ -44,6 +44,16 @@ func (s *Service) handleGetRightMatchingArea(log logger, cs *clientSession, payl
 		return nil, fmt.Errorf("parse RequestGetRightMatchingArea: %w", err)
 	}
 
+	// CONFIRMED LIVE 2026-08-06: this drives the orange glow on the bonfire
+	// travel screen, marking the area with the most activity. Worth recording
+	// because 0x03FA exists only in v1.10 — it is absent from the v1.00 binary,
+	// which briefly had us believing the opcode was not real.
+	//
+	// The requester is counted along with everyone else, so a player's own area
+	// always contributes at least one to its own glow. Whether the real server
+	// excluded the asker is unknown and it is plausible either way; a "where is
+	// everyone" display including you is not obviously wrong. It would only
+	// become visible with players spread across several areas.
 	counts := make(map[uint32]uint32)
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.areaID == 0 {
