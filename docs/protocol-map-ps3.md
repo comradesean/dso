@@ -268,7 +268,7 @@ Message names come from the *nearest preceding* Frpg2 message-class vtable load 
 | `0x03EC` | R/R | `RequestGetAnnounceMessageList` | `0x1558870`; resp `0x155C2D4` — **confirmed live** |
 | `0x03ED` | M | `RequestNotifyKillPlayer` | `0x15654C4` |
 | `0x03EE` | M | `RequestNotifyRingBell` | `0x1566040` |
-| `0x03EF` | P | `PushRequestNotifyRingBell` | v1.10: reg `0x15CFCD8` (`li r4,0x3EF`); handler `0x15D0528` → `0x15D0630`; ctor `0x16418E4`, vtable `0x1CE1AE0`; `GetTypeName` confirms the name. Serializer `0x1634BA0`: `1 uint32`, `2 uint32`, `3 uint32`, `4 bytes` |
+| `0x03EF` | P | `PushRequestNotifyRingBell` | v1.10: reg `0x15CFCD8` (`li r4,0x3EF`); handler `0x15D0528` → `0x15D0630`; ctor `0x16418E4`, vtable `0x1CE1AE0`; `GetTypeName` confirms the name. Serializer `0x1634BA0`: `1 uint32`, `2 uint32`, `3 uint32`, `4 bytes`. **RECEIVE-SIDE DEAD:** the handler tests a listener at `manager+0x80`, nulled in the ctor (`0x15CFC9C`) and never assigned anywhere in either build, and the check precedes `ParseFromArray` — so the frame is dropped whole and no field value can matter. Field 1 is never read even if it were; 2 and 3 are copied with no comparison (no map check); 4 may be empty safely |
 | `0x03F0` | R/R | `RequestGetTotalDeathCount` | `0x15675E0`; resp `0x1566E50` |
 | `0x03F1` | M | `RequestNotifyDeath` | `0x1564F04` |
 | `0x03F2` | M | `RequestNotifyOfflineDeathCount` | `0x1564D28` |

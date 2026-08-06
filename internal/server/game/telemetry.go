@@ -251,12 +251,36 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // is the mechanism behind the long-standing reports of hearing bells with no
 // invasion of one's own underway.
 //
-// SPECULATIVE, and deliberately gated. Fields 2-4 of the push have unknown
-// meaning — nothing has ever sent one, so there is no capture to copy — and the
-// assignment here is reasoned from the request's own layout rather than
-// observed. If the guess is wrong the likely outcome is a push the client
-// discards in silence, which costs nothing; but a malformed push is also how
-// several silent failures in this project began, hence the switch.
+// DEFAULTS OFF, because the retail client CANNOT RECEIVE THIS.
+//
+// The 0x03EF handler (v1.10 0x15D0528) tests a listener pointer at manager+0x80
+// and returns early when it is null. The constructor sets that field to null
+// (0x15CFC9C) and NOTHING in either executable ever assigns it — no store to
+// +0x80 through that object exists anywhere in the net library, and none of the
+// 219 call sites of the manager accessor writes through the returned pointer.
+// The null check runs BEFORE ParseFromArray, so the frame is dropped whole and
+// no field is even decoded.
+//
+// So field values are irrelevant: no assignment of fields 2-4 can produce any
+// effect. Tuning them would have been wasted effort, and the guesses below are
+// left only so the runtime experiment can be run.
+//
+// The code stays for exactly that: pointing a client at breakpoint 0x15D05A4
+// (v1.00: 0x156645C) and reading r0 while we send one settles empirically what
+// the disassembly says. r0 == 0 means the listener really is null and the
+// feature is receive-side dead. The residual doubt is a store the analysis could
+// not attribute, which is small but not zero.
+//
+// What the handler WOULD do if a listener existed, recovered anyway: field 1 is
+// never read; fields 2 and 3 are copied verbatim into a 24-byte struct with no
+// comparison of any kind — notably NO map check, so a toll from another map
+// would not be filtered; field 4 is byte-copied and an EMPTY one is safe, since
+// the constructor points it at the shared empty-string singleton.
+//
+// This also revives ghost replay as the explanation for players hearing bells
+// with no invasion underway. There is no server-driven bell broadcast to hear,
+// and ghosts now actually work — a bell pull inside a recording would reach a
+// listener with no bell-specific message involved.
 //
 // Sent to everyone EXCEPT the ringer. Their own client already played the bell
 // locally, and a relay would give them a second one.
@@ -289,17 +313,13 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 		"recipients", sent, "payload_bytes", len(body))
 }
 
-// bellBroadcastEnabled gates the relay. Defaults ON — the whole point of
-// decoding this was to reproduce a behaviour players remember — but it is the
-// one thing here built on guessed field meanings, so it can be switched off
-// without a rebuild if it misbehaves.
+// bellBroadcastEnabled gates the relay. Defaults OFF: the client discards 0x03EF
+// before parsing it, so sending one is pure wasted traffic. Set
+// DSO_BELL_BROADCAST=1 to send anyway, which is how the breakpoint experiment
+// described above gets its frame.
 func bellBroadcastEnabled() bool {
-	v := os.Getenv("DSO_BELL_BROADCAST")
-	if v == "" {
-		return true
-	}
-	on, err := strconv.ParseBool(v)
-	return err != nil || on
+	on, err := strconv.ParseBool(os.Getenv("DSO_BELL_BROADCAST"))
+	return err == nil && on
 }
 
 // handleNotifyKillEnemy adds to the world enemy-kill counter.
