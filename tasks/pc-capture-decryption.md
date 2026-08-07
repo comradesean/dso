@@ -135,7 +135,8 @@ real and you have plaintext.
 1. **Start `dumpcap` with a ring buffer BEFORE launching the game.** The handshake is what gets lost
    otherwise, and it is not recoverable afterwards.
 2. Launch the game, then run `keydump.exe` **as Administrator** (it needs `DebugActiveProcess`).
-   Start it before going online — the keys are installed during the login handshake.
+   Start it before going online — the keys are installed during the login handshake. It prints both
+   keys and **detaches on its own**, leaving the game unattached for the rest of the session.
 3. Go online. Keys print as they appear; expect at least two (auth stream, then game service).
 4. Play. Ring bells, sit somewhere far from a belfry, let it run.
 5. Pull one game datagram's **UDP payload** out of the capture and run `verifykey` against the
