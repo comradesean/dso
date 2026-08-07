@@ -80,6 +80,27 @@ lever was actually pulled, which the protocol cannot see: nothing is sent betwee
 Incidentally this confirms field 2 of the visit push is the **host** player id — the self-invasion
 at 18:21:33 names host 2910025, which is LOCAL.
 
+### Session-scoping is REFUTED
+
+A tempting reading of the second batch is that a toll only reaches players who were in the ringing
+host's world — because 8 of the 13 distinct bell events rang in a world one of our characters had
+been invited into. Classifying every (bell, hearer) pair by whether that hearer was actually inside
+that host's session at the time kills it:
+
+```
+  heard while INSIDE the ringing host's world : 7
+  heard while OUTSIDE it                      : 8
+```
+
+Eight hearings came from players who were never invited to that world at all, including two bells
+(05:41:17 and 05:41:29, host 3241000) from a stranger our characters never met. So the toll is not
+scoped to the session, and "I was in that fight" is not why it was heard.
+
+Worth keeping in view when reading the event list: **most bells we captured were downstream of our
+own play** — 3 rung by our own characters and 8 rung in worlds we had invaded, against only 2 that
+were entirely unrelated. A corpus gathered by two people farming belfries is not a neutral sample of
+what a bell does.
+
 ### The map filter is SUPPORTED, not refuted
 
 > **Two earlier claims in this file were wrong and are withdrawn.** The first said FromSoftware
