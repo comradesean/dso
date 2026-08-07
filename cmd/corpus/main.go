@@ -53,6 +53,30 @@ type message struct {
 	payload  []byte
 	protoOff int
 	clean    bool
+	push     bool
+}
+
+// pushWrapperOpcode is the message opcode every server push arrives under. The
+// push's own id is protobuf field 1 of the body.
+const pushWrapperOpcode = 0x0320
+
+// pushID extracts a push's real id from a wrapper body.
+//
+// The body begins with four 0xFF bytes before the protobuf, which is what makes
+// a wrapper recognisable without a schema.
+func pushID(body []byte) (uint32, bool) {
+	b := body
+	if len(b) >= 4 && b[0] == 0xff && b[1] == 0xff && b[2] == 0xff && b[3] == 0xff {
+		b = b[4:]
+	}
+	if len(b) < 2 || b[0] != 0x08 {
+		return 0, false
+	}
+	v, n := uvarint(b[1:])
+	if n == 0 || v == 0 || v > 0xFFFF {
+		return 0, false
+	}
+	return uint32(v), true
 }
 
 // protoStart locates where the protobuf begins inside a reassembled message.
@@ -247,10 +271,22 @@ func main() {
 		if !ok {
 			off = 8
 		}
-		msgs = append(msgs, message{
+		m := message{
 			dir: dir, opcode: binary.BigEndian.Uint32(full[4:8]),
 			payload: full[off:], protoOff: off, clean: ok,
-		})
+		}
+		// Pushes all ride the wrapper opcode 0x0320 and carry their REAL id in
+		// protobuf field 1. Filing them under the wrapper buries every push type
+		// in one bucket — which is exactly how four bell tolls ended up looking
+		// like they were missing from the corpus.
+		// ONLY messages arriving under the wrapper opcode are pushes. Testing the
+		// body shape alone matches any message whose first field is a small
+		// varint, which invented half a dozen push types that do not exist.
+		if id, isPush := pushID(m.payload); isPush && m.opcode == pushWrapperOpcode {
+			m.opcode = id
+			m.push = true
+		}
+		msgs = append(msgs, m)
 	}
 
 	counts := map[uint32]int{}
@@ -263,7 +299,11 @@ func main() {
 		if name == "" {
 			name = "unknown"
 		}
-		dir := filepath.Join(*outDir, fmt.Sprintf("%#04x_%s", m.opcode, name))
+		kind := ""
+		if m.push {
+			kind = "PUSH_"
+		}
+		dir := filepath.Join(*outDir, fmt.Sprintf("%s%#04x_%s", kind, m.opcode, name))
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			fatal("%v", err)
 		}

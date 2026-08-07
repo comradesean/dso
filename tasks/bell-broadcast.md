@@ -117,7 +117,9 @@ The toll reaches the belfry's surrounding region, not just the belfry map:
 
 - **Belfry Luna -> Lost Bastille.** Confirmed on the wire: the listening client was in Lost Bastille
   (`m10_14`) and received a toll carrying `10160000`.
-- **Belfry Sol -> Iron Keep.** Reported from play by the person running these tests.
+- **Belfry Sol -> Iron Keep.** Reported from play by the person running these tests. A fourth toll,
+  in a later session, carried `f3=10190000` (Sol) to a client reporting Sol-side areas — consistent
+  with the regional model, though it does not discriminate further.
 
 It is also not scoped to the fight. The listening client received a toll for a world it had no part
 in — its whole session contained three pushes, one `0x038C` and the two bells, with **no `0x3CC`**,
@@ -155,6 +157,37 @@ a false negative costs one person one toll.
 
 Until then we send to everyone, because an extra small packet is a cheaper mistake than a bell that
 should have rung and did not.
+
+### THE PC CLIENT NEVER SENDS `0x03EE` — the server rings the bell itself
+
+**Across nine decrypted sessions, ~4,700 messages, there is not one `0x03EE`.** Not from the client
+that rang, not from either machine. Meanwhile four `0x03EF` tolls were received.
+
+The sequence that explains it, from the VM's own session (`corpus/`, VMrun2 messages 849-858):
+
+```
+849  c2s  RequestNotifyKillPlayer (0x03ED)   the Bell Keeper kills the host
+855  s2c  PUSH 0x03EF                        toll, f2 = that host's player id
+858  c2s  RequestNotifyLeaveSession
+```
+
+No ring message between them. The server produced the toll from the kill.
+
+**This contradicts the PS3 model**, and both observations are solid, so the difference is real rather
+than a mistake in one of them:
+
+- On **PS3** the lever demonstrably sends `0x03EE`. Confirmed live: the prompt does not appear until
+  a covenant defender kills the host, and pulling it put `08 <varint mapid> 12 00` on the wire.
+- On **PC (SOTFS)** no client ever sends it, and the toll follows `RequestNotifyKillPlayer`.
+
+**INFERRED, not proven:** that the server derives the toll from the kill. The alternative is that
+another Bell Keeper in the same world rang and their `0x03EE` is simply not in our captures — we only
+ever see one side. What IS established is that the client we captured did not send one, and that the
+toll it received names the host it had just killed.
+
+Consequence for us: our `broadcastBellToll` is driven by `handleNotifyRingBell`. That matches PS3,
+which is the platform we serve, so it stays — but the PC behaviour is worth knowing before assuming
+one implementation fits both.
 
 ### `0x3CC` (972) is the Bell Keeper visitor push, and OUR LAYOUT IS RIGHT
 
