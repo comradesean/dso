@@ -23,18 +23,26 @@ machine we were capturing. Machine identities come from the login response, not 
 
 ### CONFIRMED — `0x03EE` is sent by the HOST, after they die
 
-Not by whoever pulls the lever. Both captured rings came from the player who was **invaded** and
-**killed**, seconds after their death, and in both cases the *killer* heard the resulting toll while
-the sender did not:
+Not by whoever pulls the lever. All three captured bells that follow a death come from the player
+who was **invaded** and **killed**, seconds later. Who *heard* it varies, and the distinction
+matters — the rule is not "the killer hears it", it is "everyone in range except the host who sent
+it":
 
 ```
-18:21:33  LOCAL dies as HOST (guest had joined)   ->  18:21:39  LOCAL sends 0x03EE
-                                                       VM (the phantom who killed them) hears it
-22:15:29  VM    dies as HOST                      ->  22:15:43  VM    sends 0x03EE
-                                                       LOCAL hears it
-22:54:08  LOCAL kills as PHANTOM                  ->  22:54:20  the HOST (3161263) is the ringer
-                                                       LOCAL hears it
+18:21:33  SELF-INVASION. Our VM was the phantom in our LOCAL's world and killed it.
+          18:21:39  LOCAL (host) sends 0x03EE.  VM, the killer, hears it.  LOCAL does not.
+
+22:15:29  VM killed by an UNOBSERVED THIRD PARTY in VM's own world.
+          22:15:43  VM (host) sends 0x03EE.  LOCAL hears it as an unrelated
+                    BYSTANDER — LOCAL was not in that session at all.
+
+22:54:08  LOCAL, as phantom, killed a third-party host.
+          22:54:20  that host (3161263) is the ringer.  LOCAL, the killer, hears it.
 ```
+
+**Only the first is a self-invasion**, and it is the only session in this batch where both machines
+were in the same world at a kill — 1 of 10 kills, 6 of 16 times we were invaded. The other two
+cases involve third parties whose side was never captured, so they are single-ended.
 
 Roles are read from the traffic, not assumed: `0x03E8 NotifyJoinGuestPlayer` means a guest entered
 *my* world, so I am the host and I was invaded; `0x03EA NotifyJoinSession` means I entered someone
