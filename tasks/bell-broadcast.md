@@ -14,6 +14,45 @@ know.
 
 ---
 
+## NEW EVIDENCE — FromSoftware DID filter (2026-08-07, from timestamped captures)
+
+The corpus now carries capture times, and two machines were recording FromSoftware's live server
+**simultaneously for 103 minutes** (LOCAL 04:05-09:48 UTC, VM 08:05-09:48). That makes the open
+question below partly answerable for the first time.
+
+**Four `0x03EF` pushes exist across all nine sessions, and the two machines share NONE of them.**
+
+| time (UTC) | received by | ringer | map rung |
+|---|---|---|---|
+| 05:41:17 | LOCAL | 3241000 | `10160000` Belfry Luna |
+| 05:41:29 | LOCAL | 3241000 | `10160000` Belfry Luna |
+| 09:12:16 | LOCAL | 3468141 | `10190000` Belfry Sol |
+| 09:47:24 | **VM** | 2350487 | `10160000` Belfry Luna |
+
+**Field 3 is the map id of the belfry that was rung**, and field 2 is the ringer's player id. That
+is new, and it confirms the ringing map is what the server broadcasts — which is what `bellRegions`
+keys on.
+
+**If every ring went to everyone online, the two overlapping captures would show the same bell
+stream. They have nothing in common.** So the server filtered. That retires the "was it filtered at
+all" half of the question.
+
+**The predicate is NOT settled, and one observation argues against the obvious answer.** At 09:47:24
+both machines were in area `10160000` — the same map as the bell — within ~150s of the push, and
+only the VM received it. Three reasons that is not conclusive:
+
+- **±150s is loose.** The nearest status heartbeat to the push was over two minutes away on both
+  sides, and a player can leave a map in two minutes.
+- **Two different players on a live server are in different worlds.** Same map id does not mean same
+  session, and a bell may well be scoped to a session rather than a map. That would explain the
+  result without contradicting a map-based rule.
+- **Absence in a capture is weaker than presence.** Nothing failed to decrypt, but a push that was
+  never captured and a push that was never sent look identical.
+
+What would settle it: two clients whose locations are known precisely at the moment of a ring —
+which we can now arrange deliberately, because our own server logs both sides and we control when
+the bell rings.
+
 ## The chain, confirmed end to end
 
 ```
