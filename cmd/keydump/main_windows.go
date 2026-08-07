@@ -124,9 +124,10 @@ func main() {
 	name := flag.String("name", "DarkSoulsII.exe", "process name to find when -pid is not given")
 	out := flag.String("out", "", "also append keys to this file")
 	flag.BoolVar(&verbose, "v", false, "log every debug event (use if it misbehaves)")
-	flag.BoolVar(&lockThread, "lock", false, "pin the debug loop to one OS thread (see the note in run)")
+	nolock := flag.Bool("nolock", false, "do NOT pin the debug loop to one OS thread (see the note in run)")
 	wantKeys := flag.Int("n", 2, "detach after this many keys (0 = stay attached)")
 	flag.Parse()
+	lockThread = !*nolock
 
 	target := uint32(*pid)
 	if target == 0 {
@@ -154,22 +155,24 @@ func main() {
 }
 
 func run(pid uint32, sink *os.File, wantKeys int) error {
-	// OFF BY DEFAULT, deliberately, and the reasoning is worth keeping.
+	// ON BY DEFAULT. This was off for a while and that was a mistake worth
+	// recording, because the evidence looked convincing.
 	//
-	// The Windows debug API is thread-affine: WaitForDebugEvent and
-	// ContinueDebugEvent are supposed to come from the same OS thread that
-	// called DebugActiveProcess, and Go moves goroutines between OS threads
-	// whenever it likes. By the book this lock should be mandatory, and its
-	// absence should cause exactly the failure it is meant to prevent — the
-	// debuggee suspended forever, waiting for a continue that never arrives.
+	// The whole Windows debug API is thread-affine. WaitForDebugEvent and
+	// ContinueDebugEvent are supposed to come from the thread that called
+	// DebugActiveProcess, and — the part that actually bit us —
+	// DebugSetProcessKillOnExit sets its flag on the debug object belonging to
+	// the CALLING THREAD. Go migrates goroutines between OS threads freely, so
+	// without the lock that call can land on a thread owning no debug object,
+	// fail silently, and leave kill-on-exit at its default. Detaching then
+	// closes the game, which is precisely what kept happening.
 	//
-	// In practice the unlocked build is the one that captured keys from a live
-	// client, and adding the lock brought the freeze back. Go's main goroutine
-	// starts on the main thread and nothing here yields long enough to be
-	// migrated, so the lock buys little and evidently costs something.
-	//
-	// Observation wins. Default to what demonstrably worked, keep the flag so
-	// the question stays answerable, and do not quietly "fix" this back.
+	// It was switched off earlier because locking appeared to cause freezes.
+	// That reading was confounded: three separate bugs were live at the time —
+	// scanning the image while the process was held suspended, returning the
+	// attach breakpoint as unhandled, and detaching without draining pending
+	// events. Each of those froze the game on its own. Attributing it to the
+	// lock was pattern-matching on the last thing changed.
 	if lockThread {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
