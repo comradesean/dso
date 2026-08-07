@@ -20,6 +20,8 @@ disassembly; INFERRED and UNKNOWN are called out.
 - `importance` (field 1) is the **new** regulation version; `target_regulation_version` (field 2) is
   the **prerequisite**. It is a version chain, not a priority.
 - Applied **every frame** from the per-tick update, in place, in the live resource.
+- `path` is the key the resource is **registered** under, which is a bare filename for both routes:
+  `OnlineEventParam.param`, `regulation.fmg`. Not the BND entry name, not the load path.
 
 ## The message
 
@@ -153,18 +155,16 @@ this path.** The name "diff" is a misnomer at the client end — it is a whole-r
 
 **This is the trap.** For a param the client prepends `param:/` to whatever you send, so a bare
 `OnlineEventParam.param` is correct. **For an FMG it prepends nothing** — the lookup uses your string
-as-is, so you must send the resource's *full* path.
+as-is, so it must equal the key the resource was registered under.
 
-And an FMG's resource path is nothing like its name inside the archive. The BND4 entry is
-`regulationEnglish.fmg`, but the loaded resource is registered from the template at `0x1881580`:
+> **That key is `regulation.fmg`, bare — read out of live memory 2026-08-07. See "SOLVED — the
+> obelisk key" below.** The paragraph that used to stand here inferred
+> `text:/Text/English/regulation.fmg` from the format template at `0x1881580`, and that inference was
+> wrong: the template is the *load* path, not the *registry* key. The template string is resident in
+> the string pool right next to the key, which is exactly how it fooled us.
 
-```
-text:/Text/%s/regulation.fmg        %s = "English" (literal at 0x1888F08)
-```
-
-so the key is **`text:/Text/English/regulation.fmg`**. Sending `regulationEnglish.fmg` can never
-match, which is why our first obelisk push did nothing. Siblings at `0x18813E0`
-(`text:/Text/%s/Staffroll.fmg`) and `0x18815C0` (`text:/Text/%s/%s.fmg`) confirm the shape.
+Siblings at `0x18813E0` (`text:/Text/%s/Staffroll.fmg`) and `0x18815C0` (`text:/Text/%s/%s.fmg`)
+confirm the template shape — but not that any of them is a repository key.
 
 ### The branch, disassembled
 
@@ -279,7 +279,8 @@ RegulationFileUpdatePushMessage {
   update_msg { diff_data_list: [ {
       importance:                <client_regulation_version + 1>   // becomes the new version, <= 999999
       target_regulation_version: <client_regulation_version>       // must equal what the client loaded
-      path:                      "OnlineEventParam.param"          // client prepends "param:/"
+      path:                      "OnlineEventParam.param"          // the REGISTERED key, bare;
+                                                                   // "regulation.fmg" for the obelisk
       diff_data:                 <entire new PARAM file, byte for byte>
       // start_at / end_at / field 7: omit, never read
   } ] }
@@ -431,85 +432,178 @@ sweep; FMGs are not.
 
 Recovery is a restart: the apply path writes only to memory, so nothing survives the process.
 
-## STILL OPEN — the obelisk (memscan findings, 2026-08-07)
+## SOLVED — the obelisk key is `regulation.fmg`, bare (2026-08-07)
 
-Use `tools/memscan` — RPCS3's own search returns nothing even for strings that are certainly
-resident, so its negatives are worthless.
+**The path we had been sending was wrong.** The regulation FMG is registered in the resource
+repository under the bare filename **`regulation.fmg`** — not `regulationEnglish.fmg` (its BND4 entry
+name) and not `text:/Text/English/regulation.fmg` (the template-derived load path we inferred and
+sent). Read straight out of a live RPCS3, so this is observation, not inference.
 
-CONFIRMED by scanning RPCS3's memory (41 GB, 9,814 regions):
+### How it was recovered — pointer-walking, not searching
 
-- **Our path form is correct.** `text:/Text/English/regulation.fmg` exists verbatim in memory, and
-  the resource registry at guest `0x1e52xxx` is full of `text:/Text/English/<name>.fmg` entries
-  (ItemName, SimpleExplanation, bofire, shop, prologue, ...). `regulation.fmg` is NOT among them.
-- **The FMG is loaded and relocated.** Buffer at guest `0x312883F0`; offset 0x14 holds `0x31288418`,
-  a pointer, so `*(dst+20) += dst` from `0x76A0F0` has run on it.
-- **Its record allocates 1024 bytes** for a 128-byte file — so a same-size push into it would be
-  safe. The earlier crash was a DIFFERENT container's `regulation.fmg`: that name repeats in many
-  containers (`c151`, `c309`, `c700`, `m10_`, `IC_C`) alongside `prologue.fmg`/`shop.fmg`.
-- **Our marker text is nowhere in memory**, so no apply ever happened.
+The previous pass stopped at a 6-word memory block and guessed the key was one indirection further
+out. It was not: that block is a heap allocation descriptor, and the key hangs off a *different*
+object. Two facts from the disassembly turned the search into a walk:
 
-The single resource record (mirrored 3x by RPCS3's guest mapping):
+- **`0x76A0F0` says the resource object holds its buffer at `+152`** (`addi r29,r31,144;
+  lwz r3,8(r29)`) and its dirty flag at `+164`.
+- **`0xC169E8` says the same object holds its name at `+4`** — the bucket walk does
+  `lwz r8,4(r3)` to get the wide string it compares. So *every* resource carries its own key.
 
-```
-30a00f1c  01c93a70  30a00f1c  312883f0  00000400  00000001
-                              ^buffer   ^1024
-```
-
-**No name string in the record.** The lookup key is one indirection further out — `0x100A1354`
-repeats through it and looks like a class/table pointer. That is the next thing to follow, and it is
-where this stops.
-
-
-The chest works; the obelisk does not. With `path = text:/Text/English/regulation.fmg` the text is
-still the stock "The letters are worn beyond recognition."
-
-What is ruled out:
-
-- **Size.** `0x76A0F0` accepts <= 1024 and our payload is 128. Had it been found, the memcpy and the
-  `+20` relocation would have rewritten exactly the bytes we want.
-- **The language token.** The table at `0x1888EF0`-`0x1888F98` is `Japanese, English, French,
-  Germany, Italian, Spanish, Korean, Chinese, Russian, Polish, Portuguese` — exactly the eleven
-  `regulation<Lang>.fmg` files in the archive. `English` is right.
-- **The version.** The same sweep lands the chest's params in the same session.
-
-So the repository lookup at `0xC169E8` is returning NULL and `0x770858` skips the apply. Either the
-resource is registered under a different key, or the regulation FMG is not registered as a resource
-at all and the game copies its strings elsewhere at load.
-
-Sibling templates use other schemes — `dlc_data:/Menu/Text/%s/bloodmes/%s.fmg` (`0x1888E30`),
-`gamedata_patch:/Menu/Text/%s/bloodmes/%s.fmg` (`0x1888E80`), `title_patch:/param/` (`0x1871460`) —
-so a patched 1.10 install may register it under one of those. `DSO_REGULATION_PUSH_PATH` now takes a
-comma-separated list and sends one push per candidate.
-
-**The decisive test is a memory search**, not more guessing. In RPCS3's memory viewer, search the
-UTF-16BE bytes of `regulation.fmg`:
+That is the whole trick. Find the buffer, subtract 152, read `+4`:
 
 ```
-0072006500670075006c006100740069006f006e002e0066006d0067
+guest 0x312883F0   FMG buffer (relocated: +0x14 holds 0x31288418 = buffer+0x28)
+guest 0x31286EC8   the only pointer to it in all of guest memory  ->  object = 0x31286E30
+guest 0x31286E30   +0   = 0x01CA8E30   vtable
+                   +4   = 0x30003440   -> UTF-16BE "regulation.fmg"     <-- THE KEY
+                   +152 = 0x312883F0   buffer
+                   +156 = 0x00000400   1024 bytes allocated for a 128-byte file
+                   +164 = 0x01         dirty flag
 ```
 
-and read the whole wide string around each hit — that is the key as actually registered. Searching
-for the obelisk text itself confirms which side of the lookup failed:
+`tools/memscan` grew a `-read`/`-base` mode for this. Guest memory maps at host **`0x300000000`**
+(found by scanning for a string whose EBOOT vaddr we knew, `text:/Text/%s/regulation.fmg` at
+`0x1881580`, and subtracting); RPCS3 mirrors the same pages at `0x400000000` and higher, so ignore
+duplicate hits above `0x40000000` guest.
+
+### The bucket walk — a positive control, and the collision check
+
+The repository itself is reachable and readable, which lets us reproduce the client's own lookup by
+hand and confirm every assumption at once.
 
 ```
-0054006800650020006c006500740074006500720073002000610072006500200077006f0072006e
+repo   = *( *(0x1E1D810) + 24 )              ; 0x76FE84: lwz r11,0(r9); lwz r11,24(r11)
+       = *( 0x30A00170 + 24 ) = 0x3567D540
+repo+8  = 0x6D = 109                         ; bucket count (modulus)
+repo+20 = 0x305E3130                         ; bucket array, stride 20 bytes
 ```
 
-Present and unmodified means the buffer is loaded and our memcpy never ran.
+The hash, straight from `0xC169E8` — fold `A`–`Z` to lower case, then `h = c + h*137` over the
+UTF-16 code units:
+
+```python
+def h(s):
+    v = 0
+    for ch in s:
+        c = ord(ch)
+        if 65 <= c <= 90: c += 32
+        v = (c + v*137) & 0xffffffff
+    return v
+```
+
+`h("regulation.fmg") % 109 = 11`, so bucket = `0x305E3130 + 11*20 = 0x305E320C`, whose
+`{begin,end}` = `{0x3079FA30, 0x3079FA5C}` — 11 entries. Reading `+4` of each:
+
+```
+31d24af0  menu:/18.febnd.dcx              3569e2a0  dlc_data:/EzState/talk_m10_04_00_00.esd
+33eab720  AS_1010_M.vpo                   356b8180  lotpf:/m10_04_00_00/enkei3_d
+31286e30  regulation.fmg   <-- ours       3568e4a0  dlc_data:/ezstate/ai741000.esd
+366c02b0  gibnd:/m10_04_00_00/...tpf.dcx  36baef30  mapbnd:/m10_04_00_00/m1525.flv.dcx
+3128bce0  eventmaker:/EventMakerEx/...    36c3d9b0  hihkxbnd:/m10_04_00_00/h02_1000.hkx.dcx
+                                          36d48db0  gibnd:/m10_04_00_00/m0368_gi_00.tpf.dcx
+```
+
+**Exactly one entry in the bucket is named `regulation.fmg`.** The other ten merely collide. That
+retires the crash hazard for this particular push: there is no second `regulation.fmg` for the walk
+to reach first, and the one it reaches has a 1024-byte buffer for our 128-byte payload.
+
+The many other `regulation.fmg` strings in memory (guest `0x100Axxxx`, `0x108Cxxxx` — sixteen of
+them) live in the **archive directory** region, not the repository. They are BND entry names for
+other containers, which is what the earlier crash hit. They are not registry keys.
+
+### The type gate also passes — no base-class walk needed
+
+`0xC169E8` matches on name first, then calls `node->vtbl[0]()` and walks the returned type's parent
+chain (`lwz r3,4(r9)`) against `key+4`. Our object's `vtbl[0]` is OPD `0x01D56608` → `0x76B4CC`, and
+`0x76B4CC` is **byte-for-byte identical to `0x76B514`**, the function the applier calls to build the
+key type. Both are `lwz r30,-29432(r2); lwz r9,-32728(r30); lwz r3,0(r9)` with the same lazy init via
+`0x76A86C`. Same cached descriptor, so it matches on the first compare.
+
+### Why the template string fooled us
+
+`text:/Text/English/regulation.fmg` really is resident — at guest `0x30009002`, in the *same string
+pool*, a few hundred bytes from the real key at `0x30003440`. It is the **load** path (formatted from
+`0x1881580`), used to find the file in the virtual filesystem; the repository is then keyed on the
+basename. Finding the string and concluding "our path form is correct" was the error: presence in
+memory says a string exists, not that it is a key. The only thing that proves a key is walking the
+container that keys on it.
+
+## Route A is the live path — `repo+172` is NOT null (2026-08-07)
+
+Open item 3 below asked whether `r16 = *(repo+172)` is non-null at runtime. **It is:**
+`*(0x3567D5EC) = 0x3567D600`, an object whose `+4` names it **`title_patch:/regulation.bnd.dcx`** —
+the patch regulation archive. So `0x76FF48` / `0x7705B8` send *every* entry to `0x76BB30`, and the
+extension test at `0x770800` and the lookup at `0x770848` are **dead code on this build**.
+
+`0x76BB30(archive, name, source)` is not merely an overlay register — it is a second, parallel copy
+of the same two routes:
+
+```
+76bb50: r31 = *(r30-32596)          ; container global; if *r31 == 0 -> return, silently
+76bb74: bl 0xDE50F8                 ; GetExtension(name)
+76bb84: bl 0x184DF2C                ; wcscmp against an extension literal
+76bb90: bne -> 0x76BC0C             ; other extension: 0xBD3478 / 0xBD3120 on *(r31)   [params]
+76bb94: r11 = *( *(r30-32728) )     ; the SAME cached type as 0x76B514
+76bba8: r29 = *( *(r30-32524) + 24 ); a repository, reached by the same *(*(g))+24 shape
+76bbc0: bl 0xC169E8(r29, {name, type})
+76bbd0: beq -> return               ; not found -> silent, harmless
+76bbdc: cmpwi r5,1024 ; ble         ; payload size gate, same 1024 cap
+```
+
+So the FMG rule is unchanged in substance — **key by the registered name, cap 1024, no destination
+size check** — it just arrives via `0x76BB30` instead of `0x770848`. And the param branch keys off a
+different container, which is consistent with bare `OnlineEventParam.param` having worked.
+
+This also means the mechanism FromSoftware actually shipped is an **archive overlay**: pushes are
+staged into `title_patch:/regulation.bnd.dcx` keyed by BND entry name, and the applier's tail
+(`0x770484: bl 0x75E158`, after `current_version` is written) is the reload that makes params take
+effect. That is why a param push visibly moved the chest.
 
 ## OPEN — resolve before building a payload
 
-1. **Repository identity — the big one.** The applier reaches its repo via `*(*(0x1E1D810)) + 24`.
-   The chest's threshold reader `0x66F1D8` reads `*(*(0x1E1EAB4 + 32)) + 24`. **Different globals.**
-   If they are not the same repository, a push lands somewhere the chest never looks and the whole
-   plan fails silently. UNKNOWN.
-2. **`path` spelling** — bare vs `param:/`-prefixed. The normalisation stage `0x76FF50`–`0x770200`
-   is undecoded. Cheap to test both.
-3. **Route A.** Before the extension test, if `r16 = *(repo+172) != 0` the entry goes to
-   `0x76BB30(r16, name, data)` instead (`0x76FF48` / `0x7705B8`). Undecoded — UNKNOWN whether it also
-   applies or merely registers an overlay, and UNKNOWN whether that pointer is non-null at runtime.
-4. **v1.00 not cross-checked** beyond confirming the `L"param:/"` and `L".fmg"` literals exist
+1. ~~**Repository identity.**~~ **CLOSED** by the chest run (`tasks/majula-event-chest.md`): the
+   applier's repo and the chest's threshold reader are the same repository. Independently confirmed
+   here — `*(*(0x1E1D810)+24) = 0x3567D540` is the repository that actually holds the loaded
+   `regulation.fmg`, verified by reproducing its hash and walking its bucket.
+2. ~~**`path` spelling.**~~ **CLOSED.** Bare names are correct for both routes: `OnlineEventParam.param`
+   armed the chest, and the FMG key is the bare `regulation.fmg`.
+3. ~~**Route A.**~~ **CLOSED** — see above. `repo+172` is non-null, Route A is the only path that runs,
+   and it *does* apply rather than merely register.
+4. **Which repository Route A's `.fmg` branch searches.** `0x76BB30` uses `*(*(r30-32524)+24)`, a
+   different global from the applier's `*(*(0x1E1D810))+24`. Almost certainly the same singleton, but
+   the anchor for `lwz r30,-29432(r2)` was not pinned, so the pool slot could not be read. **A wrong
+   guess here is silent, not fatal** — a missed lookup returns NULL and the entry is skipped. Pin the
+   anchor by finding a slot that resolves `-32596`, `-32728`, `-32524` to plausible globals; the
+   applier's anchor `0x1D1C2AC` is confirmed (`-32668 -> 0x1E1D810`, `-32660 -> L".fmg"`) and is
+   *not* the same one.
+5. **v1.00 not cross-checked** beyond confirming the `L"param:/"` and `L".fmg"` literals exist
    (`0x17FD600` / `0x17FD4C8`).
+
+## The obelisk test, ready to run
+
+`data/regpush/armed/regulationEnglish.fmg` is already built — 128 bytes, byte-identical to the stock
+file except the string, which reads `0x038B LANDED. THE PUSH REACHED THE FMG!`. The live buffer at
+`0x312883F0` matches the stock file word for word, so the payload is size-correct by construction.
+
+```
+DSO_REGULATION_PUSH_FILE=data/regpush/armed/regulationEnglish.fmg
+DSO_REGULATION_PUSH_PATH=regulation.fmg
+DSO_REGULATION_PUSH_VERSION_REQUIRED=11500
+```
+
+**Send exactly this one path.** The 1024-byte cap in both `0x76A0F0` and `0x76BB30` is a payload
+gate, not a destination gate — a speculative name that *hits* is memory corruption. This one is safe
+because the bucket walk above shows it resolves to a single 1024-byte record.
+
+Read the result with `tools/memscan`, not with your eyes: Majula copies the string into its own
+display state at map load, so the on-screen text can read "unchanged" on a complete success.
+
+```
+memscan.exe -proc rpcs3.exe -utf16be "THE PUSH REACHED THE FMG"
+```
+
+A hit at guest `0x312883F0`+0x28 is the apply. A hit only in the server's own memory is not.
 
 ## Why this reframes the chest
 

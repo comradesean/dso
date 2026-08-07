@@ -103,10 +103,13 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 		return
 	}
 
-	// For a param the client prepends L"param:/" itself, so the bare file name is
-	// correct and is what armed the chest. For an FMG it prepends nothing and
-	// looks the string up as-is, and an FMG's resource path is nothing like its
-	// name inside the archive — see tasks/regulation-push-038b.md.
+	// path is the key the client registered the resource under, and for both
+	// routes that is a bare file name: "OnlineEventParam.param" armed the chest,
+	// and the obelisk FMG is registered as "regulation.fmg" — read out of live
+	// memory at the resource object's +4. Not "regulationEnglish.fmg" (its BND4
+	// entry name) and not "text:/Text/English/regulation.fmg" (the load path an
+	// earlier pass inferred from the format template and sent in vain).
+	// See tasks/regulation-push-038b.md.
 	//
 	// Accepts a comma-separated list so several candidate paths can be tried in
 	// one login. Sent as separate pushes rather than separate entries in one:
@@ -115,10 +118,13 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 	//
 	// DANGER, for .fmg payloads only: DO NOT list speculative paths. A wrong path
 	// that MISSES is harmless, but a wrong path that HITS is memory corruption —
-	// 0x76A0F0 checks only that the payload is <= 1024 bytes and never compares it
-	// against the destination, so it memcpys over whatever resource matched and
-	// leaves everything past your bytes stale with a string table pointing into
-	// garbage. Sending nine candidates crashed the client twice on load.
+	// both 0x76A0F0 and 0x76BB30 check only that the payload is <= 1024 bytes and
+	// never compare it against the destination, so the memcpy runs over whatever
+	// resource matched and leaves everything past your bytes stale with a string
+	// table pointing into garbage. Sending nine candidates crashed the client
+	// twice on load. The name "regulation.fmg" repeats across many archive
+	// containers, so it is only safe because the repository bucket was walked and
+	// holds exactly one resource under it.
 	//
 	// Params are safe to sweep this way: their route requires an exact size match,
 	// so a wrong destination is skipped rather than clobbered.

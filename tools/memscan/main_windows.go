@@ -23,6 +23,21 @@
 //
 // -utf16be is the usual one for PS3 game text: the console is big-endian and its
 // FMG strings are UTF-16BE.
+//
+// Finding a pattern is only half of following a data structure — the other half is
+// reading a specific address, which is what -read does:
+//
+//	memscan.exe -proc rpcs3.exe -read 0x7ff8_1288_3f0 -len 256
+//
+// Guest PS3 addresses are not host addresses, but RPCS3 maps guest memory at a
+// fixed host base, so one known landmark converts every other pointer. -base takes
+// that offset and lets you pass guest addresses directly:
+//
+//	memscan.exe -proc rpcs3.exe -base 0x300000000 -read 0x312883f0 -len 256
+//
+// To find the base, scan for a string whose guest vaddr you know from the EBOOT and
+// subtract. -words prints the dump as big-endian 32-bit words, which is how every
+// pointer in this game is stored.
 package main
 
 import (
@@ -31,6 +46,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -78,11 +94,22 @@ func main() {
 	ascii := flag.String("ascii", "", "pattern as ASCII")
 	context := flag.Int("context", 64, "bytes of context to print around each hit")
 	max := flag.Int("max", 20, "stop after this many hits")
+	readAt := flag.String("read", "", "dump memory at this address instead of searching")
+	readLen := flag.Int("len", 128, "bytes to dump for -read")
+	baseStr := flag.String("base", "0", "host base of guest memory; added to -read and printed alongside hits")
+	words := flag.Bool("words", true, "print dumps as big-endian 32-bit words")
 	flag.Parse()
 
+	base, err := parseAddr(*baseStr)
+	if err != nil {
+		fatal("-base: %v", err)
+	}
+
 	var pat []byte
-	var err error
 	switch {
+	case *readAt != "":
+		// handled after the process is open
+
 	case *hexPat != "":
 		pat, err = hex.DecodeString(strings.ReplaceAll(*hexPat, " ", ""))
 		if err != nil {
@@ -95,9 +122,9 @@ func main() {
 	case *ascii != "":
 		pat = []byte(*ascii)
 	default:
-		fatal("give one of -hex, -utf16be, -utf16le or -ascii")
+		fatal("give one of -hex, -utf16be, -utf16le, -ascii or -read")
 	}
-	if len(pat) == 0 {
+	if *readAt == "" && len(pat) == 0 {
 		fatal("empty pattern")
 	}
 
@@ -115,6 +142,22 @@ func main() {
 		fatal("OpenProcess(%d): %v (try running as Administrator)", target, errno)
 	}
 	defer procCloseHandle.Call(h)
+
+	if *readAt != "" {
+		addr, err := parseAddr(*readAt)
+		if err != nil {
+			fatal("-read: %v", err)
+		}
+		buf := make([]byte, *readLen)
+		var read uintptr
+		ok, _, errno := procReadProcessMem.Call(h, addr+base,
+			uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&read)))
+		if ok == 0 || read == 0 {
+			fatal("ReadProcessMemory(%#x): %v", addr+base, errno)
+		}
+		dump(buf[:read], addr, base, *words)
+		return
+	}
 
 	fmt.Printf("searching for %d bytes: %s\n\n", len(pat), hex.EncodeToString(pat))
 
@@ -158,7 +201,11 @@ func main() {
 						}
 						hits++
 						at := mi.BaseAddress + off + uintptr(i)
-						fmt.Printf("HIT %d at %#x  (region %#x, protect %#x)\n", hits, at, mi.BaseAddress, mi.Protect)
+						guest := ""
+						if base != 0 {
+							guest = fmt.Sprintf(" guest %#x", at-base)
+						}
+						fmt.Printf("HIT %d at %#x%s  (region %#x, protect %#x)\n", hits, at, guest, mi.BaseAddress, mi.Protect)
 						printContext(chunk, i, at, *context)
 						if hits >= *max {
 							fmt.Printf("\nstopping at %d hits\n", hits)
@@ -198,6 +245,40 @@ func printContext(chunk []byte, i int, at uintptr, n int) {
 	// PS3 text is UTF-16BE; rendering the window that way often shows the whole
 	// surrounding string, which is the point of running this at all.
 	fmt.Printf("    as UTF-16BE: %q\n", decodeUTF16BE(chunk[lo:hi]))
+}
+
+// parseAddr accepts 0x-prefixed hex, bare hex, or decimal, and ignores "_"
+// separators so long PS3 pointers can be grouped for readability.
+func parseAddr(s string) (uintptr, error) {
+	s = strings.ReplaceAll(strings.TrimSpace(s), "_", "")
+	v, err := strconv.ParseUint(strings.TrimPrefix(s, "0x"), 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%q is not an address", s)
+	}
+	return uintptr(v), nil
+}
+
+// dump prints a -read result. Addresses are labelled with the guest address the
+// caller asked for, not the host address we actually read, because every pointer
+// in the dump is a guest pointer and mixing the two is how you lose an afternoon.
+func dump(b []byte, addr, base uintptr, words bool) {
+	const perLine = 16
+	for i := 0; i < len(b); i += perLine {
+		hi := i + perLine
+		if hi > len(b) {
+			hi = len(b)
+		}
+		line := b[i:hi]
+		fmt.Printf("%08x +%03x  ", uint32(addr)+uint32(i), i)
+		if words {
+			for j := 0; j+4 <= len(line); j += 4 {
+				fmt.Printf("%08x ", binary.BigEndian.Uint32(line[j:]))
+			}
+		} else {
+			fmt.Printf("%-32s ", hex.EncodeToString(line))
+		}
+		fmt.Printf(" %s\n", decodeUTF16BE(line))
+	}
 }
 
 func encodeUTF16(s string, bigEndian bool) []byte {
