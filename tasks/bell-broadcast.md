@@ -17,64 +17,56 @@ know.
 ## THE RING AND THE TOLL, BOTH SIDES CAPTURED (2026-08-07, second capture batch)
 
 The second batch has **279 minutes of two machines recording FromSoftware's live server at once**,
-and — for the first time — `0x03EE`, the ring itself. Eight distinct bell events, three of them rung
-by a machine we were capturing.
+and — for the first time — `0x03EE`, the ring itself. Eight distinct bell events, three rung by a
+machine we were capturing. Machine identities come from the login response, not assumption:
+**LOCAL = 2910025, VM = 3473926**.
 
-> **This supersedes an earlier claim in this file that FromSoftware filtered the broadcast.** That
-> rested on four bell pushes in the first batch, of which the two machines shared none. Two of those
-> four are now explained by the ringer rule below, and with eight events, **five went to both
-> machines**. The first result was a small sample read too confidently.
+### CONFIRMED — the ringer does not receive their own toll
 
-**CONFIRMED — the ringer does not receive their own toll.** Twice, in both directions, at identical
-timestamps:
+Twice, in both directions, at identical timestamps, with the ringer id matching the machine that
+sent the `0x03EE`:
 
 ```
-18:21:39  LOCAL sends 0x03EE (map 10160000)  ->  18:21:39  VM receives 0x03EF, ringer = LOCAL
-22:15:43  VM    sends 0x03EE (map 10160000)  ->  22:15:43  LOCAL receives 0x03EF, ringer = VM
+18:21:51  LOCAL sends 0x03EE  ->  VM receives 0x03EF, ringer 2910025 = LOCAL.  LOCAL does not.
+22:15:43  VM    sends 0x03EE  ->  LOCAL receives 0x03EF, ringer 3473926 = VM.  VM does not.
 ```
 
-In each case the ringing machine did **not** get its own push, while the other did, in the same
-second. `telemetry.go` already skips the ringer, so our behaviour matches.
+`telemetry.go` already skips the ringer, so our behaviour matches.
 
-**CONFIRMED — the toll crosses belfries.** Two independent cases:
+### The map filter is SUPPORTED, not refuted
 
-- 22:15:43: a bell rung in **Belfry Luna** (`10160000`) reached a player whose last location fix put
-  them in **Belfry Sol** (`10190000`).
-- 18:32:48: a bell rung in **Belfry Sol** reached a player in **Belfry Luna**'s map.
+> **Two earlier claims in this file were wrong and are withdrawn.** The first said FromSoftware
+> filtered, on four pushes the two machines shared none of — weak reasoning that happened to point
+> the right way. The second said tolls **cross** belfries, "confirmed". That came from taking the
+> *nearest* status fix to each bell instead of bracketing it, and it does not survive the check.
 
-**That is in tension with our regional filter, and the tension is worth stating rather than
-resolving by preference.** `bellRegions` sends a Luna toll only to `{Luna, Lost Bastille}`, so it
-would have dropped both of those. The filter exists for a real, observed reason — the client cannot
-tell which bell rang, so a Luna toll delivered to someone standing in Sol makes them hear *Sol* —
-and yet FromSoftware evidently delivered exactly that. Three readings, and this data does not
-separate them:
+Bracketing each bell with the last fix before and the first after:
 
-- **The location fixes are stale.** Both cases rest on a status heartbeat 59-75s from the push, and a
-  player crosses a map in that time.
-- **FromSoftware really did broadcast widely**, and the wrong-bell effect is an original-game quirk
-  rather than something to reproduce faithfully.
-- **The predicate is something else entirely** — session or world scoped, say — that happens to look
-  cross-map from two clients' vantage points.
+| time | bell map | LOCAL | VM | verdict |
+|---|---|---|---|---|
+| 18:21:51 | Luna | Luna, **missed** | Luna, got | LOCAL is the ringer |
+| 18:32:48 | **Sol** | Sol at −29s, Luna at +10s, **got** | Luna, **missed** | VM in the wrong map missed it |
+| 21:02:17 | Luna | Luna, got | Luna, got | both in map |
+| 21:24:00 | Luna | Luna, got | Luna, got | both in map |
+| 22:15:43 | Luna | Luna at −581s, Sol at +75s, got | Luna, **missed** | VM is the ringer |
+| 22:23:57 | Sol | Sol, got | Sol, got | both in map |
+| 22:39:58 | Sol | Sol, got | Sol, got | both in map |
+| 22:54:20 | Sol | Sol, got | Sol, got | both in map |
 
-**One event is still unexplained**: 18:32:48, ringer 3207541, map `10190000`, received by LOCAL and
-not by the VM, with the VM online and capturing throughout. It has no nearby location fix, so the VM
-may simply have been between areas.
+**Every one of the eight is consistent with "delivered to players in the bell's map, except the
+ringer."** Nothing requires cross-map delivery.
 
-### The eight events
+The case I had called proof of crossing was 22:15:43: LOCAL's nearest fix was Sol, 75s *after* the
+bell — but the fix *before* it says Luna, and the ringer moved to Sol in the same window, so both
+players were plainly in Luna at the ring and travelled together afterwards. Using the nearest fix
+rather than the bracket inverted the answer.
 
-| time (UTC) | ringer | map rung | received by |
-|---|---|---|---|
-| 18:21:39 | LOCAL itself | Luna | VM only — ringer excluded |
-| 18:32:48 | 3207541 | Sol | LOCAL only — VM online, unexplained |
-| 21:02:17 | 1321650 | Luna | both |
-| 21:24:00 | 3428694 | Luna | both |
-| 22:15:43 | VM itself | Luna | LOCAL only — ringer excluded |
-| 22:23:57 | 3471010 | Sol | both |
-| 22:39:58 | 2712542 | Sol | both |
-| 22:54:20 | 3161263 | Sol | both |
+**18:32:48 is positive evidence for the filter**, and the only such case here: a Sol bell, with the
+VM sitting in Luna throughout, and the VM did not receive it.
 
-What would settle the predicate now: we can ring bells on our own server with both clients at known,
-logged positions, which removes the location staleness that is the weakest link above.
+**What is still not established** is the *width* of the region. `bellRegions` sends a Luna toll to
+Lost Bastille as well, on a first-batch observation of a player in m10_14 receiving one. Nothing in
+this batch tests that, because every player in it was in a belfry.
 
 ## The chain, confirmed end to end
 
