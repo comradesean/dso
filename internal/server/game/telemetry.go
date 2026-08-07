@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -350,6 +351,66 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // resolved consumer address, which can be read statically in one pass. r5 is the
 // 24-byte payload, r3 the sink whose vtable identifies the owning subsystem.
 //
+// bellRegions maps a ringing belfry's map id to the areas its toll reaches.
+//
+// ONLY CONFIRMED ENTRIES BELONG HERE. Each one should be traceable to something
+// observed, because a wrong entry either silences a bell or rings the wrong one,
+// and both are worse than an honest gap.
+//
+//   - Belfry Luna (10160000) -> Lost Bastille (10140000): CONFIRMED on the wire.
+//     A live 0x03EF carrying 10160000 was received by a client standing in
+//     m10_14. See tasks/bell-broadcast.md.
+//   - Belfry Sol (10190000) -> Iron Keep: reported from play, but Iron Keep's map
+//     id is NOT established here, so it is absent rather than guessed.
+//
+// A belfry always reaches itself.
+//
+// Region membership is overridable at runtime via DSO_BELL_REGION_<mapid>, a
+// comma-separated list of area ids, so a gap can be filled from evidence without
+// a rebuild.
+var bellRegions = map[uint32][]uint32{
+	10160000: {10160000, 10140000}, // Belfry Luna, Lost Bastille
+	10190000: {10190000},           // Belfry Sol (+ Iron Keep, id unconfirmed)
+}
+
+// bellReaches reports whether a toll from ringMap should go to a player in area.
+//
+// An unknown area (0, profile not yet received) is NOT sent to. That is the
+// deliberate choice: a false positive rings the wrong bell, which players notice,
+// while a false negative costs one person one toll. The previous code failed open
+// here for the opposite reason, which was defensible when the filter was believed
+// to be a pure optimisation. It is not one.
+func bellReaches(ringMap, area uint32) bool {
+	if area == 0 {
+		return false
+	}
+	for _, m := range bellRegionFor(ringMap) {
+		if m == area {
+			return true
+		}
+	}
+	return false
+}
+
+func bellRegionFor(ringMap uint32) []uint32 {
+	if raw := os.Getenv(fmt.Sprintf("DSO_BELL_REGION_%d", ringMap)); raw != "" {
+		var out []uint32
+		for _, f := range strings.Split(raw, ",") {
+			if v, err := strconv.ParseUint(strings.TrimSpace(f), 10, 32); err == nil {
+				out = append(out, uint32(v))
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	if r, ok := bellRegions[ringMap]; ok {
+		return r
+	}
+	// Unknown belfry: reach only itself. Conservative on purpose.
+	return []uint32{ringMap}
+}
+
 // Sent to everyone EXCEPT the ringer. Their own client already played the bell
 // locally, and a relay would give them a second one.
 func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint32) {
@@ -412,40 +473,42 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 	// yet has onlineArea 0 and still gets the toll: the client will discard it if
 	// they are elsewhere, so a false positive costs one small packet, while a
 	// false negative would silence a bell someone should have heard.
-	var sent int
+	var sent, skipped int
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.playerID == from.playerID {
 			continue
 		}
-		// THE MAP FILTER IS GONE, because FromSoftware did not have one.
+		// REGIONAL FILTER. Not an optimisation — without it the WRONG BELL RINGS.
 		//
-		// It used to drop anyone whose area was not the ringing bell's map, on
-		// the reasoning that the server is the only place the decision CAN be
-		// made — the client never reads the body, it sets a latch, and whichever
-		// belfry map is loaded plays its own bell. That reasoning was sound and
-		// the conclusion was still wrong, which is worth remembering.
+		// The client cannot tell which bell rang: the push sets a boolean latch,
+		// and whichever belfry map is loaded plays its own bell. So a Luna toll
+		// delivered to someone standing in Belfry Sol makes them hear SOL. That
+		// is not hypothetical — with filtering off on PS3, a player in Iron Keep
+		// heard Belfry Sol's bell from a toll carrying Belfry Luna's map.
 		//
-		// A capture of FromSoftware's live server (2026-08-07) shows a player
-		// standing in Lost Bastille (m10_14) receiving a 0x03EF whose field 3 is
-		// Belfry Luna (m10_16). Different maps. Our filter would have dropped
-		// that push, silencing a bell the real server delivered.
+		// The history here is worth keeping, because both previous versions were
+		// wrong in opposite directions:
 		//
-		// The real rule is REGIONAL: the toll reaches the belfry's surrounding
-		// region. Belfry Luna -> Lost Bastille is confirmed on the wire; Belfry
-		// Sol -> Iron Keep is reported from play. Exact boundaries are unknown,
-		// and guessing at them would rebuild the same mistake with a bigger
-		// radius.
+		//  1. Filter to the ringing bell's map exactly. Too narrow — a capture of
+		//     FromSoftware's live server shows a player in Lost Bastille (m10_14)
+		//     receiving a toll for Belfry Luna (m10_16). This dropped it.
+		//  2. No filter at all. Too wide — it reintroduces the wrong-bell bug
+		//     above, which is a visible defect rather than a missing packet.
 		//
-		// So: send to everyone. That is an approximation, not a claim. It cannot
-		// silence a bell that should have rung, which is the failure that
-		// matters, and an extra small packet is the cheaper mistake.
+		// The rule is REGIONAL: a toll reaches the belfry's surrounding region.
+		// bellRegions holds what is actually established; anything not in it is
+		// not guessed at.
+		if !bellReaches(mapID, other.profile.onlineArea) {
+			skipped++
+			continue
+		}
 		other.conn.SendPush(body)
 		sent++
 	}
 	log.Info("broadcast bell toll",
 		"ringer_player_id", from.playerID, "map_id", mapID,
 		"push_id", fmt.Sprintf("%#04x", int(ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell)),
-		"recipients", sent,
+		"recipients", sent, "skipped_out_of_region", skipped,
 		"payload_bytes", len(body))
 }
 
@@ -495,7 +558,7 @@ func (s *Service) maybeSendTestBellToll(log logger) {
 	// observable. A player roams, hears the toll only in the map this names, and
 	// that is the experiment. Adding the location filter here would quietly
 	// destroy it.
-	var sent int
+	var sent, skipped int
 	for _, other := range s.sessions {
 		if other.playerID == 0 {
 			continue
@@ -505,7 +568,7 @@ func (s *Service) maybeSendTestBellToll(log logger) {
 	}
 	if sent > 0 {
 		log.Info("TEST bell toll sent with no bell rung anywhere",
-			"recipients", sent, "map_id", 10160000)
+			"recipients", sent, "skipped_out_of_region", skipped, "map_id", 10160000)
 	}
 }
 

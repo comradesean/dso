@@ -128,9 +128,30 @@ areas for this purpose, is not established by anything here. Do not guess at it 
 
 **Whether the covenant matters is UNTESTED.** No observation here bears on it either way.
 
-Our implementation currently sends to everyone. That is an approximation, not a claim: it cannot
-silence a bell that should have rung, which is the failure that matters, and it is closer to the
-observed behaviour than the per-map filter it replaced.
+### Both previous implementations were wrong, in opposite directions
+
+1. **Filter to the ringing bell's map exactly.** Too narrow. The capture shows a Lost Bastille
+   listener receiving a Luna toll; this dropped it.
+2. **No filter at all.** Too wide, and worse — it reintroduces the **wrong bell**. The client cannot
+   tell which bell rang, so a Luna toll delivered to someone standing in Belfry Sol makes them hear
+   SOL. Observed on PS3 with filtering off: a player in Iron Keep heard Belfry Sol's bell from a
+   toll carrying Belfry Luna's map. A missing packet is invisible; a bell ringing in the wrong
+   belfry is not.
+
+Now: a **regional** filter, `bellRegions` in `internal/server/game/telemetry.go`, holding only what
+is established.
+
+```
+10160000 Belfry Luna -> {10160000, 10140000}   Lost Bastille CONFIRMED on the wire
+10190000 Belfry Sol  -> {10190000}             Iron Keep reported from play, map id NOT established
+```
+
+**Iron Keep's map id is the missing piece.** It is deliberately absent rather than guessed. Fill it
+without a rebuild via `DSO_BELL_REGION_10190000=10190000,<ironkeep>`.
+
+An unknown listener area (profile not yet received) is **not** sent to. That is a reversal of the old
+fail-open behaviour, and deliberate: a false positive rings the wrong bell where players can hear it,
+a false negative costs one person one toll.
 
 Until then we send to everyone, because an extra small packet is a cheaper mistake than a bell that
 should have rung and did not.
