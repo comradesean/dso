@@ -41,6 +41,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
 	"syscall"
@@ -57,7 +58,8 @@ var (
 	sigCWCInit    = []byte{0xA9, 0xE7, 0xFF, 0xFF, 0xFF}
 	sigEntryDelta = uintptr(0x22)
 
-	verbose bool
+	verbose    bool
+	lockThread bool
 )
 
 func exceptionName(code uint32) string {
@@ -85,13 +87,16 @@ const (
 
 	// Offsets into the x64 CONTEXT structure.
 	ctxContextFlags = 0x30
-	ctxEFlags       = 0x44
 	ctxRcx          = 0x80
 	ctxR8           = 0xB8
 	ctxRip          = 0xF8
 	ctxSize         = 1232
 
-	trapFlag = 0x100
+	// rearmDelay is how long the breakpoint stays removed after a hit, so the
+	// thread that hit it can clear the instruction before it comes back. The two
+	// keys we care about arrive about a second apart, so this is comfortably
+	// inside that.
+	rearmDelay = 150 * time.Millisecond
 )
 
 var (
@@ -119,6 +124,8 @@ func main() {
 	name := flag.String("name", "DarkSoulsII.exe", "process name to find when -pid is not given")
 	out := flag.String("out", "", "also append keys to this file")
 	flag.BoolVar(&verbose, "v", false, "log every debug event (use if it misbehaves)")
+	flag.BoolVar(&lockThread, "lock", false, "pin the debug loop to one OS thread (see the note in run)")
+	wantKeys := flag.Int("n", 2, "detach after this many keys (0 = stay attached)")
 	flag.Parse()
 
 	target := uint32(*pid)
@@ -141,21 +148,32 @@ func main() {
 		sink = f
 	}
 
-	if err := run(target, sink); err != nil {
+	if err := run(target, sink, *wantKeys); err != nil {
 		fatal("%v", err)
 	}
 }
 
-func run(pid uint32, sink *os.File) error {
+func run(pid uint32, sink *os.File, wantKeys int) error {
+	// OFF BY DEFAULT, deliberately, and the reasoning is worth keeping.
+	//
 	// The Windows debug API is thread-affine: WaitForDebugEvent and
-	// ContinueDebugEvent must be called from the SAME OS thread that called
-	// DebugActiveProcess. Go moves goroutines between OS threads whenever it
-	// likes, so without this the debug loop eventually runs on a thread that
-	// owns nothing, stops receiving events, and leaves the game suspended
-	// forever waiting for a continue that never comes — indistinguishable from
-	// a hang, and intermittent, which is worse.
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	// ContinueDebugEvent are supposed to come from the same OS thread that
+	// called DebugActiveProcess, and Go moves goroutines between OS threads
+	// whenever it likes. By the book this lock should be mandatory, and its
+	// absence should cause exactly the failure it is meant to prevent — the
+	// debuggee suspended forever, waiting for a continue that never arrives.
+	//
+	// In practice the unlocked build is the one that captured keys from a live
+	// client, and adding the lock brought the freeze back. Go's main goroutine
+	// starts on the main thread and nothing here yields long enough to be
+	// migrated, so the lock buys little and evidently costs something.
+	//
+	// Observation wins. Default to what demonstrably worked, keep the flag so
+	// the question stays answerable, and do not quietly "fix" this back.
+	if lockThread {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+	}
 
 	// Without this, detaching or crashing takes the game down with us.
 	procDebugSetKillOnEx.Call(0)
@@ -169,17 +187,35 @@ func run(pid uint32, sink *os.File) error {
 	fmt.Println("(go online now — the keys are installed during the login handshake)")
 
 	var (
-		hProcess  uintptr
+		hProcess  uintptr //nolint:unused // read by the signal handler
+		imageBase uintptr
 		bpAddr    uintptr
 		origByte  byte
 		armed     bool
-		pendingBP uintptr // thread id -> needs re-arm after single step
+		needScan  bool
+		rearmAt   time.Time // zero = nothing pending
 		hits      int
 	)
 
+	// Ctrl-C must not leave an INT3 planted. Go runs no deferred functions on
+	// SIGINT, and DebugSetProcessKillOnExit(0) means the game survives us — so
+	// without this it keeps running with a breakpoint byte in its code and dies
+	// the next time that function is called, long after the debugger is gone.
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt)
+	go func() {
+		<-sigc
+		if armed && hProcess != 0 {
+			writeBytes(hProcess, bpAddr, []byte{origByte})
+			fmt.Println("\nbreakpoint removed; detaching")
+		}
+		procDebugActiveStop.Call(uintptr(pid))
+		os.Exit(0)
+	}()
+
 	evt := make([]byte, 4096)
 	for {
-		r, _, err := procWaitForDebugEvent.Call(uintptr(unsafe.Pointer(&evt[0])), 1000)
+		r, _, err := procWaitForDebugEvent.Call(uintptr(unsafe.Pointer(&evt[0])), 50)
 		if r == 0 {
 			// ERROR_SEM_TIMEOUT is the normal idle case; anything else means
 			// the loop is broken and would otherwise spin in silence while the
@@ -189,6 +225,12 @@ func run(pid uint32, sink *os.File) error {
 			}
 			if verbose {
 				fmt.Fprintf(os.Stderr, "WaitForDebugEvent: %v\n", err)
+			}
+			// Idle is also when the re-arm falls due.
+			if !rearmAt.IsZero() && time.Now().After(rearmAt) {
+				if b, err := setBreakpoint(hProcess, bpAddr); err == nil {
+					origByte, armed, rearmAt = b, true, time.Time{}
+				}
 			}
 			continue
 		}
@@ -206,22 +248,17 @@ func run(pid uint32, sink *os.File) error {
 			// CREATE_PROCESS_DEBUG_INFO: hProcess at union+8, lpBaseOfImage at
 			// union+24. The union starts at offset 16 in the x64 DEBUG_EVENT.
 			hProcess = uintptr(binary.LittleEndian.Uint64(evt[16+8:]))
-			base := uintptr(binary.LittleEndian.Uint64(evt[16+24:]))
-			fmt.Printf("image base %#x\n", base)
+			imageBase = uintptr(binary.LittleEndian.Uint64(evt[16+24:]))
+			fmt.Printf("image base %#x\n", imageBase)
 
-			hit, err := scanForSignature(hProcess, base)
-			if err != nil {
-				return err
-			}
-			bpAddr = hit - sigEntryDelta
-			fmt.Printf("signature at %#x -> cwc_init_and_key at %#x\n", hit, bpAddr)
-
-			origByte, err = setBreakpoint(hProcess, bpAddr)
-			if err != nil {
-				return fmt.Errorf("set breakpoint: %w", err)
-			}
-			armed = true
-			fmt.Println("breakpoint armed")
+			// Deliberately do NOT scan here. The whole process stays suspended
+			// until ContinueDebugEvent, and scanning 28 MB holds it frozen for
+			// as long as that takes — long enough to hang the game if the attach
+			// lands during save checking, which is exactly what happened.
+			//
+			// ReadProcessMemory and WriteProcessMemory work fine on a running
+			// process, so the scan and the breakpoint go in after the continue.
+			needScan = true
 
 		case exceptionDebugEvent:
 			exCode := binary.LittleEndian.Uint32(evt[16:])
@@ -243,27 +280,48 @@ func run(pid uint32, sink *os.File) error {
 					}
 				}
 
-				// Step over: restore the byte, rewind RIP onto it, and set the
-				// trap flag so we get control back to re-arm.
+				// Step over WITHOUT single-stepping.
+				//
+				// The textbook approach — restore the byte, rewind RIP, set the
+				// trap flag, re-arm on the single-step exception — has too many
+				// ways to fail in a process with this many threads. If the
+				// rewind does not take, the thread resumes mid-instruction and
+				// the process dies; and the single-step bookkeeping is per
+				// thread, so a second thread hitting the same address while one
+				// is mid-step corrupts it. That is what "got key #1 and froze"
+				// looked like.
+				//
+				// Instead: restore the byte, rewind RIP, and let the thread run
+				// normally. Re-arm from the event loop a moment later. Nothing
+				// is left half-done, and the only cost is a blind window — which
+				// is fine, since the two keys we want arrive about a second
+				// apart and the window is a fraction of that.
 				if err := writeBytes(hProcess, bpAddr, []byte{origByte}); err != nil {
 					return fmt.Errorf("restore byte: %w", err)
 				}
-				if err := adjustThread(tid, bpAddr); err != nil {
-					return fmt.Errorf("rewind rip: %w", err)
+				armed = false
+				if err := rewindRIP(tid, bpAddr); err != nil {
+					// A failed rewind leaves RIP inside an instruction, so bail
+					// rather than let the game run off a cliff.
+					return fmt.Errorf("rewind rip (game left running): %w", err)
 				}
-				pendingBP = uintptr(tid)
-
-			case exCode == exceptionSingleStep && pendingBP == uintptr(tid):
-				// Back after the step — put the breakpoint back.
-				var err error
-				origByte, err = setBreakpoint(hProcess, bpAddr)
-				if err != nil {
-					return fmt.Errorf("re-arm: %w", err)
+				// Get the keys and get out.
+				//
+				// Staying attached buys nothing — both keys are installed during
+				// the login handshake — and costs plenty: every extra minute is
+				// another chance for the breakpoint dance to catch the game at a
+				// bad moment. The point is to play the session afterwards, which
+				// needs the game unmolested and the debugger gone.
+				if wantKeys > 0 && hits >= wantKeys {
+					fmt.Printf("\ngot %d key(s); detaching so the game runs clean\n", hits)
+					procContinueDebugEvent(pid, tid, dbgContinue)
+					return nil
 				}
-				pendingBP = 0
+				rearmAt = time.Now().Add(rearmDelay)
 
 			case exCode == exceptionBreakpoint || exCode == exceptionSingleStep:
-				// Not ours, but still ours to swallow.
+				// Not ours, but still ours to swallow. Includes the initial
+				// attach breakpoint, and any stray single-step.
 				//
 				// Windows raises an initial breakpoint from an injected thread
 				// the moment a debugger attaches. Passing that back with
@@ -293,6 +351,25 @@ func run(pid uint32, sink *os.File) error {
 		}
 
 		procContinueDebugEvent(pid, tid, status)
+
+		// Scan and arm only once the process is running again, so the game is
+		// never held suspended for the length of a 28 MB scan.
+		if needScan {
+			needScan = false
+			hit, err := scanForSignature(hProcess, imageBase)
+			if err != nil {
+				return err
+			}
+			bpAddr = hit - sigEntryDelta
+			fmt.Printf("signature at %#x -> cwc_init_and_key at %#x\n", hit, bpAddr)
+
+			origByte, err = setBreakpoint(hProcess, bpAddr)
+			if err != nil {
+				return fmt.Errorf("set breakpoint: %w", err)
+			}
+			armed = true
+			fmt.Println("breakpoint armed")
+		}
 	}
 }
 
@@ -387,8 +464,14 @@ func setBreakpoint(hProcess, addr uintptr) (byte, error) {
 	return orig[0], nil
 }
 
-// adjustThread rewinds RIP onto the restored instruction and sets the trap flag.
-func adjustThread(tid uint32, addr uintptr) error {
+// rewindRIP moves RIP back onto the instruction the INT3 replaced.
+//
+// On a breakpoint exception RIP is already one byte past the INT3. With the
+// original byte restored, the thread must resume AT that byte, not after it —
+// otherwise it executes from the middle of an instruction. That is the one
+// failure here that reliably kills the process, so the result is checked and
+// treated as fatal rather than logged and shrugged off.
+func rewindRIP(tid uint32, addr uintptr) error {
 	hThread, err := openThread(tid)
 	if err != nil {
 		return err
@@ -400,8 +483,6 @@ func adjustThread(tid uint32, addr uintptr) error {
 		return err
 	}
 	binary.LittleEndian.PutUint64(ctx[ctxRip:], uint64(addr))
-	eflags := binary.LittleEndian.Uint32(ctx[ctxEFlags:])
-	binary.LittleEndian.PutUint32(ctx[ctxEFlags:], eflags|trapFlag)
 
 	if r, _, err := procSetThreadContext.Call(hThread, uintptr(unsafe.Pointer(&ctx[0]))); r == 0 {
 		return fmt.Errorf("SetThreadContext: %v", err)
