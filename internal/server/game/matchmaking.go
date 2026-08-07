@@ -376,21 +376,26 @@ const (
 // cell every rat poll carried). The others are reference-derived and unverified,
 // so an unrecognised cell is logged rather than silently dropped.
 var (
-	// This does NOT gate the defender pool — defenders are summoned to a belfry
-	// rather than standing in one, which visitorPoolFor handles. It DOES gate
-	// the trespasser: visitor.go rejects a Bell Keeper list request from outside
-	// these cells, so a value missing here is a player who silently gets nobody.
+	// DIAGNOSTIC ONLY — this gates nothing. It used to gate the trespasser's
+	// request in visitor.go, and that was wrong; see the comment there.
 	//
-	// Treat it as an allow-list that must stay complete, not as a label. A belfry
-	// spans several cells and there is no reason to think these four are all of
-	// them; log lines reading "bell keeper request from outside a belfry" with an
-	// unfamiliar cell id are how the next one gets found.
+	// The two roles are asymmetric and easy to swap. The TRESPASSER is the player
+	// standing in the belfry who is about to be invaded, and is the one who
+	// REQUESTS the visitor list — the client asks on entering the zone. The
+	// DEFENDER is the Bell Keeper covenant member who gets summoned to them, may
+	// be anywhere, and has their icon glowing in ordinary areas; visitorPoolFor
+	// handles that half and does not gate on position.
 	//
-	// Because it is hand-mapped and incomplete, it is overridable at runtime with
-	// DSO_BELL_KEEPER_CELLS — a comma-separated list of cell ids, REPLACING this
-	// set — so a cell can be added from evidence without a rebuild. Same idea as
-	// DSO_BELL_REGION_<mapid> for the toll broadcast, which is a different filter
-	// on different ids; see bellRegions in telemetry.go.
+	// A belfry spans several cells and there is no reason to think these four are
+	// all of them. An unfamiliar cell id in a "bell keeper request from an
+	// unmapped cell" warning is how the next one gets found — the request is
+	// served either way, so the cost of a gap is a log line rather than a
+	// covenant that quietly does nothing.
+	//
+	// Overridable at runtime with DSO_BELL_KEEPER_CELLS — a comma-separated list
+	// REPLACING this set — so a cell can be added from play without a rebuild.
+	// Same idea as DSO_BELL_REGION_<mapid> for the toll broadcast, which is a
+	// different filter on different ids; see bellRegions in telemetry.go.
 	bellKeeperCells = map[uint32]bool{
 		// Ours, PS3, confirmed by a Bell Keeper summon that worked.
 		101640: true, // Belfry Luna
@@ -400,8 +405,8 @@ var (
 		// PushRequestVisit carried these at a belfry, and a Bell Keeper's
 		// PlayerStatus put area 10160000 with cell 101630. Same maps as ours
 		// (1016 Luna, 1019 Sol) but different cells within them — so the two
-		// sets corroborate each other rather than conflicting, and the gate has
-		// been rejecting these since it was written.
+		// sets corroborate each other rather than conflicting, and the old gate
+		// had been rejecting these since it was written.
 		// See tasks/live-capture-corpus.md.
 		101630: true, // Belfry Luna
 		101910: true, // Belfry Sol

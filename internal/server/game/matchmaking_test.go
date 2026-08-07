@@ -271,14 +271,24 @@ func TestBellKeeperDefenderNeedsNoBelfry(t *testing.T) {
 	}
 }
 
-// TestBellKeeperTrespasserMustBeInABelfry is the other half: the requester is
-// the one being invaded, and Bell Keepers defend Luna and Sol specifically.
-func TestBellKeeperTrespasserMustBeInABelfry(t *testing.T) {
+// TestBellKeeperUnmappedCellIsStillServed pins the fix for a covenant that
+// looked broken rather than misconfigured.
+//
+// This test used to assert the opposite — that a request from outside the
+// hand-mapped cell list returned nobody. DO NOT RESTORE THAT. The client only
+// asks for this list when it enters a belfry, so it has already gated on
+// position using the game's own map data; our cell list is a hand-built subset
+// that can only ever subtract. It was missing two cells that appear in
+// FromSoftware's own captured traffic, and a player standing in either was
+// answered with an empty list and never invaded.
+//
+// The cell list is now a diagnostic: an unmapped cell logs a warning naming the
+// id to add, and the request is served.
+func TestBellKeeperUnmappedCellIsStillServed(t *testing.T) {
 	svc, log, host, summoner := signTestService(t)
 	inBellKeeperPool(host)
 
-	// Requester is nowhere near a belfry — expect no targets even though a
-	// perfectly good defender is available.
+	// A cell we have never mapped. The defender must still be offered.
 	summoner.profile = matchProfile{received: true, onlineActivityArea: 102310}
 	replyRaw, err := svc.handleGetVisitorList(log, summoner, visitorListRequest(t, 5))
 	if err != nil {
@@ -288,11 +298,12 @@ func TestBellKeeperTrespasserMustBeInABelfry(t *testing.T) {
 	if err := proto.Unmarshal(replyRaw, &resp); err != nil {
 		t.Fatal(err)
 	}
-	if n := len(resp.GetTargetData()); n != 0 {
-		t.Errorf("summoned %d defenders from outside a belfry, want 0", n)
+	if n := len(resp.GetTargetData()); n != 1 {
+		t.Errorf("unmapped cell got %d defenders, want 1 — an incomplete map must "+
+			"not silently break the covenant", n)
 	}
 
-	// Same request from inside Belfry Luna finds the defender.
+	// And a mapped cell behaves identically, which is the point.
 	summoner.profile.onlineActivityArea = 101640
 	replyRaw, err = svc.handleGetVisitorList(log, summoner, visitorListRequest(t, 5))
 	if err != nil {
@@ -304,6 +315,21 @@ func TestBellKeeperTrespasserMustBeInABelfry(t *testing.T) {
 	}
 	if n := len(resp.GetTargetData()); n != 1 {
 		t.Errorf("from inside the belfry got %d defenders, want 1", n)
+	}
+}
+
+// TestBellKeeperCellsCoverTheCapturedIds guards the allow-list itself. These
+// four are the cells actually seen carrying belfry traffic — two from our own
+// PS3 sessions, two from FromSoftware's live PC captures. Losing one is how the
+// diagnostic goes quiet about a cell that matters.
+func TestBellKeeperCellsCoverTheCapturedIds(t *testing.T) {
+	for _, cell := range []uint32{101630, 101640, 101910, 101950} {
+		if !isBellKeeperCell(cell) {
+			t.Errorf("cell %d is a known belfry cell but is not in the map", cell)
+		}
+	}
+	if isBellKeeperCell(102310) {
+		t.Error("102310 is not a belfry cell and must not be in the map")
 	}
 }
 

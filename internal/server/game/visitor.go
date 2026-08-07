@@ -119,19 +119,30 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 	// away from either belfry, because they are summoned TO the trespasser.
 	// That half is handled in visitorPoolFor, which no longer gates on position.
 	//
-	// The TRESPASSER, who is the requester here, must actually be in a belfry.
-	// Bell Keepers defend Luna and Sol; there is nothing to defend anywhere
-	// else, so a request from outside one should find nobody rather than pull a
-	// defender to a place they have no business being.
+	// The TRESPASSER, who is the requester here, is the player standing in the
+	// belfry about to be invaded. This USED TO reject their request outright when
+	// their cell was not in bellKeeperCells. It no longer does, and the reason is
+	// worth keeping:
+	//
+	// The client only asks for this list when it enters a belfry — that is the
+	// covenant's whole trigger. So the client has ALREADY gated on position,
+	// using the game's own map data. Our cell check is a second gate built by
+	// hand from play, and a hand-built list can only ever be a subset of what the
+	// client already knows. It cannot add correctness. It can only subtract, by
+	// being incomplete — and it was: two cells from FromSoftware's own captured
+	// traffic were missing, so anyone standing in those spots was answered with
+	// an empty list and never invaded, in a covenant that then looked simply
+	// broken.
+	//
+	// Nor does it deter a modified client, which would just report a belfry cell.
+	//
+	// So it is a warning now, not a gate: an unfamiliar cell here is a cell to
+	// add to the map, and the request is served either way.
 	if filtering && req.GetType() == ds2pb.VisitorType_VisitorType_BellKeepers &&
 		!isBellKeeperCell(cs.profile.onlineActivityArea) {
-		log.Info("bell keeper request from outside a belfry",
+		log.Warn("bell keeper request from an unmapped cell — add it to bellKeeperCells",
 			"player_id", cs.playerID, "activity_area", cs.profile.onlineActivityArea,
 			"cell_id", req.GetCellId())
-		return proto.Marshal(&ds2pb.RequestGetVisitorListResponse{
-			OnlineAreaId: proto.Int64(req.GetOnlineAreaId()),
-			CellId:       proto.Int64(req.GetCellId()),
-		})
 	}
 
 	var skippedPool, skippedSoul int
