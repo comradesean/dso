@@ -175,11 +175,20 @@ func run(pid uint32, sink *os.File, wantKeys int) error {
 		defer runtime.UnlockOSThread()
 	}
 
-	// Without this, detaching or crashing takes the game down with us.
-	procDebugSetKillOnEx.Call(0)
-
 	if r, _, err := procDebugActiveProc.Call(uintptr(pid)); r == 0 {
 		return fmt.Errorf("DebugActiveProcess(%d): %v (run as Administrator, and make sure no other debugger is attached)", pid, err)
+	}
+
+	// Without this the game dies when we detach or exit — which is exactly what
+	// happened, because this used to be called BEFORE DebugActiveProcess.
+	//
+	// DebugSetProcessKillOnExit sets the flag on the debug object belonging to
+	// the CALLING THREAD, and until DebugActiveProcess succeeds there is no such
+	// object, so the call did nothing and left kill-on-exit at its default.
+	// Order matters, and the failure is silent.
+	if r, _, err := procDebugSetKillOnEx.Call(0); r == 0 {
+		fmt.Fprintf(os.Stderr,
+			"WARNING: DebugSetProcessKillOnExit failed (%v) — detaching may close the game\n", err)
 	}
 	defer procDebugActiveStop.Call(uintptr(pid))
 
