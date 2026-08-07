@@ -1,5 +1,12 @@
 # The belfry bell — what is settled, and the one thing that is not
 
+> **This file is about the BELL TOLL — who hears a bell that has been rung.** It is not about the
+> Bell Keeper covenant, which is a different feature with a confusingly similar name: that is the
+> auto-summon that pulls a grey spirit into a trespasser's world, and it lives in
+> `docs/features.md` §6. This file's filter works on **area** ids (`bellRegions`, `telemetry.go`);
+> the covenant's works on **cell** ids (`bellKeeperCells`, `matchmaking.go`). Conflating the two
+> has already caused one wrong change.
+
 **Status: working end to end, but one design decision rests on inference rather than
 evidence.** Everything below marked CONFIRMED was either observed on the wire, read out of
 the executable, or verified in game. The OPEN section is the part we should not pretend to

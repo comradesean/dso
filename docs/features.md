@@ -313,14 +313,35 @@ somebody.
 **What the player does.**
 
 - **Bell Keepers** — join the marionette in **Belfry Luna** (Lost Bastille, Servants' Quarters) or
-  **Belfry Sol** (Iron Keep, Ironhearth Hall); both entrances need a Pharros' Lockstone. Wearing the
-  **Bell Keeper's Seal**, you are auto-summoned as a **grey spirit** into the world of anyone
-  trespassing in either belfry. You can be almost anywhere when it fires; standing in or near a
-  belfry only biases which one. **No healing items**, and you **cannot unequip the ring mid-invasion**.
-  Ten-minute timer. Winning pays a Titanite Chunk (~83%) or better; ranks at 10 / 30 / 100
-  trespassers. From the victim's side, entering a belfry online *will* get you invaded — human status
-  is irrelevant and burning an effigy does not help. **Two grey phantoms at once in the original
-  release, three in SotFS.**
+  **Belfry Sol** (Iron Keep, Ironhearth Hall); both entrances need a Pharros' Lockstone.
+
+  > **Which side is which — get this right before touching the code.** The two roles are
+  > asymmetric and trivially swapped in one's head, and doing so has already produced a real bug.
+  >
+  > | | **DEFENDER** | **TRESPASSER** |
+  > |---|---|---|
+  > | Who | the covenant member, wearing the Bell Keeper's Seal | anyone who walks into a belfry |
+  > | Where | almost anywhere in the world | inside Belfry Luna or Sol |
+  > | Role | is **summoned to** the trespasser, as a grey spirit | is **invaded** |
+  > | On the wire | offered as a target in the visitor list | **sends `RequestGetVisitorList`**, on entering the zone |
+  >
+  > So the *trespasser* is the requester. The defender never asks for anything — they are the
+  > answer. Saying "the trespasser is summoned" is backwards and will send you looking for a
+  > position check on the wrong player.
+
+  Wearing the **Bell Keeper's Seal**, you are auto-summoned as a **grey spirit** into the world of
+  anyone trespassing in either belfry. **No healing items**, and you **cannot unequip the ring
+  mid-invasion**. Ten-minute timer. Winning pays a Titanite Chunk (~83%) or better; ranks at
+  10 / 30 / 100 trespassers. From the victim's side, entering a belfry online *will* get you
+  invaded — human status is irrelevant and burning an effigy does not help. **Two grey phantoms at
+  once in the original release, three in SotFS.**
+
+  **The defender can be almost anywhere, but not everywhere.** An earlier version of this line said
+  "almost anywhere ... standing in or near a belfry only biases which one", and that "almost" is
+  carrying real weight: from play, there are a few places the covenant icon simply does not glow,
+  and the client decides which. The likely explanation is already modelled — `online_activity_area_id`
+  is 0 wherever the game does not host sessions, and `visitorPoolFor` returns None on that — so the
+  discriminating test is whether a dark spot reports a *non-zero* activity area. Unresolved; see §13.
 - **Rat King** — join via the Rat King after the Royal Rat Vanguard (Grave of Saints) or Royal Rat
   Authority (Doors of Pharros). **This one is inverted.** Wearing the **Crest of the Rat** inside
   either rat territory, a non-member who walks into that area *in their own world* is dragged into
@@ -337,6 +358,28 @@ somebody.
   enemies. **You have no timer of your own** — you last as long as the invader's remaining clock.
   Crucially, on the *victim's* side, being rescued needs **only Way of Blue membership**: not
   humanity, not the Blue Seal equipped. The one blocker is the host already being at the phantom cap.
+
+
+> ### Two "bell" filters, and they are not the same thing
+>
+> This is the trap that produced a wrong code change. The names are nearly identical and they
+> answer different questions on different id spaces.
+>
+> | | **Who HEARS a rung bell** | **Who is a Bell Keeper trespasser** |
+> |---|---|---|
+> | Feature | the belfry bell toll, `0x03EF` | the Bell Keeper auto-summon, `0x03D5` |
+> | Map | `bellRegions`, `telemetry.go` | `bellKeeperCells`, `matchmaking.go` |
+> | Id space | **area** ids, 8 digits — `10160000` | **cell** ids, 6 digits — `101640` |
+> | Behaviour | a real gate, deliberately fails **closed** | **diagnostic only**, gates nothing |
+> | Override | `DSO_BELL_REGION_<mapid>` | `DSO_BELL_KEEPER_CELLS` |
+> | Write-up | `tasks/bell-broadcast.md` | this section, and §13 |
+>
+> They fail closed and open respectively **on purpose**. For the toll, a false positive rings the
+> wrong bell and players notice, while a false negative costs one person one toll — so silence is
+> the safer error. For the summon it is the reverse: the client already gates on position when it
+> enters the belfry, so a server-side cell list can only ever be a hand-built subset of what the
+> client already knows. It cannot add correctness, only subtract by being incomplete — and it was,
+> silently, until two cells from FromSoftware's own captures were found missing.
 
 **Opcodes**
 
@@ -358,35 +401,49 @@ somebody.
 | 2 | `Rat` | Crest of the Rat |
 | 3 | `3` | unknown |
 
-**Status in dso: Implemented, unconfirmed.** `internal/server/game/visitor.go`. Structurally the
-invasion flow, not the sign flow — nothing is stored, the server brokers between two live sessions
-and steps out.
+**Status in dso: implemented and CONFIRMED LIVE for all three covenants.**
+`internal/server/game/visitor.go`. Structurally the invasion flow, not the sign flow — nothing is
+stored, the server brokers between two live sessions and steps out.
+
+Bell Keepers (`0x03CC` visit, `0x03CD` reject) and Rat King (`0x03CF`, `0x03D0`) each produced a
+completed session; Blue Sentinels was confirmed on 2026-08-06 — a Sentinel summoned into an invaded
+player's world, killed the invader, and everyone went home. Session kinds: 11 Sentinel, 15 rat prey.
 
 **Notes**
 
-- **The push ids are the open risk.** We send `0x03CF` (visit) and `0x03D0` (reject). That has
-  positive evidence behind it — the PC protos assign exactly those three values to exactly those
-  three types, and unlike the BreakIn case the decompilation confirms all three *exist* on PS3, as
-  the last group of nine. It is still unverified. **If a visit silently does nothing in-game, try
-  `0x03C9` / `0x03CC` / `0x03CF`** — the first alias of each contiguous group, the shape that proved
-  right for BreakIn.
+- **~~The push ids are the open risk.~~ RESOLVED — they are confirmed on the wire.** The block is
+  `0x3C9 + 3*mode + role`, and Bell Keepers (mode 1) landing on `0x03CC`/`0x03CD` and Rat King
+  (mode 2) on `0x03CF`/`0x03D0` were each watched producing a joined session. Corroborated
+  independently by FromSoftware's own live PC traffic, where `0x03CC` appears carrying
+  `PushRequestVisit` at a belfry, field for field with ours.
 - **`PushRequestRemoveVisitor` (`0x03D1`) is deliberately never sent.** Telling a host their visitor
   left requires knowing which host a departing player was in, and no visit session is tracked. The
   phantom clears on the clients' own timeout instead.
-- **The Rat King direction inversion is not modelled.** Our handler is symmetric: whoever sends
-  `RequestVisit` is treated as asking to enter the target's world. That matches Bell Keepers and Blue
-  Sentinels. For Rat King the *trespasser* ends up in the *member's* world, so either the client
-  sends from the opposite side or the semantics differ. **Nothing in the decompilation settles this
-  and we have not tested it.** A live Rat King summon would, in minutes.
+- **The Rat King direction inversion is real, and the client absorbs it.** For Bell Keepers the
+  covenant member travels to the trespasser; for Rat King the trespasser is dragged into the
+  *member's* world. In BOTH cases the covenant member is the one who sends `RequestVisit`, and the
+  client works out who actually moves from `type` — so one symmetric handler serves both, which is
+  why a live Rat King summon worked without any direction-specific code. Confirmed 2026-08-05.
+
+  Note this is the opposite asymmetry from the Bell Keeper *list* request, where the trespasser is
+  the requester. Visit and get-list are asked by different sides; do not generalise from one.
 - **The Blue Sentinel path has an asymmetry our model cannot express.** The Sentinel is the one who
   polls, but the *trigger* is an invasion happening to a third party. See gap 1 — this is the single
   most interesting hole in the whole map.
 - **The PC map claims `0x03C9` is `PushRequestNotifyRingBell`, "not registered".** On PS3 `0x03C9`
   *is* registered — as the first entry of the Visitor block. There is no separate ring-bell push id
   on this platform (§15).
-- Matchmaking is not applied: every other online player is offered as a visit target. The real ranges
-  differ sharply per covenant — Guardian's Seal reaches 7 tiers down and 6 up, Bell Keeper's Seal
-  only 1 down and 3 up. See §13.
+- **~~Matchmaking is not applied~~ — it is, and it is confirmed live.** Target lists are filtered by
+  soul memory tier, pool and activity area (`matchmaking.go`); rejections went from 54 of 55 to
+  zero. Bell Keeper's Seal reaches 1 tier down and 3 up. Guardian's Seal is **disputed** — sources
+  split between 5/4 and 7/6, and the code uses the narrower majority figure deliberately, because
+  being slightly too strict shows up as "found nobody", which is far easier to recognise than being
+  too loose. See §13.
+- **Range may also include PHYSICAL distance, and we ignore it.** Believed real from play, unmeasured.
+  `PlayerLocation.position` carries three floats in every status heartbeat and `applyStatus` reads
+  only the two area ids from that message — so the server has every player's coordinates and does
+  nothing with them. Either FromSoftware filtered on it, or it is transport for a summoned phantom's
+  spawn point. The cheap test is two eligible players in one activity area, far apart.
 
 ---
 

@@ -117,6 +117,19 @@ member travels. In both cases the covenant member is the one who sends `RequestV
 client works out who actually travels from `type`, so the same push shape serves both. Session
 kind is 15 for rat prey.
 
+**The two SIDES ask for different things, and mixing them up caused a real bug.** For a Bell Keeper
+summon the **trespasser** — the player standing in the belfry, the one about to be invaded — is the
+one who sends `RequestGetVisitorList`, on entering the zone. The **defender** never asks; they are
+the answer, offered from the pool. `RequestVisit` then goes the other way, from the covenant member.
+So get-list and visit are asked by opposite sides, and generalising from one to the other is wrong.
+
+`bellKeeperCells` used to gate that list request on the trespasser's cell being in a hand-mapped
+list. **It no longer gates anything** (2026-08-07): the client only asks on entering a belfry, so it
+has already gated on position with the game's own map data, and our list could only ever be a subset
+that subtracts. It was missing two cells present in FromSoftware's own captures, so players standing
+there were answered with an empty list and never invaded. It is a warning now — an unmapped cell
+logs the id to add and the request is served. Do not restore the gate.
+
 **`reason=2` on a rejection is normal, not an error.** It is client-authored and means the target
 is not currently invadable; resting at a bonfire is one such state. Proven twice: an identical
 request refused at 18:20:44 was accepted at 18:21:05, and a rat summon refused 15 times while the
