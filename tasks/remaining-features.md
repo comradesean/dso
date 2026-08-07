@@ -509,7 +509,7 @@ retail player ever heard a belfry bell while nowhere near a belfry.
 
 | Opcode | Message | Note |
 |---|---|---|
-| `0x038B` | `RegulationFileUpdatePushMessage` | **Parked** — see `tasks/calibration-reverse-engineering.md`. Confirmed to parse; never shown to apply. |
+| `0x038B` | `RegulationFileUpdatePushMessage` | **DONE, and it drives two features.** Replaces one whole resource file in the running client on the next frame, no restart. Confirmed live on both routes: params (the Majula event chest paid out) and FMG (the obelisk displays what we send). `internal/server/game/regulationpush.go`; see `tasks/regulation-push-038b.md`. |
 | `0x038C` | `PlayerInfoUploadConfigPushMessage` | **RULED OUT as a chest trigger, do not implement.** Upload scheduling only — the handler applies lower bounds to three periods and has no field able to carry an item, a file or a flag. See `tasks/majula-event-chest.md`. |
 | `0x03EF` | `PushRequestNotifyRingBell` | **Not** the session-disconnect push it was long assumed to be — name read off `GetTypeName`. A server→client bell broadcast the client already has a handler for. See below. |
 

@@ -611,6 +611,10 @@ this one interactable is the entire feature.
   in `regulation<Language>.fmg`**. So the obelisk investigation and the death-counter investigation
   were always looking at two faces of one monument. Recorded because it took a long time to
   disentangle them.
+- **The obelisk face is writable again** (2026-08-07). Not through an opcode of its own: the FMG is
+  replaced wholesale over `0x038B`, keyed as the bare resource name `regulation.fmg`. That is the
+  channel FromSoftware used to announce all three Lost Crowns DLCs — those messages, and how to
+  send new ones, are in `docs/worn-writing.md`.
 
 ---
 

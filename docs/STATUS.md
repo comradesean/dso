@@ -1,4 +1,4 @@
-# Status — 2026-08-05 (updated)
+# Status — 2026-08-07 (updated)
 
 Where the project actually is, what is proven versus assumed, and what to pick up next.
 Complements `RECOVERED_PLAN.md`, which is the original plan and is now partly overtaken.
@@ -49,6 +49,7 @@ stretch.
 | **Reading FromSoftware's live servers** | **Working** | Session keys extracted from the PC client; 9 sessions decrypted, ~4,700 messages |
 | **Live regulation push (`0x038B`)** | **Working** | Replaces a param or FMG in the running client, applied next frame, no restart |
 | **The Majula event chest** | **Solved** | Armed it with a pushed `OnlineEventParam`; it reset and paid out |
+| **The Majula obelisk** | **Solved** | Displays text we push; key is the bare `regulation.fmg`, found in live memory |
 | Persistence (SQLite) | Working | Messages, counters, **players, characters, rankings** survive restart |
 | **Stable player ids** | **Working** | Same PSN account keeps its id across restarts |
 | Player status blob | Recorded | Persisted; **nothing consumes it, so no matchmaking filters** |
@@ -127,6 +128,22 @@ has been active in the last 90 seconds (`--force` to override, `--check` to just
 
 **Run the server from WSL, not Windows.** Windows cannot bind TCP on the LAN address for any
 port; WSL shares the same IP and works. See the `dso-run-server-from-wsl` note.
+
+**When the unknown is the contents of a global, read live memory — do not chase pointers in the
+binary.** Three sessions failed to find the obelisk's resource key statically. One reason is that
+this compiler reaches globals through *anchor registers* (`lwz r30,-29428(r2)`, then
+`lwz rX,-32668(r30)`), and the image has several anchors, so a search keyed on a displacement or on
+a pointer-pool slot silently lands in an unrelated function. Reading the value out of a running
+client skipped the whole problem and took minutes. `tools/memscan` does both search and
+`-read <addr> -base <host base>`; RPCS3 maps guest memory at host `0x300000000`, confirmed each run
+by scanning for a string whose EBOOT vaddr is known.
+
+**A string being resident in memory does not make it a key.** The same investigation found
+`text:/Text/English/regulation.fmg` in memory and took it as confirmation that our push path was
+right. It was the *load* path; the repository keys on the basename, `regulation.fmg`, and the two
+sit a few hundred bytes apart in one string pool. The only thing that proves a key is walking the
+container that keys on it — which here meant reproducing the client's own hash
+(`h = c + h*137`, `A`-`Z` folded) and reading its bucket.
 
 ## Delivering a calibration, end to end
 
@@ -311,15 +328,12 @@ The build-out phase is essentially over; what is left is verification and depth.
 2. **Consume the status blob for matchmaking.** Soul memory, area and covenant all arrive and are
    persisted; nothing reads them, so every listing offers every online player. This is the
    difference between "the mode works" and "the mode works correctly".
-3. **Fill the event chest by binding a lot to a result event that already fires.**
-   `ResultEventParam.param` is the selector: each of its 82 rows carries an
-   `ItemLotParam2_SvrEvent` lot id at `+0x0C`, and the 11xxx lot ids appear nowhere else in the
-   archive. Calibration 0114 bound its new lots to rows 1200/2400/1100/1300, which had *zero*
-   before — so the chest wiring shipped complete and the chest stayed empty because **the result
-   event never fires**, not because data was missing. Now that we can author payloads, the cheap
-   experiment is to bind a lot to a row known to fire and see whether the chest fills. What
-   actually fires a result event is still unknown; it needs the param registry at `0x1C85BC4` /
-   `0x1C85BC8` followed into `MapObjSvrEventTreasureBoxComponent` (EBOOT `0x17F6CC8`).
+3. **Watch the chest and the obelisk land in one login.** Both are confirmed individually, but
+   never together. The applier accepts one entry per pass and destroys the rest, so the three
+   login pushes are now spaced two seconds apart — reasoned from the disassembly (`0x770454`
+   recomputes `cr4` after each accept) and unit-tested, but not yet observed on a client. If only
+   one takes, widen `DSO_REGULATION_PUSH_GAP_SECONDS`. This is the last thing standing between
+   `0x038B` and "done".
 4. **Capture `0x0387`/`0x0388`/`0x038A`.** Patch 1.10 added population hints to the warp screen —
    server-supplied, no known opcode, and these three are emitted early in boot and never seen.
    Warping on 1.10 with full logging may catch them.
