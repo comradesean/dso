@@ -1052,7 +1052,8 @@ look for next.
 
 - **Ringing a bell** has no online consequence in DS2. §15.
 - **The Majula obelisk** is string id 100 in `regulation<Language>.fmg`, and it is the **same
-  monument** whose plaque shows the world death count. Not a push.
+  monument** whose plaque shows the world death count. Not a push of its own — but reachable, by
+  replacing that FMG over `0x038B`. Done live 2026-08-07; see `docs/worn-writing.md`.
 - **The Agape Ring** suppresses soul gain client-side; the server sees a frozen number.
 - **The Crushed Eye Orb** is a scripted NPC invasion against Licia. No second player, no traffic.
 - **Covenant rank for everything except Company of Champions** — Bell Keeper kills, Blue Sentinel

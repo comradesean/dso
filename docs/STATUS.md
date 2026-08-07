@@ -250,7 +250,9 @@ session.
   it is a localized game-data string, not server text. To change it the server must deliver a
   modified regulation, which makes the `0x038B` regulation push the route to the obelisk *and*
   to the event items. The string is byte-identical across all ten published calibrations, so
-  FromSoftware never actually used it in these payloads.
+  FromSoftware never actually used it in these payloads. **Driven live on 2026-08-07** — the
+  resource key is the bare `regulation.fmg`, and `DSO_OBELISK_TEXT` now writes to it. The three
+  Lost Crowns announcements it originally carried are in `docs/worn-writing.md`.
 - **~~The `0x038B` regulation push may not apply~~ IT APPLIES — confirmed live 2026-08-06.** It
   replaces one whole resource file in the running client, param or FMG, on the next frame, with no
   restart and no calibration download. `diff_data` is not a diff: no container, no compression, no
