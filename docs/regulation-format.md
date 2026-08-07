@@ -27,8 +27,10 @@ http://frpg2-ps3-internal.s3-website-us-west-2.amazonaws.com/regulation_0101.bin
   -> the payload
 ```
 
-Both files use **the same container** (§2). Ten calibrations were published; all are archived in
-`data/calibrations/` (gitignored).
+Both files use **the same container** (§2). Ten calibrations were published; all are mirrored in
+`calibrations/`, and the copies the server serves sit in `data/calibrations/` (gitignored).
+Addresses, dates, sizes and SHA-1s for all twenty files are in
+[`calibration-urls.md`](calibration-urls.md).
 
 | version | date | manifest SizeOrg | regulation SizeOrg | regulation SizeEnc |
 |---|---|---|---|---|
