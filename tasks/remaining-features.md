@@ -549,6 +549,28 @@ retail player ever heard a belfry bell while nowhere near a belfry.
   spawn point, since the same blob is handed to the other client. Nothing here distinguishes the
   two. The cheap test is two eligible players in one activity area, far apart: if the summon finds
   nobody, distance is real.
+- **Region matching is not implemented, and cannot be done from the protocol alone.** There is **no
+  region identifier anywhere in the message set** — every `region` hit across all protos is the same
+  boolean preference, `disable_cross_region_play`, carried in both `PlayerStatus` (field 9) and
+  `MatchingParameter` (field 8). Nothing tells a client what region anyone else is in, so the client
+  cannot filter or display it and **the server is the only place region can be decided** — from the
+  source IP or the account, neither of which the protocol carries.
+
+  We parse `disable_cross_region_play` into `matchProfile`, log it, and **never use it in a filter**,
+  so no list we return has ever considered region. That is the whole explanation for invasions
+  ignoring region; it does not need the other player to have set anything.
+
+  Two things to settle before implementing, both cheap and both capable of silently inverting the
+  filter if guessed:
+  - **Polarity of field 8.** It read `1` in all 412 `MatchingParameter` blocks in the corpus, and the
+    field name is the reference author's guess, so `1` may mean "cross-region play disabled" or "the
+    toggle is on". Flip the in-game network option and re-capture.
+  - **Whether `unknown_9` is the region.** Also `1` everywhere — but every capture is from one
+    location, so constant-ness proves nothing. A capture from a second location settles it.
+
+  Implementation would need IP→region from outside the protocol: same-/24 or same-ASN grouping (no
+  data files, useless internationally), a hand-kept table in config, or a GeoIP database.
+
 - **The covenant icon does not glow everywhere.** Also from play: there are a few places it stays
   dark and the client decides which. Likely already modelled — `online_activity_area_id` is 0
   wherever the game does not host sessions, and `visitorPoolFor` returns None on that — so the
