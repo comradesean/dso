@@ -61,8 +61,24 @@ player — so the behaviour matches, but the reason is not the one the code comm
 | phantom | died | 10 | 0 |
 | host (I was invaded) | died | 10 | **2** (the same two, from the other side) |
 
-Whether the lever gets pulled is the obvious explanation, but the ratio is the opposite way round
-from what the player expected, so it is recorded rather than explained.
+Whether the lever gets pulled is the obvious explanation, and the ratio is the opposite way round
+from what the player expected — so two alternatives were tested against the corpus and **both are
+refuted**:
+
+- **"Those were a different covenant."** No. Every visitor push in the batch is mode 1: `0x03CC`
+  visit x41, `0x03CD` reject x1, `0x03CE` remove x13, and not a single Blue Sentinel (`0x03C9`-`CB`)
+  or Rat (`0x03CF`-`D1`). All 426 `RequestGetVisitorList` requests carry type `BellKeepers`. Every
+  one of the ten kills was preceded by a Bell Keeper visit push 45-170s earlier.
+- **"The bell was already rung in that world."** No. Seven of the ten were the FIRST invasion of
+  that host, and six of those seven were silent. The one host invaded repeatedly (3428695, three
+  times) produced no bell even on the first.
+
+So the difference is not the covenant and not a per-world cooldown. What remains is whether the
+lever was actually pulled, which the protocol cannot see: nothing is sent between the kill and the
+`0x03EE`, and a lever that is never touched looks exactly like one that is.
+
+Incidentally this confirms field 2 of the visit push is the **host** player id — the self-invasion
+at 18:21:33 names host 2910025, which is LOCAL.
 
 ### The map filter is SUPPORTED, not refuted
 
