@@ -9,7 +9,13 @@ python3 tools/pcap/udpdump.py <cap> --port <50000|50001> --tagged \
   | go run ./cmd/corpus -out corpus -session <label> -key <gamekey>
 ```
 
-**~4,700 messages, 28 distinct opcodes, zero decryption failures.**
+**5,594 messages in 34 buckets, zero decryption failures.** Counted from `corpus/` on 2026-08-07;
+an earlier "~4,700 messages, 28 distinct opcodes" was an estimate and is superseded.
+
+33 buckets carry an identified opcode. The 34th, `0x0000_unknown`, holds **2,787 messages — half
+the corpus — and that is expected rather than a failure**: it is the server RESPONSES, whose
+28-byte header carries no opcode at all (see the framing table below). They are matched to their
+requests by message id, not by anything in themselves.
 
 ---
 
@@ -73,7 +79,7 @@ Nested inside are position (`fixed32` floats), area `10160000`, cell `101630`, a
 stats (`41,25,15,5,33,12,5,5,20` — the attribute spread) and equipment. **Our covenant constant
 `6 = Bell Keepers` is confirmed against live data**, not just inferred from the PS3 client.
 
-**`PushRequestVisit` matches field for field.** `0x3CC` (972), seen seven times, always at a belfry:
+**`PushRequestVisit` matches field for field.** `0x3CC` (972), seen **11 times**, always at a belfry:
 `push id, host player id, host Steam id (ASCII), player data blob, type=1, map id, cell id` — and it
 confirms the belfry cell ids `101630` (Luna) and `101910` (Sol).
 
