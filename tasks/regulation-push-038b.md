@@ -431,7 +431,34 @@ sweep; FMGs are not.
 
 Recovery is a restart: the apply path writes only to memory, so nothing survives the process.
 
-## STILL OPEN — the obelisk
+## STILL OPEN — the obelisk (memscan findings, 2026-08-07)
+
+Use `tools/memscan` — RPCS3's own search returns nothing even for strings that are certainly
+resident, so its negatives are worthless.
+
+CONFIRMED by scanning RPCS3's memory (41 GB, 9,814 regions):
+
+- **Our path form is correct.** `text:/Text/English/regulation.fmg` exists verbatim in memory, and
+  the resource registry at guest `0x1e52xxx` is full of `text:/Text/English/<name>.fmg` entries
+  (ItemName, SimpleExplanation, bofire, shop, prologue, ...). `regulation.fmg` is NOT among them.
+- **The FMG is loaded and relocated.** Buffer at guest `0x312883F0`; offset 0x14 holds `0x31288418`,
+  a pointer, so `*(dst+20) += dst` from `0x76A0F0` has run on it.
+- **Its record allocates 1024 bytes** for a 128-byte file — so a same-size push into it would be
+  safe. The earlier crash was a DIFFERENT container's `regulation.fmg`: that name repeats in many
+  containers (`c151`, `c309`, `c700`, `m10_`, `IC_C`) alongside `prologue.fmg`/`shop.fmg`.
+- **Our marker text is nowhere in memory**, so no apply ever happened.
+
+The single resource record (mirrored 3x by RPCS3's guest mapping):
+
+```
+30a00f1c  01c93a70  30a00f1c  312883f0  00000400  00000001
+                              ^buffer   ^1024
+```
+
+**No name string in the record.** The lookup key is one indirection further out — `0x100A1354`
+repeats through it and looks like a class/table pointer. That is the next thing to follow, and it is
+where this stops.
+
 
 The chest works; the obelisk does not. With `path = text:/Text/English/regulation.fmg` the text is
 still the stock "The letters are worn beyond recognition."
