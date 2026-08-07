@@ -1,3 +1,19 @@
+# DS2 protocol map
+
+> **VERIFIED AGAINST LIVE PC TRAFFIC (2026-08-07).** Nine sessions against FromSoftware's own
+> servers were decrypted with keys pulled from the running client and filed by opcode
+> (`tasks/live-capture-corpus.md`). All 28 opcodes observed land exactly where this table places
+> them, so DS2 SOTFS on PC shares the numbering recovered from the PS3 binary. Specifically
+> confirmed on the wire: `0x0386`, `0x0392`, `0x0397`, `0x03A8`, `0x03AB`, `0x03AD`, `0x03AE`,
+> `0x03B0`, `0x03B1`, `0x03B2`, `0x03B3`, `0x03B6`, `0x03B8`, `0x03D5`, `0x03D7`, `0x03EA`,
+> `0x03EB`, `0x03EC`, `0x03ED`, `0x03F1`, `0x03F6`, `0x03FA`, `0x03FF`, `0x0400`, plus pushes
+> `0x038C`, `0x03AA`, `0x03CC` and `0x03EF`.
+>
+> **Pushes ride wrapper opcode `0x0320`** with `msg_index = 0xFFFFFFFF`; the real push id is
+> protobuf field 1. Filing by message opcode alone hides every push in one bucket.
+>
+> **Responses carry opcode `0`** and are matched to requests by `msg_index`.
+
 # Frpg2 Client ⇄ Server Protocol Reference (Dark Souls 2 / Dark Souls 3)
 
 > **Provenance.** Derived from the **DS3OS** C++ reference implementation checked out at `ref/ds3so`,

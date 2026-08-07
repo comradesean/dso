@@ -46,6 +46,7 @@ stretch.
 | Keepalive + bandwidth (4 opcodes) | Implemented | `ServerPing` had been going unanswered |
 | Telemetry notifies (8 opcodes) | Implemented | Kill/purchase counters persisted |
 | **Serving our own calibrations** | **Working** | Client applied our regulation_0107 and 0113; save matches byte for byte |
+| **Reading FromSoftware's live servers** | **Working** | Session keys extracted from the PC client; 9 sessions decrypted, ~4,700 messages |
 | **Live regulation push (`0x038B`)** | **Working** | Replaces a param or FMG in the running client, applied next frame, no restart |
 | **The Majula event chest** | **Solved** | Armed it with a pushed `OnlineEventParam`; it reset and paid out |
 | Persistence (SQLite) | Working | Messages, counters, **players, characters, rankings** survive restart |

@@ -6,13 +6,17 @@ meta:
   ks-version: 0.9
 
 doc: |
-  One UDP datagram sent by a Dark Souls 2/3 client to the GAME service (port 50010).
+  One UDP datagram sent by a Dark Souls 2/3 client to the GAME service (UDP port 50000 or 50001).
 
-  *** NOT CONFIRMED AGAINST A PS3 CLIENT. ***
-  No game-service byte has ever been observed from a real PS3 client - it currently
-  refuses to open this session at all. This spec is derived from our Go implementation
-  and the DS3OS reference, both of which target PC. Treat it as a hypothesis. The
-  login and auth specs in this directory ARE byte-verified; this one is not.
+  *** CONFIRMED AGAINST LIVE PC TRAFFIC (2026-08-07). ***
+  Nine sessions against FromSoftware's own servers were decrypted with keys pulled
+  from the running client (see tasks/pc-capture-decryption.md), giving ~4,700
+  messages across 28 opcodes with zero decryption failures. Every layer below was
+  read off real datagrams. The PS3 game service remains unverified; the layers are
+  believed shared but only the PC side has been observed.
+
+  PORT: the live game service runs on **UDP 50000 or 50001**, varying per session --
+  NOT 50010. Do not hardcode it.
 
   There are four nested layers, and they must be peeled in order:
 
@@ -153,17 +157,33 @@ types:
     seq:
       - id: header_size
         type: u4
-        doc: Always 12.
+        doc: |
+          12 on every message observed. NOTE: on server->client RESPONSES the protobuf
+          does not begin at offset 12 -- an extra 16 bytes sit between msg_index and the
+          protobuf, so the body starts at 28. Those 16 bytes are UNIDENTIFIED; cmd/corpus
+          finds the boundary by trial-parsing rather than assuming one. Requests do start
+          at 12.
       - id: msg_type
         type: u4
         doc: |
-          The game-service opcode. The reference documents roughly 90 for DS2 in the
-          range 0x0320-0x0400. UNVERIFIED FOR PS3 - the opcode numbering itself may
-          differ on this platform/edition and is being checked by decompilation.
+          The game-service opcode. CONFIRMED on PC: all 28 opcodes observed live land
+          exactly where docs/protocol-map.md places them, so DS2 SOTFS on PC shares the
+          numbering mapped from the PS3 binary.
 
-          Special case: 0x0320 client->server is RequestSendMessageToPlayers, but
-          0x0320 server->client with msg_index 0xFFFFFFFF is a PUSH, disambiguated by
-          the first protobuf field. Direction matters.
+          RESPONSES CARRY msg_type 0. They are matched to their request by msg_index,
+          not by an echoed opcode -- 1,925 of the captured corpus are these.
+
+          Special case CONFIRMED LIVE: 0x0320 client->server is RequestSendMessageToPlayers,
+          but 0x0320 server->client with msg_index 0xFFFFFFFF is a PUSH, and the real push
+          id is protobuf field 1. Direction matters. Push ids seen on the wire:
+
+            908  (0x038C) PlayerInfoUploadConfigPushMessage
+            938  (0x03AA) PushRequestEvaluateBloodMessage
+            972  (0x03CC) Bell Keeper visitor push
+            1007 (0x03EF) PushRequestNotifyRingBell
+
+          Filing captured messages by msg_type alone buries every push type in one
+          bucket -- split on this field instead.
       - id: msg_index
         type: u4le
         doc: LITTLE-ENDIAN.

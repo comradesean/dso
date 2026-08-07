@@ -6,11 +6,24 @@ meta:
   ks-version: 0.9
 
 doc: |
-  One UDP datagram sent by the GAME service back to a Dark Souls 2/3 client (port 50010).
+  One UDP datagram sent by the GAME service back to a Dark Souls 2/3 client
+  (UDP port 50000 or 50001, varying per session -- NOT 50010).
 
-  *** NOT CONFIRMED AGAINST A PS3 CLIENT. *** Same caveat as frpg2_game_in.ksy: no
-  game-service byte has ever been observed from a real PS3 client. Derived from our Go
-  implementation and the PC-targeting DS3OS reference. Hypothesis, not ground truth.
+  *** CONFIRMED AGAINST LIVE PC TRAFFIC (2026-08-07). *** Nine sessions against
+  FromSoftware's own servers were decrypted with keys pulled from the running client
+  (see tasks/pc-capture-decryption.md): ~4,700 messages, 28 opcodes, zero decryption
+  failures. Every layer here was read off real datagrams. The PS3 game service is
+  still unobserved; the layers are believed shared but only PC has been seen.
+
+  Two things this direction does that the spec previously understated:
+
+    * Any reply of size arrives FRAGMENTED and zlib-COMPRESSED. A per-datagram view
+      therefore shows almost no server opcodes at all, which is thoroughly misleading.
+      The compression uses a 4 KB window, so streams begin 58 c3 rather than the
+      familiar 78 9c -- valid zlib, but it does not look like it.
+    * RESPONSES carry msg_type 0 and are matched to their request by msg_index. The
+      protobuf starts at offset 28, not 12: sixteen unidentified bytes sit between
+      msg_index and the body.
 
   The server->client datagram is MUCH simpler than the inbound one: no auth token, no
   packet-type byte, and the AAD is just the IV. The server already knows which session
@@ -116,7 +129,12 @@ types:
     seq:
       - id: header_size
         type: u4
-        doc: Always 12.
+        doc: |
+          12 on every message observed. NOTE: on server->client RESPONSES the protobuf
+          does not begin at offset 12 -- an extra 16 bytes sit between msg_index and the
+          protobuf, so the body starts at 28. Those 16 bytes are UNIDENTIFIED; cmd/corpus
+          finds the boundary by trial-parsing rather than assuming one. Requests do start
+          at 12.
       - id: msg_type
         type: u4
         doc: 0 for a reply, 0x0320 for a push.

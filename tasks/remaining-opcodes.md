@@ -127,3 +127,16 @@ also asserts every dispatched opcode appears as present in the PS3 map.
 3. **Consume the status blob** for matchmaking filters — soul memory, area and covenant all
    arrive in it and are now persisted, but nothing reads them, so every listing still offers
    every online player.
+
+## Confirmed from live PC captures (2026-08-07)
+
+`tasks/live-capture-corpus.md` has the full corpus. Relevant to this file:
+
+| opcode | finding |
+|---|---|
+| `0x0320` | **Push wrapper.** Server->client with `msg_index = 0xFFFFFFFF`; the real push id is protobuf field 1. Client->server it really is `RequestSendMessageToPlayers`. |
+| `0x038C` | Genuinely sent by FromSoftware, carrying an element-id list. Reading as upload scheduling stands; still no reason to implement. |
+| `0x03AA` | `PushRequestEvaluateBloodMessage` seen live. |
+| `0x03CC` | **Bell Keeper visitor push**, 11 instances. Layout matches our `PushRequestVisit` field for field, and confirms belfry cells `101630` (Luna) / `101910` (Sol). |
+| `0x03EF` | `PushRequestNotifyRingBell` seen live, 4 instances. See `tasks/bell-broadcast.md`. |
+| `0x03EE` | Absent from all nine sessions — it is the HOST's message and neither captured client ever held that role. Not evidence of anything. |
