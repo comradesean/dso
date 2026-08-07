@@ -614,6 +614,38 @@ var visitorTierWindows = map[ds2pb.VisitorType]tierWindow{
 	ds2pb.VisitorType_VisitorType_BlueSentinels: {below: 5, above: 4},
 }
 
+// UNIMPLEMENTED, AND BELIEVED REAL: physical distance.
+//
+// Player observation (2026-08-07) is that auto-summon range includes actual
+// distance in map units, not only the soul memory window above. Neither the
+// threshold nor the mechanism is known, and it has never been tested here — but
+// it is recorded rather than dismissed, because the data for it is on the wire
+// and we discard it.
+//
+// PlayerLocation carries `position` as a Vector of three floats, in every status
+// heartbeat, and applyStatus reads only online_area_id and
+// online_activity_area_id from that message. So the server has every player's
+// x/y/z and does nothing with it.
+//
+// Two readings, and this does not distinguish them:
+//
+//   - It is a matchmaking input, and FromSoftware filtered on it. Uploading
+//     coordinates to a matchmaking server on every heartbeat otherwise buys
+//     nothing.
+//   - It is transport. The same blob is handed to the other client as player
+//     data when a visit is brokered, and a summoned phantom needs somewhere to
+//     spawn, so position may be there for that and never consulted for matching.
+//
+// The cheap test is two players in the same activity area, far apart, with
+// everything else eligible: if the summon finds nobody, distance is real.
+//
+// Related, same source: the defender's covenant icon does NOT glow everywhere —
+// there are a few places it stays dark, and the client decides. The likely
+// explanation is already modelled: online_activity_area_id is 0 wherever the
+// game does not host sessions, and visitorPoolFor returns None on that. If the
+// dark spots turn out to report a non-zero activity area, that hypothesis is
+// wrong and something else is deciding.
+
 // soulMemoryMatches reports whether a candidate's soul memory is in range of the
 // item user's, given a window. Both are absolute soul memory, not tiers.
 func soulMemoryMatches(itemUserSM, candidateSM uint32, w tierWindow) bool {

@@ -527,6 +527,20 @@ retail player ever heard a belfry bell while nowhere near a belfry.
   NRLogging-related). None have been observed live.
 - **`pushBreakInRejected` is unverified** — it assumes the alias immediately after
   `breakInPushID`. A *declined* invasion may not notify the invader. Cheap to test.
+- **Auto-summon range probably includes PHYSICAL distance, and we ignore it.** Believed real from
+  play (2026-08-07); neither the threshold nor the mechanism is known. It is recorded rather than
+  dismissed because the data is on the wire and we discard it: `PlayerLocation.position` is a
+  Vector of three floats in every status heartbeat, and `applyStatus` reads only the two area ids
+  from that message. Either FromSoftware filtered on it — uploading coordinates to a matchmaking
+  server every heartbeat otherwise buys nothing — or it is transport for a summoned phantom's
+  spawn point, since the same blob is handed to the other client. Nothing here distinguishes the
+  two. The cheap test is two eligible players in one activity area, far apart: if the summon finds
+  nobody, distance is real.
+- **The covenant icon does not glow everywhere.** Also from play: there are a few places it stays
+  dark and the client decides which. Likely already modelled — `online_activity_area_id` is 0
+  wherever the game does not host sessions, and `visitorPoolFor` returns None on that — so the
+  test is whether a dark spot reports a non-zero activity area. If it does, something else is
+  deciding and we do not know what.
 - **Six opcodes must never be implemented**: `0x03FA`–`0x03FD`, `0x03FF`, `0x0400` are in the
   PC/SOTFS map but have no code at all in this binary. See the warning at the top of
   `docs/protocol-map-ps3.md`.
