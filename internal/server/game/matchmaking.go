@@ -5,6 +5,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -384,6 +385,12 @@ var (
 	// spans several cells and there is no reason to think these four are all of
 	// them; log lines reading "bell keeper request from outside a belfry" with an
 	// unfamiliar cell id are how the next one gets found.
+	//
+	// Because it is hand-mapped and incomplete, it is overridable at runtime with
+	// DSO_BELL_KEEPER_CELLS — a comma-separated list of cell ids, REPLACING this
+	// set — so a cell can be added from evidence without a rebuild. Same idea as
+	// DSO_BELL_REGION_<mapid> for the toll broadcast, which is a different filter
+	// on different ids; see bellRegions in telemetry.go.
 	bellKeeperCells = map[uint32]bool{
 		// Ours, PS3, confirmed by a Bell Keeper summon that worked.
 		101640: true, // Belfry Luna
@@ -399,6 +406,28 @@ var (
 		101630: true, // Belfry Luna
 		101910: true, // Belfry Sol
 	}
+)
+
+// isBellKeeperCell reports whether a cell is somewhere a Bell Keeper trespasser
+// can be summoned into.
+//
+// DSO_BELL_KEEPER_CELLS replaces the built-in set entirely, so a cell found by
+// play can be added without a rebuild — the map is hand-built and known
+// incomplete, and this gate fails closed, so an unmapped belfry cell is a player
+// who silently gets nobody.
+func isBellKeeperCell(cell uint32) bool {
+	if raw := os.Getenv("DSO_BELL_KEEPER_CELLS"); raw != "" {
+		for _, f := range strings.Split(raw, ",") {
+			if v, err := strconv.ParseUint(strings.TrimSpace(f), 10, 32); err == nil && uint32(v) == cell {
+				return true
+			}
+		}
+		return false
+	}
+	return bellKeeperCells[cell]
+}
+
+var (
 	ratCells = map[uint32]bool{
 		// Both CONFIRMED LIVE on 2026-08-05, each read straight off the wire.
 		103410: true, // Grave of Saints    (m10_34) -- summons confirmed working

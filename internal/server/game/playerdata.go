@@ -128,7 +128,7 @@ func (s *Service) handleUpdatePlayerStatus(log logger, cs *clientSession, payloa
 		log.Info("activity area changed",
 			"player_id", cs.playerID, "from", prevArea, "to", area,
 			"known_rat_cell", ratCells[area],
-			"known_bell_keeper_cell", bellKeeperCells[area],
+			"known_bell_keeper_cell", isBellKeeperCell(area),
 			"covenant", cs.profile.effectiveCovenant())
 	}
 

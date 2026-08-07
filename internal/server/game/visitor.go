@@ -124,7 +124,7 @@ func (s *Service) handleGetVisitorList(log logger, cs *clientSession, payload []
 	// else, so a request from outside one should find nobody rather than pull a
 	// defender to a place they have no business being.
 	if filtering && req.GetType() == ds2pb.VisitorType_VisitorType_BellKeepers &&
-		!bellKeeperCells[cs.profile.onlineActivityArea] {
+		!isBellKeeperCell(cs.profile.onlineActivityArea) {
 		log.Info("bell keeper request from outside a belfry",
 			"player_id", cs.playerID, "activity_area", cs.profile.onlineActivityArea,
 			"cell_id", req.GetCellId())
