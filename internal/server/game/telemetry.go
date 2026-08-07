@@ -360,8 +360,12 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 //   - Belfry Luna (10160000) -> Lost Bastille (10140000): CONFIRMED on the wire.
 //     A live 0x03EF carrying 10160000 was received by a client standing in
 //     m10_14. See tasks/bell-broadcast.md.
-//   - Belfry Sol (10190000) -> Iron Keep: reported from play, but Iron Keep's map
-//     id is NOT established here, so it is absent rather than guessed.
+//   - Belfry Sol -> Iron Keep needs NO extra entry: 10190000 IS Iron Keep, with
+//     Belfry Sol inside it. CONFIRMED from live captures — a player at the
+//     Threshold Bridge bonfire (activity cell 101950, ~200 units from cell
+//     101910) received three Belfry Sol tolls, all while reporting map
+//     10190000. An earlier note here said Iron Keep's id was unestablished and
+//     left it out; it was never missing, it is the same id.
 //
 // A belfry always reaches itself.
 //
@@ -370,7 +374,7 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // a rebuild.
 var bellRegions = map[uint32][]uint32{
 	10160000: {10160000, 10140000}, // Belfry Luna, Lost Bastille
-	10190000: {10190000},           // Belfry Sol (+ Iron Keep, id unconfirmed)
+	10190000: {10190000},           // Iron Keep, Belfry Sol inside it
 }
 
 // bellReaches reports whether a toll from ringMap should go to a player in area.

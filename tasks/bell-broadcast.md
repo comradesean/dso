@@ -21,17 +21,40 @@ and — for the first time — `0x03EE`, the ring itself. Eight distinct bell ev
 machine we were capturing. Machine identities come from the login response, not assumption:
 **LOCAL = 2910025, VM = 3473926**.
 
-### CONFIRMED — the ringer does not receive their own toll
+### CONFIRMED — `0x03EE` is sent by the HOST, after they die
 
-Twice, in both directions, at identical timestamps, with the ringer id matching the machine that
-sent the `0x03EE`:
+Not by whoever pulls the lever. Both captured rings came from the player who was **invaded** and
+**killed**, seconds after their death, and in both cases the *killer* heard the resulting toll while
+the sender did not:
 
 ```
-18:21:51  LOCAL sends 0x03EE  ->  VM receives 0x03EF, ringer 2910025 = LOCAL.  LOCAL does not.
-22:15:43  VM    sends 0x03EE  ->  LOCAL receives 0x03EF, ringer 3473926 = VM.  VM does not.
+18:21:33  LOCAL dies as HOST (guest had joined)   ->  18:21:39  LOCAL sends 0x03EE
+                                                       VM (the phantom who killed them) hears it
+22:15:29  VM    dies as HOST                      ->  22:15:43  VM    sends 0x03EE
+                                                       LOCAL hears it
+22:54:08  LOCAL kills as PHANTOM                  ->  22:54:20  the HOST (3161263) is the ringer
+                                                       LOCAL hears it
 ```
 
-`telemetry.go` already skips the ringer, so our behaviour matches.
+Roles are read from the traffic, not assumed: `0x03E8 NotifyJoinGuestPlayer` means a guest entered
+*my* world, so I am the host and I was invaded; `0x03EA NotifyJoinSession` means I entered someone
+else's, so I am the phantom and I invaded.
+
+**So "the ringer" in `0x03EF` field 2 is the host of the world the bell rang in**, and the
+ringer-exclusion rule means the *host* is the one who does not hear it. The victorious invader
+does. Our `telemetry.go` excludes `from.playerID`, which is the sender of `0x03EE` — the same
+player — so the behaviour matches, but the reason is not the one the code comment implies.
+
+**A bell follows a kill only sometimes: 2 of 10.** Separated by role, out of 30 outcomes:
+
+| role | outcome | n | followed by a bell |
+|---|---|---|---|
+| phantom (I invaded) | killed the host | 10 | **2** |
+| phantom | died | 10 | 0 |
+| host (I was invaded) | died | 10 | **2** (the same two, from the other side) |
+
+Whether the lever gets pulled is the obvious explanation, but the ratio is the opposite way round
+from what the player expected, so it is recorded rather than explained.
 
 ### The map filter is SUPPORTED, not refuted
 

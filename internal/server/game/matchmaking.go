@@ -397,9 +397,9 @@ var (
 	// Same idea as DSO_BELL_REGION_<mapid> for the toll broadcast, which is a
 	// different filter on different ids; see bellRegions in telemetry.go.
 	bellKeeperCells = map[uint32]bool{
-		// Ours, PS3, confirmed by a Bell Keeper summon that worked.
-		101640: true, // Belfry Luna
-		101950: true, // Belfry Sol
+		// Ours, PS3, from a Bell Keeper summon that worked.
+		101640: true, // Belfry Luna zone
+		101950: true, // Belfry Sol zone — see below
 
 		// FromSoftware's own live traffic, from the PC capture corpus: their
 		// PushRequestVisit carried these at a belfry, and a Bell Keeper's
@@ -408,9 +408,26 @@ var (
 		// sets corroborate each other rather than conflicting, and the old gate
 		// had been rejecting these since it was written.
 		// See tasks/live-capture-corpus.md.
-		101630: true, // Belfry Luna
-		101910: true, // Belfry Sol
+		101630: true, // Belfry Luna zone
+		101910: true, // Belfry Sol zone
 	}
+
+	// All four are CORROBORATED as Bell Keeper cells by FromSoftware's own
+	// traffic: the 52 captured PushRequestVisit messages for mode 1 (Bell
+	// Keepers) were brokered at exactly these four cells and no others —
+	// 101630 x32, 101910 x8, 101640 x8, 101950 x4.
+	//
+	// "Zone", not "the belfry", because they are not all the belfry room. Position
+	// data puts 101950 at x -814..-773 and 101910 at x -582, ~200 units apart, and
+	// the player sitting in 101950 identified it from the bonfire as IRON KEEP,
+	// THRESHOLD BRIDGE. A Bell Keeper summon still works from there, so the
+	// trespass zone genuinely reaches past the belfry itself.
+	//
+	// This was briefly written up as a mislabelling bug. It is not one — the cell
+	// belongs in the map, only the name was too tight. The visit traffic settled
+	// it, and the wider cell range seen on RequestGetVisitorList (101610-101670)
+	// is not evidence for adding more here, because that request is sent for every
+	// visitor type from anywhere, not just Bell Keeper trespass.
 )
 
 // isBellKeeperCell reports whether a cell is somewhere a Bell Keeper trespasser
