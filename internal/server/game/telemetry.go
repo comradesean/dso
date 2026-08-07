@@ -356,10 +356,24 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 	if !bellBroadcastEnabled() {
 		return
 	}
+	// FIELD ASSIGNMENT CORRECTED FROM A REAL CAPTURE (2026-08-07).
+	//
+	// We had these backwards. A live push from FromSoftware's own server, read
+	// off the wire with the session key, is byte for byte:
+	//
+	//	08 ef07        field 1 = 1007 = 0x03EF, the push id
+	//	10 a8e8c501    field 2 = 3241000  -- the RINGER'S player id
+	//	18 808fec04    field 3 = 10160000 -- the ringing bell's MAP id
+	//	22 00          field 4 = empty bytes
+	//
+	// Field 2 is a server-assigned player id, not a map: the same capture's
+	// login response assigned the listener 2910025, and the push carried a
+	// different value in the same allocation range. Field 3 is where the map
+	// goes. See tasks/bell-broadcast.md.
 	body, err := proto.Marshal(&ds2pb.PushRequestNotifyRingBell{
 		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell.Enum(),
-		Field_2:       proto.Uint32(mapID),
-		Field_3:       proto.Uint32(0),
+		Field_2:       proto.Uint32(from.playerID),
+		Field_3:       proto.Uint32(mapID),
 		Field_4:       []byte{},
 	})
 	if err != nil {
@@ -390,39 +404,37 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 	// yet has onlineArea 0 and still gets the toll: the client will discard it if
 	// they are elsewhere, so a false positive costs one small packet, while a
 	// false negative would silence a bell someone should have heard.
-	var sent, skipped int
+	var sent int
 	for _, other := range s.sessions {
 		if other.playerID == 0 || other.playerID == from.playerID {
 			continue
 		}
-		// THE SERVER IS THE FILTER. This is not an optimisation — it is the
-		// feature, and without it the wrong bell rings.
+		// THE MAP FILTER IS GONE, because FromSoftware did not have one.
 		//
-		// Proven in game: with this disabled, a player standing in Iron Keep
-		// heard BELFRY SOL's bell while the toll carried Belfry Luna's map in
-		// field 2 and Luna's cell in field 3. The client cannot tell which bell
-		// rang, because it never reads the body — it sets a latch, and whichever
-		// belfry map is loaded plays its own bell.
+		// It used to drop anyone whose area was not the ringing bell's map, on
+		// the reasoning that the server is the only place the decision CAN be
+		// made — the client never reads the body, it sets a latch, and whichever
+		// belfry map is loaded plays its own bell. That reasoning was sound and
+		// the conclusion was still wrong, which is worth remembering.
 		//
-		// So the map and cell in this message exist for OUR benefit, not the
-		// client's. FromSoftware's server must have done exactly this, because
-		// it is the only place the decision can be made: decline to notify
-		// players who would sound the wrong bell.
+		// A capture of FromSoftware's live server (2026-08-07) shows a player
+		// standing in Lost Bastille (m10_14) receiving a 0x03EF whose field 3 is
+		// Belfry Luna (m10_16). Different maps. Our filter would have dropped
+		// that push, silencing a bell the real server delivered.
 		//
-		// Fails open on an unknown location, since a false positive costs one
-		// small packet and a false negative silences a bell someone should have
-		// heard.
-		if other.profile.onlineArea != 0 && other.profile.onlineArea != mapID {
-			skipped++
-			continue
-		}
+		// One caveat kept honestly: this proves the filter is not map-exact, not
+		// that no filter exists. Lost Bastille adjoins Belfry Luna, so the real
+		// rule may be a set of related areas rather than a broadcast. Until a
+		// listener somewhere genuinely distant is observed, sending to everyone
+		// is the option that cannot silence a bell that should have rung — and
+		// an extra small packet is the cheaper mistake.
 		other.conn.SendPush(body)
 		sent++
 	}
 	log.Info("broadcast bell toll",
 		"ringer_player_id", from.playerID, "map_id", mapID,
 		"push_id", fmt.Sprintf("%#04x", int(ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell)),
-		"recipients", sent, "skipped_other_map", skipped,
+		"recipients", sent,
 		"payload_bytes", len(body))
 }
 

@@ -71,6 +71,63 @@ literal `0`, and nothing changed.
 
 ---
 
+## ANSWERED: FromSoftware did NOT filter to the ringing bell's map
+
+**Settled 2026-08-07 by reading a live push off FromSoftware's own server.** See
+`tasks/pc-capture-decryption.md` for how the traffic was decrypted.
+
+Two bells were rung in Belfry Luna by a second account. The listening client — standing in **Lost
+Bastille (m10_14)**, not in either belfry — received both. Byte for byte, twice, identically:
+
+```
+s2c  ...0000 0320                 push wrapper opcode
+     ffffffff
+     08 ef07        field 1 = 1007 = 0x03EF   push id
+     10 a8e8c501    field 2 = 3241000         the RINGER'S player id
+     18 808fec04    field 3 = 10160000        Belfry Luna, the ringing map
+     22 00          field 4 = empty
+```
+
+### What this establishes
+
+- **`0x03EF` is real and FromSoftware sent it.** Not dead code, not a guess from the PS3 binary.
+- **The field layout, which we had backwards.** Field 2 is a server-assigned **player id**, not a
+  map: the same capture's login response assigned the listener **2910025** and the push carried
+  **3241000** — different values, same allocation range. Field 3 carries the map. Corrected in
+  `broadcastBellToll`.
+- **Pushes ride a wrapper opcode `0x0320`**, with the real push id in protobuf field 1. That is why
+  an opcode table keyed on the message header mislabels every push.
+- **The map filter was wrong.** A listener in `m10_14` received a toll for `m10_16`. Our filter
+  dropped exactly that case, silencing a bell the real server delivered. Removed.
+
+### The reasoning that was sound and still wrong
+
+The filter existed because the client never reads the message body — it sets a boolean latch, and
+whichever belfry map is loaded plays its own bell. So the server is the only place the decision
+*can* be made, therefore FromSoftware must have made it there. Every step of that is true except the
+conclusion. Worth keeping as a reminder that "it must have been done this way" survives right up
+until someone reads the wire.
+
+### Still open, and stated honestly
+
+This proves the filter is **not map-exact**. It does not prove there is no filter. Lost Bastille
+adjoins Belfry Luna and is thematically within earshot, so the real rule may be a set of related
+areas. Distinguishing that from a plain broadcast needs one more observation: a listener somewhere
+genuinely distant — Majula, Iron Keep — while a bell rings.
+
+Until then we send to everyone, because an extra small packet is a cheaper mistake than a bell that
+should have rung and did not.
+
+### Also seen in the same capture
+
+`0x038C PlayerInfoUploadConfigPushMessage` is genuinely sent by FromSoftware, carrying a long
+element-id list. We had concluded it was upload scheduling and deliberately left it unimplemented;
+that reading stands, and it is now known to be live rather than vestigial.
+
+---
+
+## Superseded: the original open question
+
 ## OPEN: did FromSoftware's server filter, and how?
 
 **This is the part we do not know, and the current implementation guesses.**
