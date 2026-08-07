@@ -430,12 +430,15 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 		// Belfry Luna (m10_16). Different maps. Our filter would have dropped
 		// that push, silencing a bell the real server delivered.
 		//
-		// One caveat kept honestly: this proves the filter is not map-exact, not
-		// that no filter exists. Lost Bastille adjoins Belfry Luna, so the real
-		// rule may be a set of related areas rather than a broadcast. Until a
-		// listener somewhere genuinely distant is observed, sending to everyone
-		// is the option that cannot silence a bell that should have rung — and
-		// an extra small packet is the cheaper mistake.
+		// The real rule is REGIONAL: the toll reaches the belfry's surrounding
+		// region. Belfry Luna -> Lost Bastille is confirmed on the wire; Belfry
+		// Sol -> Iron Keep is reported from play. Exact boundaries are unknown,
+		// and guessing at them would rebuild the same mistake with a bigger
+		// radius.
+		//
+		// So: send to everyone. That is an approximation, not a claim. It cannot
+		// silence a bell that should have rung, which is the failure that
+		// matters, and an extra small packet is the cheaper mistake.
 		other.conn.SendPush(body)
 		sent++
 	}
