@@ -125,20 +125,57 @@ real and you have plaintext.
 
 ## Procedure
 
-1. Start `dumpcap` with a ring buffer **before launching the game** — the handshake is the part that
-   gets lost.
-2. Launch, attach a debugger, scan for `A9 E7 FF FF FF`, breakpoint at `hit - 0x22`.
-3. Log `[RCX]` 16 bytes on each hit (expect at least two).
-4. Play — ring bells, sit somewhere far from a belfry, let it run.
-5. Verify each key against a captured datagram; decode with the tooling below.
+1. **Start `dumpcap` with a ring buffer BEFORE launching the game.** The handshake is what gets lost
+   otherwise, and it is not recoverable afterwards.
+2. Launch the game, then run `keydump.exe` **as Administrator** (it needs `DebugActiveProcess`).
+   Start it before going online — the keys are installed during the login handshake.
+3. Go online. Keys print as they appear; expect at least two (auth stream, then game service).
+4. Play. Ring bells, sit somewhere far from a belfry, let it run.
+5. Pull one game datagram's **UDP payload** out of the capture and run `verifykey` against the
+   dumped keys. The one that verifies is the game key.
+6. Decode the capture with that key.
 
-## Tooling
+## Tooling — built, tested, in the repo
 
-- `scratchpad/pccap/pcapng.py` — dependency-free pcapng + Ethernet/IPv4/TCP/UDP dissector (no tshark
-  or scapy on this box)
-- `scratchpad/pccap/decode_game.py` — finds Frpg2 game flows, decodes the envelope, takes `--key`
-- `scratchpad/pckey/verify_key.go` — drop in as `cmd/verifykey/main.go`;
-  `go run ./cmd/verifykey <keyhex> <datagramhex> [c2s|s2c]`
+**`cmd/keydump`** (Windows only; cross-compile with
+`GOOS=windows GOARCH=amd64 go build -o keydump.exe ./cmd/keydump`)
+
+```
+keydump.exe                  attach to DarkSoulsII.exe, print keys as installed
+keydump.exe -pid 1234        attach to a specific process
+keydump.exe -out keys.txt    also append to a file
+```
+
+Finds the function by **signature, not address**, so ASLR and a different build do not matter. It
+reads the PE header for `SizeOfImage` rather than guessing a scan range, and **warns if the
+signature matches more than once** — the whole approach rests on that uniqueness, so a second match
+is something to know rather than to silently take the first of. It writes exactly one byte (the
+INT3) and restores it on every hit; nothing else in the process is touched.
+
+**`cmd/verifykey`**
+
+```
+verifykey <keyhex> <datagramhex> [s2c|c2s]
+verifykey -keys keys.txt -datagram <hex> [s2c|c2s]
+```
+
+The second form takes keydump's own output file and reports which key works. Prints the plaintext
+and flags whether the RUDP magic `F5 02` is present as an independent confirmation.
+
+Two bugs were found and fixed while testing this against known-good sealed datagrams, both of which
+would have been debugged live with a correct key in hand:
+
+- The ciphers are named by **role**, not direction — `ServerUDPCipher.Open` reads *client->server*
+  datagrams. Mixing them up gives a tag failure indistinguishable from a wrong key.
+- `Open` returns `(plaintext, connectionPrefix, error)`. That bool is **not** success; it marks the
+  SYN datagram. Reading it as "ok" made a correct key report "tag failed" while returning correct
+  plaintext.
+
+`cmd/verifykey/main_test.go` pins both.
+
+**Capture-side helpers** (scratchpad, not in the repo):
+`scratchpad/pccap/pcapng.py` — dependency-free pcapng + Ethernet/IPv4/TCP/UDP dissector;
+`scratchpad/pccap/decode_game.py` — finds Frpg2 flows, decodes the envelope, takes `--key`.
 
 ## Also recovered
 
