@@ -146,7 +146,13 @@ calls it Doors of Pharros. The value was right, so nothing broke, but the name w
 search into the wrong zone. Third confirmed place the reference is wrong for PS3.
 
 Covenant ids **5 (Rat King)** and **6 (Bell Keepers)** are likewise confirmed, read off live status
-blobs for players known to be in them. The rest of that enum is still guessed.
+blobs for players known to be in them.
+
+> **Superseded 2026-08-06: all ten ids, 0-9, are confirmed on the wire.** Each was read from a live
+> status blob for a player known to be in that covenant, or watched changing as they switched, and
+> several are corroborated by their own content working in the same session. `matchmaking.go` is
+> authoritative. The one soft spot is Brotherhood of Blood (3): the id was observed, but its content
+> -- Undead Purgatory duels -- has only been tested by players outside it.
 
 Two behaviours worth recording, both CLIENT-side and neither ours to tune:
 

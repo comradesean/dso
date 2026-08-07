@@ -375,12 +375,29 @@ const (
 // cell every rat poll carried). The others are reference-derived and unverified,
 // so an unrecognised cell is logged rather than silently dropped.
 var (
-	// Retained for the diagnostic log only — NOT used to gate the Bell Keeper
-	// pool, since defenders are summoned to a belfry rather than standing in
-	// one. Still useful for spotting when someone is in the trespasser position.
+	// This does NOT gate the defender pool — defenders are summoned to a belfry
+	// rather than standing in one, which visitorPoolFor handles. It DOES gate
+	// the trespasser: visitor.go rejects a Bell Keeper list request from outside
+	// these cells, so a value missing here is a player who silently gets nobody.
+	//
+	// Treat it as an allow-list that must stay complete, not as a label. A belfry
+	// spans several cells and there is no reason to think these four are all of
+	// them; log lines reading "bell keeper request from outside a belfry" with an
+	// unfamiliar cell id are how the next one gets found.
 	bellKeeperCells = map[uint32]bool{
+		// Ours, PS3, confirmed by a Bell Keeper summon that worked.
 		101640: true, // Belfry Luna
 		101950: true, // Belfry Sol
+
+		// FromSoftware's own live traffic, from the PC capture corpus: their
+		// PushRequestVisit carried these at a belfry, and a Bell Keeper's
+		// PlayerStatus put area 10160000 with cell 101630. Same maps as ours
+		// (1016 Luna, 1019 Sol) but different cells within them — so the two
+		// sets corroborate each other rather than conflicting, and the gate has
+		// been rejecting these since it was written.
+		// See tasks/live-capture-corpus.md.
+		101630: true, // Belfry Luna
+		101910: true, // Belfry Sol
 	}
 	ratCells = map[uint32]bool{
 		// Both CONFIRMED LIVE on 2026-08-05, each read straight off the wire.
