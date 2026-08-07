@@ -111,21 +111,26 @@ whichever belfry map is loaded plays its own bell. So the server is the only pla
 conclusion. Worth keeping as a reminder that "it must have been done this way" survives right up
 until someone reads the wire.
 
-### Still open, and stated honestly
+### The rule is REGIONAL, not per-map
 
-This proves the filter is **not by the listener's map**, and it is now stronger than that: the
-listening client received a toll for a world it had no part in. Its whole session contained only
-three pushes — one `0x038C` and the two bells — with **no `0x3CC`**, so it was never summoned into
-that host's world. It got a bell for a stranger's fight, from Lost Bastille.
+The toll reaches the belfry's surrounding region, not just the belfry map:
 
-What that still does not establish is **broadcast to everyone**. Every observed recipient was
-registered for the belfry areas: the listening client's own requests carried only `10160000` and
-`10190000`, 81 and 72 times, which is what a Bell Keeper registered for both belfries looks like,
-and the VM was being summoned into belfry worlds throughout. A covenant- or registration-based
-predicate fits every observation as well as a plain broadcast does.
+- **Belfry Luna -> Lost Bastille.** Confirmed on the wire: the listening client was in Lost Bastille
+  (`m10_14`) and received a toll carrying `10160000`.
+- **Belfry Sol -> Iron Keep.** Reported from play by the person running these tests.
 
-The discriminating test is therefore not "stand far away" but **"listen on a character that is not a
-Bell Keeper"**. If a non-covenant character still receives the toll, it is a genuine broadcast.
+It is also not scoped to the fight. The listening client received a toll for a world it had no part
+in — its whole session contained three pushes, one `0x038C` and the two bells, with **no `0x3CC`**,
+so it was never summoned into that host's world. It got a bell for a stranger's fight.
+
+**Exact boundaries are UNKNOWN.** How far each region extends, and how finely the game partitions
+areas for this purpose, is not established by anything here. Do not guess at it in this file.
+
+**Whether the covenant matters is UNTESTED.** No observation here bears on it either way.
+
+Our implementation currently sends to everyone. That is an approximation, not a claim: it cannot
+silence a bell that should have rung, which is the failure that matters, and it is closer to the
+observed behaviour than the per-map filter it replaced.
 
 Until then we send to everyone, because an extra small packet is a cheaper mistake than a bell that
 should have rung and did not.
