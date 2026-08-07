@@ -203,8 +203,11 @@ code runs.
 
 ## Tooling — built, tested, in the repo
 
-**`cmd/keydump`** (Windows only; cross-compile with
-`GOOS=windows GOARCH=amd64 go build -o keydump.exe ./cmd/keydump`)
+**`tools/keydump`** — Windows only. The built exe lives beside its source. Rebuild with:
+
+```
+GOOS=windows GOARCH=amd64 go build -o tools/keydump/keydump.exe ./tools/keydump
+```
 
 ```
 keydump.exe                  attach to DarkSoulsII.exe, print keys as installed

@@ -2,7 +2,7 @@
 // layer underneath.
 //
 // Input is whatever tools/pcap/udpdump.py emits with --tagged: one datagram per
-// line as "<c2s|s2c> <hex>". The key comes from cmd/keydump; cmd/verifykey tells
+// line as "<c2s|s2c> <hex>". The key comes from tools/keydump; cmd/verifykey tells
 // you which of the dumped keys is the game one.
 //
 //	python3 tools/pcap/udpdump.py cap.pcapng --port 50000 --tagged \

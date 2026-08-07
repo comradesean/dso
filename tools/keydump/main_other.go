@@ -11,6 +11,6 @@ import (
 
 func main() {
 	fmt.Fprintln(os.Stderr, "keydump only runs on Windows; cross-compile with:\n"+
-		"  GOOS=windows GOARCH=amd64 go build -o keydump.exe ./cmd/keydump")
+		"  GOOS=windows GOARCH=amd64 go build -o tools/keydump/keydump.exe ./tools/keydump")
 	os.Exit(1)
 }

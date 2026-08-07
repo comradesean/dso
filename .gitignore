@@ -32,4 +32,5 @@
 # Local server config (contains your LAN address).
 /dso.env
 keydump*.exe
+tools/keydump/*.exe
 /corpus/
