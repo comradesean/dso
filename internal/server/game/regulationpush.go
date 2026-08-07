@@ -151,8 +151,32 @@ func parsePushPaths(spec string) []string {
 
 // resourcePush is one whole-resource replacement queued for a client.
 type resourcePush struct {
-	path string
-	data []byte
+	// feature names whatever asked for this push, for the log only. The schedule
+	// is derived rather than fixed, so being able to see what actually got queued
+	// is the difference between reading a config and guessing at one.
+	feature string
+	path    string
+	data    []byte
+}
+
+// resourcePushSource contributes zero or more pushes at login.
+//
+// Zero is the normal answer for a disabled feature, which is what makes the
+// schedule dynamic: turning something off removes its entries and the rest close
+// up, still correctly spaced. Adding a feature is one line here.
+type resourcePushSource struct {
+	name string
+	fn   func(logger) []resourcePush
+}
+
+func (s *Service) resourcePushSources() []resourcePushSource {
+	return []resourcePushSource{
+		{"regulation_file", s.regulationFilePushes},
+		{"obelisk", s.obeliskPush},
+		// The chest goes last so a run cut short by a disconnect leaves it shut
+		// rather than open on a stale prize.
+		{"event_chest", s.eventChestPushes},
+	}
 }
 
 // sendResourcePushes sends every queued push to one client, SPACED APART.
@@ -178,24 +202,38 @@ func (s *Service) sendResourcePushes(log logger, cs *clientSession, pushes []res
 	delay := time.Duration(s.srv.Config.RegulationPushDelaySeconds) * time.Second
 	gap := time.Duration(s.srv.Config.RegulationPushGapSeconds) * time.Second
 
-	send := func() {
+	// Log the schedule before sending any of it. Every failure in this message is
+	// silent on the client, so the server's account of what it intended to send,
+	// and when, is the only record that exists.
+	at := make([]string, len(pushes))
+	for i, p := range pushes {
+		at[i] = fmt.Sprintf("%s=%s@%s", p.feature, p.path, delay+time.Duration(i)*gap)
+	}
+	log.Info("resource push schedule", "count", len(pushes), "gap", gap, "schedule", at)
+
+	// One push with no delay is the common case and needs no goroutine.
+	if delay <= 0 && len(pushes) == 1 {
+		s.pushResource(log, cs, pushes[0].path, pushes[0].data)
+		return
+	}
+
+	go func() {
 		for i, p := range pushes {
-			if i > 0 && gap > 0 {
-				time.Sleep(gap)
+			wait := gap
+			if i == 0 {
+				wait = delay
+			}
+			if wait > 0 {
+				select {
+				case <-time.After(wait):
+				case <-cs.done:
+					log.Info("resource push run abandoned, session gone",
+						"sent", i, "of", len(pushes), "next", p.feature)
+					return
+				}
 			}
 			s.pushResource(log, cs, p.path, p.data)
 		}
-	}
-
-	if delay <= 0 && len(pushes) == 1 {
-		send()
-		return
-	}
-	go func() {
-		if delay > 0 {
-			time.Sleep(delay)
-		}
-		send()
 	}()
 }
 
@@ -380,9 +418,18 @@ func labelFMG(data []byte, label string) ([]byte, bool) {
 // registered at map load, so pushing while the player already stands in Majula
 // risks changing data nothing re-reads.
 func (s *Service) sendLoginResourcePushes(log logger, cs *clientSession) {
+	s.sendResourcePushes(log, cs, s.loginResourcePushes(log))
+}
+
+// loginResourcePushes asks every source what it wants sent. Split out from the
+// sending so the derived schedule can be asserted on without a live client.
+func (s *Service) loginResourcePushes(log logger) []resourcePush {
 	var pushes []resourcePush
-	pushes = append(pushes, s.regulationFilePushes(log)...)
-	pushes = append(pushes, s.obeliskPush(log)...)
-	pushes = append(pushes, s.eventChestPushes(log)...)
-	s.sendResourcePushes(log, cs, pushes)
+	for _, src := range s.resourcePushSources() {
+		for _, p := range src.fn(log) {
+			p.feature = src.name
+			pushes = append(pushes, p)
+		}
+	}
+	return pushes
 }

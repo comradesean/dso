@@ -104,6 +104,25 @@ type clientSession struct {
 	// attempt. RequestRejectBreakInTarget does not carry it, but the rejection
 	// push alias is mode-specific, so it has to be remembered from the attempt.
 	breakInType ds2pb.BreakInType
+
+	// done is closed when the session is dropped.
+	//
+	// Anything that sleeps before sending has to watch it. The resource pushes
+	// are spaced seconds apart on purpose, so without this a player who quits
+	// during the run leaves a goroutine writing into a session nobody is on the
+	// other end of — and worse, a fast relog would overlap two runs and break the
+	// spacing that exists to stop the client discarding a push.
+	done     chan struct{}
+	doneOnce sync.Once
+}
+
+// close marks the session finished. Safe to call more than once.
+func (cs *clientSession) close() {
+	cs.doneOnce.Do(func() {
+		if cs.done != nil {
+			close(cs.done)
+		}
+	})
 }
 
 // New creates a game service bound to the given server. st persists blood
@@ -223,6 +242,7 @@ func (s *Service) session(pc net.PacketConn, from net.Addr, tok authtoken.Token)
 		token:    tok,
 		cipher:   cipher,
 		lastSeen: time.Now(),
+		done:     make(chan struct{}),
 	}
 	cs.sess = rudp.NewServerSession(func(reliable []byte, connectionPrefix bool) error {
 		sealed, err := cipher.Seal(reliable, connectionPrefix)
@@ -366,6 +386,7 @@ func (s *Service) dropSession(key string, cs *clientSession) {
 	if cs.sess != nil {
 		cs.sess.SendReset()
 	}
+	cs.close()
 	delete(s.sessions, key)
 	if cs.playerID != 0 {
 		s.dropSignsForPlayer(s.srv.Logger, cs.playerID)
