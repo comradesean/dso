@@ -158,7 +158,7 @@ a false negative costs one person one toll.
 Until then we send to everyone, because an extra small packet is a cheaper mistake than a bell that
 should have rung and did not.
 
-### THE PC CLIENT NEVER SENDS `0x03EE` — the server rings the bell itself
+### `0x03EE` is absent from every capture — because we never played the role that sends it
 
 **Across nine decrypted sessions, ~4,700 messages, there is not one `0x03EE`.** Not from the client
 that rang, not from either machine. Meanwhile four `0x03EF` tolls were received.
@@ -173,21 +173,27 @@ The sequence that explains it, from the VM's own session (`corpus/`, VMrun2 mess
 
 No ring message between them. The server produced the toll from the kill.
 
-**This contradicts the PS3 model**, and both observations are solid, so the difference is real rather
-than a mistake in one of them:
+On **PS3** the lever demonstrably sends `0x03EE` — confirmed live, `08 <varint mapid> 12 00` on the
+wire. Nothing here contradicts that; these captures simply never include the sending side.
 
-- On **PS3** the lever demonstrably sends `0x03EE`. Confirmed live: the prompt does not appear until
-  a covenant defender kills the host, and pulling it put `08 <varint mapid> 12 00` on the wire.
-- On **PC (SOTFS)** no client ever sends it, and the toll follows `RequestNotifyKillPlayer`.
+**The likely explanation: `0x03EE` is sent by the HOST, and neither captured client was ever a host
+in a belfry.** The VM was always the summoned Bell Keeper; the local client was never in that role
+either. So neither would ever send one, and its absence says nothing about whether the message is
+used.
 
-**INFERRED, not proven:** that the server derives the toll from the kill. The alternative is that
-another Bell Keeper in the same world rang and their `0x03EE` is simply not in our captures — we only
-ever see one side. What IS established is that the client we captured did not send one, and that the
-toll it received names the host it had just killed.
+That also explains field 2 without any extra machinery: the toll carries the **host's** player id
+because the server is relaying the id of whoever sent the ring. `f2=2350487 f3=10160000` is the host
+of the world, which is exactly what a relayed sender id looks like.
 
-Consequence for us: our `broadcastBellToll` is driven by `handleNotifyRingBell`. That matches PS3,
-which is the platform we serve, so it stays — but the PC behaviour is worth knowing before assuming
-one implementation fits both.
+I first read the absence as "the server derives the toll from the kill". That was an inference built
+on a gap in the evidence, and the simpler reading — we never occupied the role that sends it — fits
+better and needs nothing invented.
+
+**To settle it:** capture from a client that is the HOST in a belfry when the bell rings. That side
+has never been recorded.
+
+Consequence for us: none yet. `broadcastBellToll` is driven by `handleNotifyRingBell`, which matches
+the PS3 behaviour we observed directly.
 
 ### `0x3CC` (972) is the Bell Keeper visitor push, and OUR LAYOUT IS RIGHT
 
