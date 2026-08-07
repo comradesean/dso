@@ -33,4 +33,5 @@
 /dso.env
 keydump*.exe
 tools/keydump/*.exe
+tools/memscan/*.exe
 /corpus/
