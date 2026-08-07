@@ -55,7 +55,20 @@ import (
 var (
 	sigCWCInit    = []byte{0xA9, 0xE7, 0xFF, 0xFF, 0xFF}
 	sigEntryDelta = uintptr(0x22)
+
+	verbose bool
 )
+
+func exceptionName(code uint32) string {
+	switch code {
+	case exceptionBreakpoint:
+		return "BREAKPOINT"
+	case exceptionSingleStep:
+		return "SINGLE_STEP"
+	default:
+		return fmt.Sprintf("%#x", code)
+	}
+}
 
 const (
 	dbgContinue             = 0x00010002
@@ -104,6 +117,7 @@ func main() {
 	pid := flag.Int("pid", 0, "process id (0 = find DarkSoulsII.exe)")
 	name := flag.String("name", "DarkSoulsII.exe", "process name to find when -pid is not given")
 	out := flag.String("out", "", "also append keys to this file")
+	flag.BoolVar(&verbose, "v", false, "log every debug event (use if it misbehaves)")
 	flag.Parse()
 
 	target := uint32(*pid)
@@ -162,6 +176,10 @@ func run(pid uint32, sink *os.File) error {
 		code := binary.LittleEndian.Uint32(evt[0:])
 		tid := binary.LittleEndian.Uint32(evt[8:])
 		status := uintptr(dbgContinue)
+
+		if verbose {
+			fmt.Printf("event %d tid %d\n", code, tid)
+		}
 
 		switch code {
 		case createProcessDebugEvent:
@@ -224,8 +242,27 @@ func run(pid uint32, sink *os.File) error {
 				}
 				pendingBP = 0
 
+			case exCode == exceptionBreakpoint || exCode == exceptionSingleStep:
+				// Not ours, but still ours to swallow.
+				//
+				// Windows raises an initial breakpoint from an injected thread
+				// the moment a debugger attaches. Passing that back with
+				// DBG_EXCEPTION_NOT_HANDLED hands the game an unhandled
+				// exception and hangs or kills it — which is exactly what
+				// happened the first time this ran. A debugger owns breakpoint
+				// and single-step exceptions; it must consume them.
+				if verbose {
+					fmt.Printf("  (swallowed %s at %#x, tid %d)\n",
+						exceptionName(exCode), exAddr, tid)
+				}
+
 			default:
-				// Anything else is the game's own business; hand it back.
+				// Everything else — access violations, C++ exceptions, the
+				// game's own structured handling — must go back to the game, or
+				// we break error handling it relies on.
+				if verbose {
+					fmt.Printf("  (passing %#x at %#x back to the game)\n", exCode, exAddr)
+				}
 				status = dbgExceptionNotHandled
 			}
 
