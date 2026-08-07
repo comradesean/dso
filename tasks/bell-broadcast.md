@@ -91,10 +91,13 @@ s2c  ...0000 0320                 push wrapper opcode
 ### What this establishes
 
 - **`0x03EF` is real and FromSoftware sent it.** Not dead code, not a guess from the PS3 binary.
-- **The field layout, which we had backwards.** Field 2 is a server-assigned **player id**, not a
-  map: the same capture's login response assigned the listener **2910025** and the push carried
-  **3241000** — different values, same allocation range. Field 3 carries the map. Corrected in
-  `broadcastBellToll`.
+- **The field layout, which we had backwards.** Field 3 carries the map; field 2 is a
+  server-assigned **player id**, not a map. Corrected in `broadcastBellToll`.
+- **Field 2 is the HOST of the world the bell rang in** — not the ringer, which is what this file
+  said first. A second pair of captures settled it inside one session: a Bell Keeper visitor push
+  (`0x3CC`) invited that client into host **2350487**'s world at map **10160000**, and the bell toll
+  that followed carried `f2=2350487 f3=10160000`. Same host, same map. The receiving client's own id
+  was 3473926, so it is not the ringer's either.
 - **Pushes ride a wrapper opcode `0x0320`**, with the real push id in protobuf field 1. That is why
   an opcode table keyed on the message header mislabels every push.
 - **The map filter was wrong.** A listener in `m10_14` received a toll for `m10_16`. Our filter
@@ -110,13 +113,36 @@ until someone reads the wire.
 
 ### Still open, and stated honestly
 
-This proves the filter is **not map-exact**. It does not prove there is no filter. Lost Bastille
-adjoins Belfry Luna and is thematically within earshot, so the real rule may be a set of related
-areas. Distinguishing that from a plain broadcast needs one more observation: a listener somewhere
-genuinely distant — Majula, Iron Keep — while a bell rings.
+This proves the filter is **not by the listener's map**, and it is now stronger than that: the
+listening client received a toll for a world it had no part in. Its whole session contained only
+three pushes — one `0x038C` and the two bells — with **no `0x3CC`**, so it was never summoned into
+that host's world. It got a bell for a stranger's fight, from Lost Bastille.
+
+What that still does not establish is **broadcast to everyone**. Every observed recipient was
+registered for the belfry areas: the listening client's own requests carried only `10160000` and
+`10190000`, 81 and 72 times, which is what a Bell Keeper registered for both belfries looks like,
+and the VM was being summoned into belfry worlds throughout. A covenant- or registration-based
+predicate fits every observation as well as a plain broadcast does.
+
+The discriminating test is therefore not "stand far away" but **"listen on a character that is not a
+Bell Keeper"**. If a non-covenant character still receives the toll, it is a genuine broadcast.
 
 Until then we send to everyone, because an extra small packet is a cheaper mistake than a bell that
 should have rung and did not.
+
+### `0x3CC` (972) is the Bell Keeper visitor push, and OUR LAYOUT IS RIGHT
+
+Seen seven times across the two VM sessions, always at a belfry:
+
+```
+f1 push id (972)      f2 host player id      f3 host Steam id, ASCII hex
+f4 player data blob   f5 = 1                 f6 map id      f7 cell id
+```
+
+That is `PushMessageId, PlayerId, PlayerPsnId, PlayerStruct, Type, OnlineAreaId, CellId` — the exact
+shape of our `PushRequestVisit`, confirmed against live traffic rather than inferred. All seven
+carried `f6=10160000 f7=101630` (Belfry Luna) or `f6=10190000 f7=101910` (Belfry Sol), which also
+confirms our belfry cell ids.
 
 ### Also seen in the same capture
 

@@ -48,8 +48,9 @@ Verified: all 4,773 client->server datagrams in that capture carry the same clea
 the framing matches `dev/proto/pc/**/frpg2_game_*.ksy` exactly. Counts, sizes, timing and direction
 are readable. Contents are not: 2.4 MB at 7.9999 bits/byte, no `F5 02` magic anywhere.
 
-**The PC game service is on UDP `:50000`** — not `:50010` (PS3) or `:50031` (the TCP control
-channels).
+**The PC game service is on UDP `:50000` OR `:50001`** — it varies per session, so do not hardcode
+it. One capture set had the local client on `:50000` and the VM on `:50001`. Check with
+`udpdump.py --summary` and look for the flow to the AWS host.
 
 ---
 

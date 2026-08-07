@@ -356,20 +356,28 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 	if !bellBroadcastEnabled() {
 		return
 	}
-	// FIELD ASSIGNMENT CORRECTED FROM A REAL CAPTURE (2026-08-07).
+	// FIELD ASSIGNMENT TAKEN FROM REAL CAPTURES (2026-08-07).
 	//
-	// We had these backwards. A live push from FromSoftware's own server, read
-	// off the wire with the session key, is byte for byte:
+	// A live push from FromSoftware's own server, read off the wire with the
+	// session key, is byte for byte:
 	//
 	//	08 ef07        field 1 = 1007 = 0x03EF, the push id
-	//	10 a8e8c501    field 2 = 3241000  -- the RINGER'S player id
-	//	18 808fec04    field 3 = 10160000 -- the ringing bell's MAP id
+	//	10 a8e8c501    field 2 = a server-assigned player id
+	//	18 808fec04    field 3 = 10160000, the ringing bell's MAP id
 	//	22 00          field 4 = empty bytes
 	//
-	// Field 2 is a server-assigned player id, not a map: the same capture's
-	// login response assigned the listener 2910025, and the push carried a
-	// different value in the same allocation range. Field 3 is where the map
-	// goes. See tasks/bell-broadcast.md.
+	// Field 2 is the HOST of the world the bell rang in, not the ringer. An
+	// earlier note here said "ringer" and that was wrong. A second capture
+	// settled it within one session: a Bell Keeper visitor push (0x3CC) invited
+	// that client into host 2350487's world at map 10160000, and the bell toll
+	// that followed carried f2=2350487 f3=10160000 — the same host, the same
+	// map. The receiving client's own id was 3473926, so it is not the ringer's
+	// either.
+	//
+	// We send the ringer's id because the host is not threaded through here. The
+	// client never reads the body — it sets a boolean latch — so this affects
+	// nothing observable, but do not mistake it for a faithful reproduction.
+	// See tasks/bell-broadcast.md.
 	body, err := proto.Marshal(&ds2pb.PushRequestNotifyRingBell{
 		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell.Enum(),
 		Field_2:       proto.Uint32(from.playerID),
