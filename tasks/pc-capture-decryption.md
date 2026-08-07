@@ -5,9 +5,15 @@ because they are about what *FromSoftware's* server did: did it filter belfry-be
 (`tasks/bell-broadcast.md`), did it ever send `0x038B` (`tasks/regulation-push-038b.md`), what did a
 real weekly event rotation look like. DS2 SOTFS's PC servers are still live, so the traffic exists.
 
-**Status: a passive capture alone can never work. With a client-side key it will.** The key's
-location is found and the verification recipe is settled; nothing has been run against a live game
-yet.
+**Status: WORKING. FromSoftware's live server traffic is readable (2026-08-07).** `keydump` pulled
+two keys from a running client, `verifykey` identified the game one, and all 34 game datagrams in the
+matching capture decrypted with zero failures. Plaintext carries the RUDP magic `F5 02` and named
+opcodes — `0x0386 RequestWaitForUserLogin`, `0x03EC RequestGetAnnounceMessageList`.
+
+**The keys are per-session.** They are derived fresh at each login as `client8 ‖ server8`, both halves
+random, so a key only ever decrypts the session it was captured from. Captures made without keydump
+running are permanently unreadable — the earlier `belfry luna` / `belfry sol` sets included.
+**Capture and keydump must run together.**
 
 ---
 
@@ -133,7 +139,30 @@ real and you have plaintext.
 4. Play. Ring bells, sit somewhere far from a belfry, let it run.
 5. Pull one game datagram's **UDP payload** out of the capture and run `verifykey` against the
    dumped keys. The one that verifies is the game key.
-6. Decode the capture with that key.
+6. Decode the capture with that key:
+
+```
+python3 tools/pcap/udpdump.py cap.pcapng --port 50000 --tagged \
+  | go run ./cmd/decodecap -key <gamekeyhex>
+```
+
+### Confirmed live, first successful run
+
+```
+c2s  type=0xfd  50 bytes
+     0006000000000026000000260000000c00000386 ...
+     opcode 0x0386  RequestWaitForUserLogin
+c2s  type=0xfe  26 bytes
+     000700000000000e0000000e0000000c000003ec ...
+     opcode 0x03ec  RequestGetAnnounceMessageList
+```
+
+**The message opcode is a big-endian u32 at offset 16 of the RUDP body** (i.e. 16 bytes past the
+7-byte RUDP header). OBSERVED from those two messages against `docs/protocol-map.md`, not derived.
+Server replies put something else in that slot, so `decodecap` reports it as a raw field unless it
+matches a known opcode.
+
+The Frpg2 game flow in that session was `100.21.243.232:50000`.
 
 ## Tooling — built, tested, in the repo
 
