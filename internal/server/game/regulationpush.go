@@ -91,16 +91,16 @@ var (
 // loaded into, so anything that already copied a string out of it keeps showing
 // the old text. A visible-text probe can therefore read "no change" on complete
 // success, which is how the obelisk misled us. The version counter cannot.
-func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
+func (s *Service) regulationFilePushes(log logger) []resourcePush {
 	cfg := s.srv.Config
 	if cfg.RegulationPushFile == "" {
-		return
+		return nil
 	}
 
 	data, err := os.ReadFile(cfg.RegulationPushFile)
 	if err != nil {
 		log.Warn("regulation push: cannot read payload", "file", cfg.RegulationPushFile, "err", err)
-		return
+		return nil
 	}
 
 	// path is the key the client registered the resource under, and for both
@@ -132,9 +132,11 @@ func (s *Service) sendRegulationPush(log logger, cs *clientSession) {
 	if len(paths) == 0 {
 		paths = []string{filepath.Base(cfg.RegulationPushFile)}
 	}
+	out := make([]resourcePush, 0, len(paths))
 	for _, path := range paths {
-		s.pushResource(log, cs, path, data)
+		out = append(out, resourcePush{path: path, data: data})
 	}
+	return out
 }
 
 func parsePushPaths(spec string) []string {
@@ -145,6 +147,56 @@ func parsePushPaths(spec string) []string {
 		}
 	}
 	return out
+}
+
+// resourcePush is one whole-resource replacement queued for a client.
+type resourcePush struct {
+	path string
+	data []byte
+}
+
+// sendResourcePushes sends every queued push to one client, SPACED APART.
+//
+// The spacing is load-bearing. The applier accepts at most one entry per pass —
+// 0x770454 recomputes cr4 after each accept, so every later entry must be
+// strictly greater than the best so far, and we deliberately send the same
+// version every time so the counter never moves — and then destroys the whole
+// diff list at 0x77049C, rejected entries included. Two pushes landing in one
+// frame therefore means one is thrown away without a word.
+//
+// That is not hypothetical: the chest sends two, and the obelisk makes three,
+// all from the login handler. Before the gap existed they went out back to back.
+//
+// Runs in its own goroutine so login is not held up. Ordering is preserved,
+// which matters for the chest: its lot param goes first so that if the run is
+// cut short the chest stays shut rather than opening on the wrong prize.
+func (s *Service) sendResourcePushes(log logger, cs *clientSession, pushes []resourcePush) {
+	if len(pushes) == 0 {
+		return
+	}
+
+	delay := time.Duration(s.srv.Config.RegulationPushDelaySeconds) * time.Second
+	gap := time.Duration(s.srv.Config.RegulationPushGapSeconds) * time.Second
+
+	send := func() {
+		for i, p := range pushes {
+			if i > 0 && gap > 0 {
+				time.Sleep(gap)
+			}
+			s.pushResource(log, cs, p.path, p.data)
+		}
+	}
+
+	if delay <= 0 && len(pushes) == 1 {
+		send()
+		return
+	}
+	go func() {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		send()
+	}()
 }
 
 // pushResource sends one resource file to one client.
@@ -312,26 +364,25 @@ func labelFMG(data []byte, label string) ([]byte, bool) {
 	return out, true
 }
 
-// maybeSendRegulationPush sends the push after an optional delay.
+// sendLoginResourcePushes sends everything that replaces a resource at login:
+// the raw payload, the obelisk text, and the event chest.
 //
-// The delay exists because the applier reloads a resource in place, but the
-// chest's arm method (0x58E360) is not known to re-run on its own — it may only
-// fire when the object is registered at map load. Pushing after the player is
-// already standing in Majula therefore risks changing data nothing re-reads.
-// A delay lets the push be timed against a deliberate area reload.
-func (s *Service) maybeSendRegulationPush(log logger, cs *clientSession) {
-	if s.srv.Config.RegulationPushFile == "" {
-		return
-	}
-
-	delay := time.Duration(s.srv.Config.RegulationPushDelaySeconds) * time.Second
-	if delay <= 0 {
-		s.sendRegulationPush(log, cs)
-		return
-	}
-
-	go func() {
-		time.Sleep(delay)
-		s.sendRegulationPush(log, cs)
-	}()
+// They go out as one ordered, spaced run rather than three independent bursts,
+// because the client applies at most one per pass and discards the rest. See
+// sendResourcePushes.
+//
+// The chest goes last so its lot param and threshold stay adjacent, and because
+// a truncated run should leave the chest shut rather than open on a stale prize.
+//
+// RegulationPushDelaySeconds delays the whole run. It exists because the
+// applier reloads a resource in place, but the chest's arm method (0x58E360) is
+// not known to re-run on its own — it may only fire when the object is
+// registered at map load, so pushing while the player already stands in Majula
+// risks changing data nothing re-reads.
+func (s *Service) sendLoginResourcePushes(log logger, cs *clientSession) {
+	var pushes []resourcePush
+	pushes = append(pushes, s.regulationFilePushes(log)...)
+	pushes = append(pushes, s.obeliskPush(log)...)
+	pushes = append(pushes, s.eventChestPushes(log)...)
+	s.sendResourcePushes(log, cs, pushes)
 }

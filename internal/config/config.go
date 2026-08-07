@@ -140,6 +140,28 @@ type Config struct {
 	RegulationPushVersionSweep string
 	RegulationPushDelaySeconds uint64
 
+	// RegulationPushGapSeconds spaces consecutive resource pushes apart.
+	//
+	// This is not politeness, it is correctness. The applier accepts at most ONE
+	// entry per pass — 0x770454 recomputes cr4 after each accept, so every later
+	// entry must be strictly greater than the best so far, and we deliberately
+	// send the same version every time so the counter never moves. It then
+	// destroys the whole diff list (0x77049C), rejected entries included. Two
+	// pushes arriving in the same frame therefore means one of them is thrown
+	// away, silently, and a lost push is indistinguishable from a wrong path.
+	//
+	// The applier runs per frame, so anything comfortably above one frame works;
+	// the default leaves room for a loading hitch.
+	RegulationPushGapSeconds uint64
+
+	// ObeliskText replaces the Majula obelisk's message. Empty leaves it alone.
+	//
+	// The obelisk is string id 100 of the regulation FMG, which the client
+	// registers as the bare resource "regulation.fmg" — the server synthesises a
+	// whole FMG around this text and pushes it over 0x038B. "\n" starts a new
+	// line. See tasks/regulation-push-038b.md.
+	ObeliskText string
+
 	// EventChest* drive the Majula event chest, which is solved: a u16 claim
 	// threshold in OnlineEventParam row 0 gates it, and the prize is one row of
 	// ItemLotParam2_SvrEvent. Both are pushed over 0x038B. See
@@ -236,7 +258,10 @@ func Default() Config {
 		// server treats it as a language selector, so a wrong value is a plausible
 		// reason for the push to be silently ignored on a NA console.
 		ManagementTextLanguage: 1,
-		BootstrapHTTPPort:      80,
+		// One applier pass accepts one entry and discards the rest, so pushes have
+		// to arrive in separate frames. See RegulationPushGapSeconds.
+		RegulationPushGapSeconds: 2,
+		BootstrapHTTPPort:        80,
 		DNSPort:                53,
 		DNSUpstream:            "8.8.8.8:53",
 		DNSRedirectHosts: []string{
@@ -289,6 +314,8 @@ func Load() (Config, error) {
 	c.RegulationPushVersionRequired = envUint("DSO_REGULATION_PUSH_VERSION_REQUIRED", c.RegulationPushVersionRequired)
 	c.RegulationPushVersionNew = envUint("DSO_REGULATION_PUSH_VERSION_NEW", c.RegulationPushVersionNew)
 	c.RegulationPushVersionSweep = envStr("DSO_REGULATION_PUSH_VERSION_SWEEP", c.RegulationPushVersionSweep)
+	c.RegulationPushGapSeconds = envUint("DSO_REGULATION_PUSH_GAP_SECONDS", c.RegulationPushGapSeconds)
+	c.ObeliskText = envStr("DSO_OBELISK_TEXT", c.ObeliskText)
 
 	c.EventChestRotation = envUintList("DSO_EVENT_CHEST_ROTATION", c.EventChestRotation)
 	c.EventChestPeriod = envStr("DSO_EVENT_CHEST_PERIOD", c.EventChestPeriod)

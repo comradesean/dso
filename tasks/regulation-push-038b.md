@@ -297,8 +297,13 @@ Hard constraints from the disassembly:
   rewriting an existing `ItemLotParam2_SvrEvent` row — but you **cannot create** a row that is not
   already present.
 - Content is a whole raw resource. No container, no compression.
-- Only **one entry** effectively applies per pass unless entries are ordered by strictly increasing
-  field 1 with field 2 chained correctly.
+- **Exactly one entry applies per pass, and the rest are destroyed** (CONFIRMED). `0x770454`
+  recomputes `cr4` after each accept, so the strictly-greater test at `0x770438` is live for every
+  entry after the first; then `0x77049C` destroys the whole list, rejected entries included. Since we
+  deliberately hold field 1 steady, a second entry at the same version is always dropped. **This
+  applies across pushes, not just within one** — two pushes arriving in the same frame are appended
+  to the same vector and only one survives. Space them apart in time
+  (`DSO_REGULATION_PUSH_GAP_SECONDS`).
 - A `.fmg` payload is capped at **1024 bytes**.
 
 ## IMPLEMENTED — how to run the live test
@@ -579,6 +584,22 @@ effect. That is why a param push visibly moved the chest.
    *not* the same one.
 5. **v1.00 not cross-checked** beyond confirming the `L"param:/"` and `L".fmg"` literals exist
    (`0x17FD600` / `0x17FD4C8`).
+
+## CONFIRMED ON SCREEN — the obelisk reads what we send (2026-08-07)
+
+With `path = regulation.fmg` the obelisk displayed `0x038B LANDED. THE PUSH REACHED THE FMG!`. Both
+surfaces this message can reach are now proven end to end: the chest (params) and the obelisk (FMG).
+
+It is a config field now, not a payload file — `DSO_OBELISK_TEXT`, with the server synthesising the
+whole FMG in `internal/server/game/obelisk.go`. `TestObeliskFMGMatchesStockFile` builds the stock
+line and compares against the real extracted file byte for byte, so every header field the builder
+writes is pinned to something the client has actually accepted.
+
+The one hazard the builder has to enforce: **489 characters.** The destination buffer for this
+resource is 1024 bytes (`resource+156`, read live) and neither apply route compares the payload
+against it — the `<= 1024` test in `0x76A0F0` and `0x76BB30` gates the *payload*, not the
+destination. Oversize is refused rather than truncated, because a silently shortened message reads
+exactly like a working one.
 
 ## The obelisk test, ready to run
 

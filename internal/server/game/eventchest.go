@@ -44,21 +44,23 @@ const (
 	svrEventLotParamName = "ItemLotParam2_SvrEvent.param"
 )
 
-// sendEventChestRotation arms the chest with the prize for the current period.
+// eventChestPushes arms the chest with the prize for the current period.
 //
-// Two pushes rather than one. The client's applier tracks a "best" entry within a
-// single pass and its handling of multiple accepted entries is not fully
-// understood (0x770438 rejects any entry whose version is not strictly greater
-// than the best accepted so far), so relying on both landing together would be
-// betting on a branch nobody has traced. Two pushes each carry one file, and the
-// version sweep absorbs the increment the first one causes.
+// Two pushes, never two entries in one. The applier accepts at most ONE entry
+// per pass: 0x770438 rejects anything not strictly greater than the best
+// accepted so far, and 0x770454 recomputes that comparison after each accept, so
+// two entries carrying the same version means the second is dropped. We send the
+// same version every time deliberately, so bundling would guarantee the loss.
+//
+// The caller spaces them apart in time for the same reason — see
+// sendResourcePushes. Landing in one frame is as bad as sharing one push.
 //
 // The lot goes first so that if only one lands, the chest stays shut rather than
 // opening on the wrong prize.
-func (s *Service) sendEventChestRotation(log logger, cs *clientSession) {
+func (s *Service) eventChestPushes(log logger) []resourcePush {
 	cfg := s.srv.Config
 	if len(cfg.EventChestRotation) == 0 {
-		return
+		return nil
 	}
 
 	period := s.eventChestPeriod()
@@ -79,37 +81,38 @@ func (s *Service) sendEventChestRotation(log logger, cs *clientSession) {
 	if threshold > 0xFFFF {
 		log.Warn("event chest: threshold would overflow u16, rotation halted",
 			"threshold", threshold)
-		return
+		return nil
 	}
 
 	lot, err := os.ReadFile(cfg.EventChestLotParamFile)
 	if err != nil {
 		log.Warn("event chest: cannot read lot param", "file", cfg.EventChestLotParamFile, "err", err)
-		return
+		return nil
 	}
 	if err := setParamRowU32(lot, eventChestLotRow, eventChestItemOffset, uint32(item)); err != nil {
 		log.Warn("event chest: cannot set item", "err", err)
-		return
+		return nil
 	}
 
 	online, err := os.ReadFile(cfg.EventChestOnlineEventFile)
 	if err != nil {
 		log.Warn("event chest: cannot read online event param", "file", cfg.EventChestOnlineEventFile, "err", err)
-		return
+		return nil
 	}
 	if err := setParamRowU16(online, 0, eventChestThresholdOffset, uint16(threshold)); err != nil {
 		log.Warn("event chest: cannot set threshold", "err", err)
-		return
+		return nil
 	}
 
 	log.Info("event chest rotation",
-		"player_id", cs.playerID,
 		"period_index", index,
 		"item_id", item,
 		"threshold", threshold)
 
-	s.pushResource(log, cs, svrEventLotParamName, lot)
-	s.pushResource(log, cs, onlineEventParamName, online)
+	return []resourcePush{
+		{path: svrEventLotParamName, data: lot},
+		{path: onlineEventParamName, data: online},
+	}
 }
 
 func (s *Service) eventChestPeriod() time.Duration {
