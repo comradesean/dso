@@ -9,6 +9,22 @@ python3 tools/pcap/udpdump.py <cap> --port <50000|50001> --tagged \
   | go run ./cmd/corpus -out corpus -session <label> -key <gamekey>
 ```
 
+**Which key goes with which capture was never written down, and had to be re-derived.** Do not
+guess it: `cmd/verifykey -keys <all candidate keys> -datagram <one c2s datagram>` reports the one
+that authenticates, and the answer is not always the last key dumped. The captures and their keys,
+as rebuilt on 2026-08-07 (sources in `Desktop/PACKETS`, outside the repo):
+
+| session | capture | port | key |
+|---|---|---|---|
+| `LOCALa` | `LOCAL/ds2_00001_20260807000014` | 50000 | `4fc654ea…7ba2` |
+| `LOCAL1`–`LOCAL6` | `LOCAL/ds2_0000{1..6}_2026080700461740…` | 50000 | `1de559fd…b977` |
+| `VMrun1` | `VM/caps/run1/ds2_00001_20260807110512` | 50000 | `b02f96df…7944` |
+| `VMrun2` | `VM/caps/run2/ds2_00001_20260807114956` | **50001** | `d07e5999…408d` |
+
+**`LOCAL1` through `LOCAL6` are one login**, not six — dumpcap was writing a ring buffer, so they
+share a key and a session. Messages whose fragments straddle a file boundary are lost at each seam,
+because each file is assembled independently. `VMrun2` is on port **50001**, not 50000.
+
 **5,594 messages in 34 buckets, zero decryption failures.** Counted from `corpus/` on 2026-08-07;
 an earlier "~4,700 messages, 28 distinct opcodes" was an estimate and is superseded.
 
@@ -42,6 +58,30 @@ Verified arithmetic: a message with `[6:8]=0x067c` (1660) arrived as fragments o
 familiar `78 9c`. That is a valid zlib header — `CM=8`, and the two bytes divide by 31 — but it does
 not look like one at a glance, which is why it read as noise at first. `internal/frpg/rudp` already
 handles this correctly.
+
+**Every message carries its capture time** (added 2026-08-07). The header gained:
+
+```
+time:      2026-08-07T04:46:54.537019Z  (1786078014.537019)
+assembled: 0.001832s across fragments        <- only when it spanned datagrams
+```
+
+`tsLast` — the moment the message was complete — is what the `time:` line reports; `assembled:`
+is the spread from the first fragment, printed only when there was one. Both come from the pcap's
+own microsecond/nanosecond clock, so intervals are measured, not inferred from message order.
+
+This existed in the capture all along and `--tagged` was discarding it. **It was also wrong when it
+was printed at all**: `udpdump.py` assumed the pcapng default of microsecond resolution, and these
+captures are NANOSECOND, so every timestamp it had ever shown was 1000x too large. `if_tsresol` is
+now read from the IDB.
+
+First thing it settles, against FromSoftware's own server rather than ours:
+
+| poll | median interval |
+|---|---|
+| `0x03D5` visitor list (auto-summon) | **20.4 s** — confirms the ~20.5s figure measured from our own logs |
+| `0x0397` sign list | 60.5 s |
+| `0x03B8` status heartbeat | 16 s median, but hugely variable (p10 4.9s, p90 110s) — it is event-driven, not a timer |
 
 **Message header is NOT fixed-size:**
 

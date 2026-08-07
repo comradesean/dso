@@ -80,6 +80,33 @@ def read_blocks(path):
             yield btype, body
 
 
+def idb_timestamp_divisor(body):
+    """Timestamp units per second for an interface, from the IDB's if_tsresol.
+
+    This is NOT always microseconds. The pcapng default is 1e-6, but dumpcap and
+    Wireshark commonly write NANOSECOND captures, and this script assumed the
+    default -- so every timestamp it printed for such a file was 1000x too large.
+    It went unnoticed because the only consumer was a human glancing at `#` lines.
+
+    if_tsresol (option code 9) is one byte: MSB clear means 10^-value, MSB set
+    means 2^-value.
+
+    IDB body: linktype(2) reserved(2) snaplen(4) then options, each
+    code(2) len(2) value(len) padded up to a 4-byte boundary, ending at code 0.
+    """
+    off = 8
+    while off + 4 <= len(body):
+        code, olen = struct.unpack("<HH", body[off:off + 4])
+        off += 4
+        if code == 0:                       # opt_endofopt
+            break
+        if code == 9 and olen >= 1:         # if_tsresol
+            raw = body[off]
+            return (1 << (raw & 0x7F)) if raw & 0x80 else (10 ** raw)
+        off += (olen + 3) & ~3
+    return 1_000_000
+
+
 def parse_frame(link_type, data):
     """Return (src, dst, sport, dport, payload) for a UDP frame, else None."""
     if link_type == LINKTYPE_ETHERNET:
@@ -145,6 +172,7 @@ def main():
     args = ap.parse_args()
 
     link_type = LINKTYPE_ETHERNET
+    ts_div = 1_000_000          # pcapng default: microseconds
     flows = Counter()
     shown = 0
     total = 0
@@ -152,6 +180,7 @@ def main():
     for btype, body in read_blocks(args.capture):
         if btype == IDB:
             link_type = struct.unpack("<H", body[0:2])[0]
+            ts_div = idb_timestamp_divisor(body)
             continue
         if btype != EPB:
             continue
@@ -185,11 +214,21 @@ def main():
             break
 
         if args.tagged:
-            print(f"{direction} {payload.hex()}")
+            # Timestamp first, because several open questions are RATE questions
+            # that message order alone cannot answer -- the ~20.5s auto-summon
+            # poll and its post-session backoff, whether 0x038C's three periods
+            # drive anything, how long FromSoftware's server took to turn a
+            # trigger into a push. The pcap has microsecond resolution and this
+            # mode used to throw it away.
+            #
+            # cmd/corpus accepts the field as optional, so an older tagged dump
+            # still parses.
+            ts = ((ts_hi << 32) | ts_lo) / ts_div
+            print(f"{direction} {ts:.6f} {payload.hex()}")
         elif args.raw:
             print(payload.hex())
         else:
-            ts = ((ts_hi << 32) | ts_lo) / 1_000_000
+            ts = ((ts_hi << 32) | ts_lo) / ts_div
             print(f"# {ts:.6f}  {direction}  {src}:{sport} -> {dst}:{dport}  {len(payload)} bytes")
             print(payload.hex())
         shown += 1

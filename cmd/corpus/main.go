@@ -42,7 +42,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sstreight/dso/internal/crypto/frpgcipher"
 )
@@ -54,6 +56,19 @@ type message struct {
 	protoOff int
 	clean    bool
 	push     bool
+
+	// tsFirst/tsLast are the capture times of this message's first and last
+	// FRAGMENT, in Unix seconds with microsecond resolution, or 0 when the input
+	// carried no timestamps.
+	//
+	// Both, not one, because a message is reassembled from datagrams and the
+	// spread between them is itself data — a 1660-byte reply arriving as two
+	// fragments tells you something about the link that a single number hides.
+	// For rate questions (the ~20.5s auto-summon poll, whether 0x038C's periods
+	// drive anything, how long the server took to turn a trigger into a push)
+	// tsLast is the moment the message actually existed.
+	tsFirst float64
+	tsLast  float64
 }
 
 // pushWrapperOpcode is the message opcode every server push arrives under. The
@@ -146,6 +161,35 @@ func parsesCleanly(b []byte) bool {
 	return fields > 0
 }
 
+// parseTagged reads one line of udpdump --tagged output.
+//
+// The line is "<dir> <ts> <hex>", and the TIMESTAMP IS OPTIONAL: the older form
+// "<dir> <hex>" must keep working, because dumps made before timestamps were
+// wired through are still valid input and re-capturing is not always possible —
+// the session keys are derived per login, so a capture taken without keydump
+// running can never be read again.
+//
+// Disambiguation is by parse, not by field count: hex and a decimal timestamp
+// are both "a run of digits", so the second field is a timestamp only if it
+// parses as a float AND leaves something behind to be the hex.
+func parseTagged(line string) (dir string, ts float64, raw []byte, ok bool) {
+	dir, rest, ok := strings.Cut(strings.TrimSpace(line), " ")
+	if !ok {
+		return "", 0, nil, false
+	}
+	hx := rest
+	if maybeTS, tail, split := strings.Cut(rest, " "); split {
+		if v, err := strconv.ParseFloat(maybeTS, 64); err == nil {
+			ts, hx = v, tail
+		}
+	}
+	raw, err := hex.DecodeString(hx)
+	if err != nil {
+		return "", 0, nil, false
+	}
+	return dir, ts, raw, true
+}
+
 // assembler accumulates fragments for one direction, keyed by message id.
 type assembler struct {
 	parts map[uint16]*partial
@@ -157,13 +201,15 @@ type partial struct {
 	got        int
 	compressed bool
 	inflated   uint32
+	tsFirst    float64
+	tsLast     float64
 }
 
 func newAssembler() *assembler { return &assembler{parts: map[uint16]*partial{}} }
 
-func (a *assembler) push(body []byte) ([]byte, bool) {
+func (a *assembler) push(body []byte, ts float64) ([]byte, bool, float64, float64) {
 	if len(body) < 12 {
-		return nil, false
+		return nil, false, 0, 0
 	}
 	id := binary.BigEndian.Uint16(body[0:2])
 	compressed := body[2] != 0
@@ -174,12 +220,13 @@ func (a *assembler) push(body []byte) ([]byte, bool) {
 	off := 12
 	p := a.parts[id]
 	if idx == 0 || p == nil {
-		p = &partial{total: total, compressed: compressed}
+		p = &partial{total: total, compressed: compressed, tsFirst: ts}
 		a.parts[id] = p
 	}
+	p.tsLast = ts
 	if compressed && idx == 0 {
 		if len(body) < off+4 {
-			return nil, false
+			return nil, false, 0, 0
 		}
 		p.inflated = binary.BigEndian.Uint32(body[off : off+4])
 		off += 4
@@ -188,12 +235,12 @@ func (a *assembler) push(body []byte) ([]byte, bool) {
 		fragLen = len(body) - off
 	}
 	if fragLen <= 0 {
-		return nil, false
+		return nil, false, 0, 0
 	}
 	p.buf = append(p.buf, body[off:off+fragLen]...)
 	p.got += fragLen
 	if p.got < p.total {
-		return nil, false
+		return nil, false, 0, 0
 	}
 	delete(a.parts, id)
 
@@ -201,16 +248,16 @@ func (a *assembler) push(body []byte) ([]byte, bool) {
 	if p.compressed {
 		zr, err := zlib.NewReader(bytes.NewReader(out))
 		if err != nil {
-			return nil, false
+			return nil, false, 0, 0
 		}
 		inflated, err := io.ReadAll(zr)
 		zr.Close()
 		if err != nil {
-			return nil, false
+			return nil, false, 0, 0
 		}
 		out = inflated
 	}
-	return out, true
+	return out, true, p.tsFirst, p.tsLast
 }
 
 func main() {
@@ -240,12 +287,8 @@ func main() {
 	sc := bufio.NewScanner(os.Stdin)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
-		dir, hx, ok := strings.Cut(strings.TrimSpace(sc.Text()), " ")
+		dir, ts, raw, ok := parseTagged(sc.Text())
 		if !ok {
-			continue
-		}
-		raw, err := hex.DecodeString(hx)
-		if err != nil {
 			continue
 		}
 		var pt []byte
@@ -263,7 +306,7 @@ func main() {
 			notRUDP++
 			continue
 		}
-		full, done := asm[dir].push(pt[7:])
+		full, done, tsFirst, tsLast := asm[dir].push(pt[7:], ts)
 		if !done || len(full) < 8 {
 			continue
 		}
@@ -274,6 +317,7 @@ func main() {
 		m := message{
 			dir: dir, opcode: binary.BigEndian.Uint32(full[4:8]),
 			payload: full[off:], protoOff: off, clean: ok,
+			tsFirst: tsFirst, tsLast: tsLast,
 		}
 		// Pushes all ride the wrapper opcode 0x0320 and carry their REAL id in
 		// protobuf field 1. Filing them under the wrapper buries every push type
@@ -313,8 +357,19 @@ func main() {
 		if !m.clean {
 			note = "  (NO CLEAN PARSE — offset is a fallback)"
 		}
-		fmt.Fprintf(&b, "session:   %s\ndirection: %s\nopcode:    %#04x  %s\nbytes:     %d\nproto-off: %d%s\n\n",
+		fmt.Fprintf(&b, "session:   %s\ndirection: %s\nopcode:    %#04x  %s\nbytes:     %d\nproto-off: %d%s\n",
 			*session, m.dir, m.opcode, name, len(m.payload), m.protoOff, note)
+		// Absent when the input carried no timestamps, so an old dump produces
+		// the old header rather than a line of zeroes pretending to be data.
+		if m.tsLast > 0 {
+			t := time.Unix(0, int64(m.tsLast*1e9)).UTC()
+			fmt.Fprintf(&b, "time:      %s  (%.6f)\n", t.Format("2006-01-02T15:04:05.000000Z"), m.tsLast)
+			// Only worth printing when the message actually spanned datagrams.
+			if d := m.tsLast - m.tsFirst; d > 0 {
+				fmt.Fprintf(&b, "assembled: %.6fs across fragments\n", d)
+			}
+		}
+		b.WriteString("\n")
 		fmt.Fprintf(&b, "hex:\n%s\n\n", hex.EncodeToString(m.payload))
 		fmt.Fprintf(&b, "protobuf:\n%s\n", describeProto(m.payload, "  "))
 		if err := os.WriteFile(f, []byte(b.String()), 0o644); err != nil {
