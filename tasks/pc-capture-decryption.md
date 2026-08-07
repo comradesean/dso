@@ -164,6 +164,41 @@ matches a known opcode.
 
 The Frpg2 game flow in that session was `100.21.243.232:50000`.
 
+## keydump gotchas — every one of these froze or killed the game
+
+Five bugs, each of which presented as "the game hangs" or "the game closes", and none of which said
+anything useful on its own. Recorded because they are all easy to reintroduce.
+
+1. **Returning the attach breakpoint as unhandled.** Windows raises an initial breakpoint from an
+   injected thread the instant a debugger attaches. A debugger owns breakpoint and single-step
+   exceptions and must consume them with `DBG_CONTINUE`; passing them back hands the game an
+   unhandled exception. Everything else must still go back, or its own error handling breaks.
+2. **Scanning while the process is suspended.** Nothing runs in the debuggee between a debug event
+   and `ContinueDebugEvent`, so a 28 MB signature scan there freezes the game for its duration —
+   long enough to hang it if the attach lands during save checking. `ReadProcessMemory` and
+   `WriteProcessMemory` work fine on a running process; scan after continuing.
+3. **The single-step step-over.** Restore the byte, rewind RIP, set the trap flag, re-arm on the
+   single-step exception — textbook, and too fragile here. A rewind that does not take resumes a
+   thread mid-instruction and kills the process, and the bookkeeping was one variable shared across
+   every thread. Replaced with: restore, rewind, re-arm on a short timer. Nothing is left half-done.
+4. **An unreachable re-arm.** The re-arm sat inside the `WaitForDebugEvent` timeout branch, behind
+   an early `continue` on `ERROR_SEM_TIMEOUT` — the normal idle return. So the breakpoint never went
+   back and the second key, the one that decrypts game traffic, was never caught.
+5. **`DebugSetProcessKillOnExit` before `DebugActiveProcess`.** It sets its flag on the debug object
+   belonging to the calling thread, and until the attach succeeds there is no such object. The call
+   did nothing, silently, and detaching closed the game.
+
+And the one that ties several together: **the Windows debug API is thread-affine**, so the debug loop
+must be pinned with `runtime.LockOSThread`. This was switched off for a while because locking
+*appeared* to cause freezes — a confounded reading, since bugs 1, 2 and 3 were all live at the time
+and each froze the game on its own. Blaming the lock was pattern-matching on the last thing changed.
+
+**Detach as soon as the keys are in hand** (`-n 2`, the default). Both arrive within a second during
+the login handshake, so staying attached buys nothing and every extra minute is another chance to
+catch the game at a bad moment. `Ctrl-C` also removes the breakpoint first — Go runs no deferred
+functions on SIGINT, and a planted `INT3` with no debugger attached kills the game the next time that
+code runs.
+
 ## Tooling — built, tested, in the repo
 
 **`cmd/keydump`** (Windows only; cross-compile with
