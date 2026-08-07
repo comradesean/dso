@@ -25,7 +25,16 @@ as rebuilt on 2026-08-07 (sources in `Desktop/PACKETS`, outside the repo):
 share a key and a session. Messages whose fragments straddle a file boundary are lost at each seam,
 because each file is assembled independently. `VMrun2` is on port **50001**, not 50000.
 
-**5,594 messages in 34 buckets, zero decryption failures.** Counted from `corpus/` on 2026-08-07;
+**15,573 messages in 43 buckets, zero decryption failures** across two capture batches
+(2026-08-07). Rebuild with `tools/pcap/ingest.sh <dir>` — it finds the key, the port and the
+ring-buffer grouping itself, all three of which were re-derived by hand the first time.
+
+**Every response is now identified.** The message Index at `full[8:12]` (little-endian, while the two
+fields before it are big-endian) is echoed by the reply that answers a request, so responses — half
+the corpus, and previously anonymous under opcode 0 — are paired to their requests and carry a
+`replies-to:` line. 7,739 of 7,739 matched.
+
+Superseded counts: **5,594 messages in 34 buckets.** Counted from `corpus/` on 2026-08-07;
 an earlier "~4,700 messages, 28 distinct opcodes" was an estimate and is superseded.
 
 33 buckets carry an identified opcode. The 34th, `0x0000_unknown`, holds **2,787 messages — half

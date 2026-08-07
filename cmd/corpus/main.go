@@ -69,7 +69,23 @@ type message struct {
 	// tsLast is the moment the message actually existed.
 	tsFirst float64
 	tsLast  float64
+
+	// index is the message-layer Index at full[8:12], LITTLE-endian while the two
+	// fields before it are big-endian. A reply carries the Index of the request it
+	// answers (rudp.MessageConn.SendReply), so it is the only thing that pairs a
+	// response with its request — and responses are half this corpus, filed under
+	// opcode 0 because their header has no opcode of its own.
+	index    uint32
+	hasIndex bool
+
+	// repliesTo is the request opcode this message answers, resolved after the
+	// whole session is read. Zero when unmatched.
+	repliesTo uint32
 }
+
+// pushIndex is the message Index every push carries instead of a real one, so a
+// push is never mistaken for a reply to some request that happened to share it.
+const pushIndex uint32 = 0xFFFFFFFF
 
 // pushWrapperOpcode is the message opcode every server push arrives under. The
 // push's own id is protobuf field 1 of the body.
@@ -319,6 +335,9 @@ func main() {
 			payload: full[off:], protoOff: off, clean: ok,
 			tsFirst: tsFirst, tsLast: tsLast,
 		}
+		if len(full) >= 12 {
+			m.index, m.hasIndex = binary.LittleEndian.Uint32(full[8:12]), true
+		}
 		// Pushes all ride the wrapper opcode 0x0320 and carry their REAL id in
 		// protobuf field 1. Filing them under the wrapper buries every push type
 		// in one bucket — which is exactly how four bell tolls ended up looking
@@ -331,6 +350,33 @@ func main() {
 			m.push = true
 		}
 		msgs = append(msgs, m)
+	}
+
+	// Pair each response to its request by Index. Half this corpus is responses
+	// filed under opcode 0, because a response header carries no opcode — the
+	// Index is the only thing that says what they answer.
+	//
+	// Keyed on the LAST request seen with a given Index rather than the first:
+	// the counter wraps and gets reused over a long session, and the nearest
+	// preceding request is the one being answered.
+	reqOpcode := map[uint32]uint32{}
+	matched := 0
+	for i := range msgs {
+		m := &msgs[i]
+		if !m.hasIndex {
+			continue
+		}
+		if m.dir == "c2s" && m.opcode != 0 {
+			reqOpcode[m.index] = m.opcode
+			continue
+		}
+		// Pushes carry Index 0xFFFFFFFF and answer nothing.
+		if m.dir == "s2c" && m.opcode == 0 && m.index != pushIndex {
+			if op, ok := reqOpcode[m.index]; ok {
+				m.repliesTo = op
+				matched++
+			}
+		}
 	}
 
 	counts := map[uint32]int{}
@@ -361,6 +407,16 @@ func main() {
 			*session, m.dir, m.opcode, name, len(m.payload), m.protoOff, note)
 		// Absent when the input carried no timestamps, so an old dump produces
 		// the old header rather than a line of zeroes pretending to be data.
+		if m.hasIndex {
+			fmt.Fprintf(&b, "index:     %d\n", m.index)
+		}
+		if m.repliesTo != 0 {
+			rn := opcodeNames[m.repliesTo]
+			if rn == "" {
+				rn = "unknown"
+			}
+			fmt.Fprintf(&b, "replies-to: %#04x  %s\n", m.repliesTo, rn)
+		}
 		if m.tsLast > 0 {
 			t := time.Unix(0, int64(m.tsLast*1e9)).UTC()
 			fmt.Fprintf(&b, "time:      %s  (%.6f)\n", t.Format("2006-01-02T15:04:05.000000Z"), m.tsLast)
@@ -383,8 +439,8 @@ func main() {
 	}
 	sort.Slice(ops, func(i, j int) bool { return counts[ops[i]] > counts[ops[j]] })
 
-	fmt.Fprintf(os.Stderr, "%s: %d datagrams decrypted, %d failed, %d non-RUDP -> %d messages\n",
-		*session, decrypted, failed, notRUDP, len(msgs))
+	fmt.Fprintf(os.Stderr, "%s: %d datagrams decrypted, %d failed, %d non-RUDP -> %d messages, %d responses paired\n",
+		*session, decrypted, failed, notRUDP, len(msgs), matched)
 	for _, op := range ops {
 		name := opcodeNames[op]
 		if name == "" {

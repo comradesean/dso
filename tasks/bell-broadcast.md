@@ -14,44 +14,67 @@ know.
 
 ---
 
-## NEW EVIDENCE — FromSoftware DID filter (2026-08-07, from timestamped captures)
+## THE RING AND THE TOLL, BOTH SIDES CAPTURED (2026-08-07, second capture batch)
 
-The corpus now carries capture times, and two machines were recording FromSoftware's live server
-**simultaneously for 103 minutes** (LOCAL 04:05-09:48 UTC, VM 08:05-09:48). That makes the open
-question below partly answerable for the first time.
+The second batch has **279 minutes of two machines recording FromSoftware's live server at once**,
+and — for the first time — `0x03EE`, the ring itself. Eight distinct bell events, three of them rung
+by a machine we were capturing.
 
-**Four `0x03EF` pushes exist across all nine sessions, and the two machines share NONE of them.**
+> **This supersedes an earlier claim in this file that FromSoftware filtered the broadcast.** That
+> rested on four bell pushes in the first batch, of which the two machines shared none. Two of those
+> four are now explained by the ringer rule below, and with eight events, **five went to both
+> machines**. The first result was a small sample read too confidently.
 
-| time (UTC) | received by | ringer | map rung |
+**CONFIRMED — the ringer does not receive their own toll.** Twice, in both directions, at identical
+timestamps:
+
+```
+18:21:39  LOCAL sends 0x03EE (map 10160000)  ->  18:21:39  VM receives 0x03EF, ringer = LOCAL
+22:15:43  VM    sends 0x03EE (map 10160000)  ->  22:15:43  LOCAL receives 0x03EF, ringer = VM
+```
+
+In each case the ringing machine did **not** get its own push, while the other did, in the same
+second. `telemetry.go` already skips the ringer, so our behaviour matches.
+
+**CONFIRMED — the toll crosses belfries.** Two independent cases:
+
+- 22:15:43: a bell rung in **Belfry Luna** (`10160000`) reached a player whose last location fix put
+  them in **Belfry Sol** (`10190000`).
+- 18:32:48: a bell rung in **Belfry Sol** reached a player in **Belfry Luna**'s map.
+
+**That is in tension with our regional filter, and the tension is worth stating rather than
+resolving by preference.** `bellRegions` sends a Luna toll only to `{Luna, Lost Bastille}`, so it
+would have dropped both of those. The filter exists for a real, observed reason — the client cannot
+tell which bell rang, so a Luna toll delivered to someone standing in Sol makes them hear *Sol* —
+and yet FromSoftware evidently delivered exactly that. Three readings, and this data does not
+separate them:
+
+- **The location fixes are stale.** Both cases rest on a status heartbeat 59-75s from the push, and a
+  player crosses a map in that time.
+- **FromSoftware really did broadcast widely**, and the wrong-bell effect is an original-game quirk
+  rather than something to reproduce faithfully.
+- **The predicate is something else entirely** — session or world scoped, say — that happens to look
+  cross-map from two clients' vantage points.
+
+**One event is still unexplained**: 18:32:48, ringer 3207541, map `10190000`, received by LOCAL and
+not by the VM, with the VM online and capturing throughout. It has no nearby location fix, so the VM
+may simply have been between areas.
+
+### The eight events
+
+| time (UTC) | ringer | map rung | received by |
 |---|---|---|---|
-| 05:41:17 | LOCAL | 3241000 | `10160000` Belfry Luna |
-| 05:41:29 | LOCAL | 3241000 | `10160000` Belfry Luna |
-| 09:12:16 | LOCAL | 3468141 | `10190000` Belfry Sol |
-| 09:47:24 | **VM** | 2350487 | `10160000` Belfry Luna |
+| 18:21:39 | LOCAL itself | Luna | VM only — ringer excluded |
+| 18:32:48 | 3207541 | Sol | LOCAL only — VM online, unexplained |
+| 21:02:17 | 1321650 | Luna | both |
+| 21:24:00 | 3428694 | Luna | both |
+| 22:15:43 | VM itself | Luna | LOCAL only — ringer excluded |
+| 22:23:57 | 3471010 | Sol | both |
+| 22:39:58 | 2712542 | Sol | both |
+| 22:54:20 | 3161263 | Sol | both |
 
-**Field 3 is the map id of the belfry that was rung**, and field 2 is the ringer's player id. That
-is new, and it confirms the ringing map is what the server broadcasts — which is what `bellRegions`
-keys on.
-
-**If every ring went to everyone online, the two overlapping captures would show the same bell
-stream. They have nothing in common.** So the server filtered. That retires the "was it filtered at
-all" half of the question.
-
-**The predicate is NOT settled, and one observation argues against the obvious answer.** At 09:47:24
-both machines were in area `10160000` — the same map as the bell — within ~150s of the push, and
-only the VM received it. Three reasons that is not conclusive:
-
-- **±150s is loose.** The nearest status heartbeat to the push was over two minutes away on both
-  sides, and a player can leave a map in two minutes.
-- **Two different players on a live server are in different worlds.** Same map id does not mean same
-  session, and a bell may well be scoped to a session rather than a map. That would explain the
-  result without contradicting a map-based rule.
-- **Absence in a capture is weaker than presence.** Nothing failed to decrypt, but a push that was
-  never captured and a push that was never sent look identical.
-
-What would settle it: two clients whose locations are known precisely at the moment of a ring —
-which we can now arrange deliberately, because our own server logs both sides and we control when
-the bell rings.
+What would settle the predicate now: we can ring bells on our own server with both clients at known,
+logged positions, which removes the location staleness that is the weakest link above.
 
 ## The chain, confirmed end to end
 
