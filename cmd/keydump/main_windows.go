@@ -215,6 +215,23 @@ func run(pid uint32, sink *os.File, wantKeys int) error {
 
 	evt := make([]byte, 4096)
 	for {
+		// Re-arm check goes FIRST, every iteration.
+		//
+		// It used to live inside the WaitForDebugEvent-timeout branch, after an
+		// early `continue` on ERROR_SEM_TIMEOUT — which is the normal idle
+		// return, so the re-arm was unreachable and the second key was never
+		// caught. The breakpoint simply never went back.
+		if !rearmAt.IsZero() && time.Now().After(rearmAt) {
+			b, err := setBreakpoint(hProcess, bpAddr)
+			if err != nil {
+				return fmt.Errorf("re-arm: %w", err)
+			}
+			origByte, armed, rearmAt = b, true, time.Time{}
+			if verbose {
+				fmt.Println("breakpoint re-armed")
+			}
+		}
+
 		r, _, err := procWaitForDebugEvent.Call(uintptr(unsafe.Pointer(&evt[0])), 50)
 		if r == 0 {
 			// ERROR_SEM_TIMEOUT is the normal idle case; anything else means
@@ -225,12 +242,6 @@ func run(pid uint32, sink *os.File, wantKeys int) error {
 			}
 			if verbose {
 				fmt.Fprintf(os.Stderr, "WaitForDebugEvent: %v\n", err)
-			}
-			// Idle is also when the re-arm falls due.
-			if !rearmAt.IsZero() && time.Now().After(rearmAt) {
-				if b, err := setBreakpoint(hProcess, bpAddr); err == nil {
-					origByte, armed, rearmAt = b, true, time.Time{}
-				}
 			}
 			continue
 		}
@@ -315,6 +326,7 @@ func run(pid uint32, sink *os.File, wantKeys int) error {
 				if wantKeys > 0 && hits >= wantKeys {
 					fmt.Printf("\ngot %d key(s); detaching so the game runs clean\n", hits)
 					procContinueDebugEvent(pid, tid, dbgContinue)
+					drainAndDetach(pid)
 					return nil
 				}
 				rearmAt = time.Now().Add(rearmDelay)
@@ -371,6 +383,39 @@ func run(pid uint32, sink *os.File, wantKeys int) error {
 			fmt.Println("breakpoint armed")
 		}
 	}
+}
+
+// drainAndDetach lets the debuggee settle before we let go of it.
+//
+// DebugActiveProcessStop immediately after continuing the last event races
+// whatever else is already in flight — other threads stopped on their own debug
+// events, which stay stopped if nobody continues them, and a process with a few
+// stopped threads is a frozen game. So keep answering events for a moment, then
+// detach.
+//
+// The breakpoint byte is already restored by the time this is called, so nothing
+// here can be left half-applied.
+func drainAndDetach(pid uint32) {
+	deadline := time.Now().Add(750 * time.Millisecond)
+	evt := make([]byte, 4096)
+	for time.Now().Before(deadline) {
+		r, _, _ := procWaitForDebugEvent.Call(uintptr(unsafe.Pointer(&evt[0])), 50)
+		if r == 0 {
+			continue
+		}
+		code := binary.LittleEndian.Uint32(evt[0:])
+		tid := binary.LittleEndian.Uint32(evt[8:])
+		status := uintptr(dbgContinue)
+		// Real faults still belong to the game.
+		if code == exceptionDebugEvent {
+			exCode := binary.LittleEndian.Uint32(evt[16:])
+			if exCode != exceptionBreakpoint && exCode != exceptionSingleStep {
+				status = dbgExceptionNotHandled
+			}
+		}
+		procContinueDebugEvent(pid, tid, status)
+	}
+	procDebugActiveStop.Call(uintptr(pid))
 }
 
 // scanForSignature walks the module image looking for the unique instruction.
