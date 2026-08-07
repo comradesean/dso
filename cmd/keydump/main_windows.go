@@ -41,6 +41,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -146,6 +147,16 @@ func main() {
 }
 
 func run(pid uint32, sink *os.File) error {
+	// The Windows debug API is thread-affine: WaitForDebugEvent and
+	// ContinueDebugEvent must be called from the SAME OS thread that called
+	// DebugActiveProcess. Go moves goroutines between OS threads whenever it
+	// likes, so without this the debug loop eventually runs on a thread that
+	// owns nothing, stops receiving events, and leaves the game suspended
+	// forever waiting for a continue that never comes — indistinguishable from
+	// a hang, and intermittent, which is worse.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	// Without this, detaching or crashing takes the game down with us.
 	procDebugSetKillOnEx.Call(0)
 
@@ -168,9 +179,18 @@ func run(pid uint32, sink *os.File) error {
 
 	evt := make([]byte, 4096)
 	for {
-		r, _, _ := procWaitForDebugEvent.Call(uintptr(unsafe.Pointer(&evt[0])), 1000)
+		r, _, err := procWaitForDebugEvent.Call(uintptr(unsafe.Pointer(&evt[0])), 1000)
 		if r == 0 {
-			continue // timeout; loop so Ctrl-C stays responsive
+			// ERROR_SEM_TIMEOUT is the normal idle case; anything else means
+			// the loop is broken and would otherwise spin in silence while the
+			// game sat suspended.
+			if errno, ok := err.(syscall.Errno); ok && errno == 121 {
+				continue
+			}
+			if verbose {
+				fmt.Fprintf(os.Stderr, "WaitForDebugEvent: %v\n", err)
+			}
+			continue
 		}
 
 		code := binary.LittleEndian.Uint32(evt[0:])
