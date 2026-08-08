@@ -134,45 +134,53 @@ That is 2 of 29 same-zone cases, and the later batches contain many same-zone he
 that were *not* in the ringing world — so world membership is not a general requirement. Recorded
 as an open residual rather than explained.
 
-### OPEN LEAD — the two same-zone silences may be a REGION filter
+### TESTED AND REFUTED — the ringing host's country does not decide who hears it
 
-Raised from play: invading a Russian host, the bell did not ring for the listening client. That
-observation is not in any capture, but the captures can test the shape of it — and the mechanism to
-do so was sitting in the pcaps unused.
+Raised from play: invading a Russian host, the bell did not ring for the listening client. Worth
+testing, and the mechanism to test it turned out to be sitting in the pcaps unused.
 
-**DS2 sessions are PEER TO PEER, and the host's IP is in every capture.** We had only ever parsed
-the two FromSoftware ports. Every invasion has a heavy UDP flow to one peer whose lifetime matches
-the game session exactly — it opens 13-16 s before `0x03EA` (connection setup) and its last packet
-lands on the same second as `0x03EB`:
+**DS2 sessions are PEER TO PEER, and the invaded host's IP is in every capture.** We had only ever
+parsed the two FromSoftware ports. Every invasion has a heavy UDP flow to one peer whose lifetime
+matches the game session exactly — it opens 13-16 s before `0x03EA` (connection setup) and its last
+packet lands on the same second as `0x03EB`:
 
 | bell | game session | peer flow | packets |
 |---|---|---|---|
-| 09:12:16 (anomaly) | LOCAL join 09:10:24, leave **09:12:15** | `93.42.45.121` 09:10:11 - **09:12:15** | 8,538 |
-| 09:47:24 (anomaly) | VM join 09:45:41, leave **09:47:31** | `93.234.202.118` 09:45:25 - **09:47:31** | 7,177 |
-| 02:00:12 (control) | LOCAL join 01:59:23, leave **02:00:19** | `76.32.35.146` 01:59:11 - **02:00:19** | 4,773 |
+| 09:12:16 | LOCAL join 09:10:24, leave **09:12:15** | `93.42.45.121` 09:10:11 - **09:12:15** | 8,538 |
+| 09:47:24 | VM join 09:45:41, leave **09:47:31** | `93.234.202.118` 09:45:25 - **09:47:31** | 7,177 |
+| 02:00:12 | LOCAL join 01:59:23, leave **02:00:19** | `76.32.35.146` 01:59:11 - **02:00:19** | 4,773 |
 
-So the invaded host's address is recoverable for every captured invasion, and with it a region.
+Countries come from the RIRs' own `delegated-*-extended-latest` files, looked up **offline** — the
+whole allocation table is fetched once and every lookup is local, so no player's address is sent
+anywhere. `corpus/` is gitignored for the same reason; the flow dump lives in a scratch directory
+and is not in the repo.
 
-**The correlation, on three cases:** both unexplained silences had a host in **93/8 (RIPE, European
-registry)**, and the bystander in the right map heard nothing. The control had a host in
-**76/8 (ARIN, North American registry)**, and the bystander heard it.
+**The result, restricted to bystanders who were in the bell's own map** (cross-zone cases are
+excluded — those are settled above and would otherwise swamp the table):
 
-That is consistent with: *you hear a toll if you are in the ringing host's session, OR if you are in
-the same region as that host.* It would explain every same-zone silence without touching the
-map-scoping result, which is separately settled.
+| ringing host | bystander heard | bystander silent |
+|---|---|---|
+| US | 4 | 0 |
+| ours | 2 | 0 |
+| BR | 1 | 0 |
+| TR | 1 | 0 |
+| **DE** | **1** | **1** |
+| IT | 0 | 1 |
+| unknown | 2 | 0 |
 
-**It is n = 3 and it is not established.** What is honest here:
+**Non-US ringing host: bystander heard 3, silent 2.** A Brazilian host and a Turkish host both
+produced tolls that a same-zone bystander heard, and **Germany appears on both sides** — 21:24:00
+heard, 09:47:24 silent. Same country, opposite outcomes. The hypothesis does not survive that.
 
-- **RIR blocks are not geolocation.** 93/8 being RIPE and 76/8 ARIN is an IANA allocation fact, not
-  a country. Turning these into regions properly needs an offline GeoIP database, or sending other
-  players' IP addresses to a third-party lookup service — which publishes them. That is a decision
-  for the repo owner, not something to do by default; `corpus/` is already gitignored because it
-  holds other players' Steam ids and character names, and IPs are more identifying still.
-- **Some flows may be relays, not peers.** One 400-second flow in the control window does not match
-  any session and is unexplained; only the session-matched flows are trustworthy as host addresses.
-- **The test is cheap now.** Every invasion in three batches has a recoverable host IP. Classifying
-  all of them and cross-tabulating against who heard each bell would take the sample from 3 to
-  roughly 60.
+What this does not rule out: a coarser grouping than country, or a ping-based rather than
+geographic notion of region. But BR and TR being heard makes any simple geography unlikely.
+
+**Incidentally the same data shows DS2's matchmaking was genuinely global** — hosts in IT, DE, PL,
+BR, TR and US inside a few hours of belfry play from one US client.
+
+**The two silences remain unexplained, and they are both in the first batch** (09:12:16, 09:47:24),
+while every same-zone case in batches 2 and 3 was heard. "Batch 1 behaved differently" is now the
+most that can be said, and it is a description rather than a cause.
 
 ### The evidence behind it, and what is still unmeasured
 
