@@ -107,9 +107,31 @@ Across all three batches, every toll and both machines:
 | | heard it | silent |
 |---|---|---|
 | machine in the **same** belfry's map as the bell | **27** | 2 |
-| machine in the **other** belfry's map | **0** | **5** |
+| machine in the **other** belfry's map | **0** | **6** |
 
-**Five for five: a player standing in Belfry Luna never hears an Iron Keep/Sol bell.** The
+**THE DELIBERATE TEST, 2026-08-08 04:39:42 — the cleanest case in the corpus.** The player parked
+the listening client at the **Servants' Quarters bonfire in Lost Bastille**, then died on the other
+client in Iron Keep and let the invader pull the lever:
+
+```
+LOCAL  rings a SOL bell (map 10190000) from Iron Keep, cell 101950, at 04:39:42
+       and again at 04:39:54 -- the same double ring seen at 18:21:39/51
+VM     -341s  pos (-184.4, 7.2, 534.3)     Servants' Quarters
+       -163s  pos (-184.4, 7.2, 534.5)
+              <<<< BOTH RINGS
+        +74s  pos (-184.4, 7.2, 534.5)     unmoved
+NO 0x03EF EXISTS ANYWHERE IN THE CORPUS FOR EITHER RING.
+```
+
+Stationary, position pinned on both sides, and the toll was never delivered. **A Sol toll does not
+reach Lost Bastille.**
+
+> **Method note, because this event was nearly missed.** Every analysis here keyed on `0x03EF`, the
+> toll. An event where the toll is delivered to NOBODY does not appear in a toll-keyed query at all
+> — it exists only as a `0x03EE` with no answer. Cross-check the rings against the tolls, not just
+> the tolls.
+
+**Six for six: a player standing in Lost Bastille / Belfry Luna never hears an Iron Keep/Sol bell.** The
 controls are in the same table — the same machine, minutes apart, hears Sol bells whenever it is
 standing in Sol. On 2026-08-08 the VM sat in Luna through four consecutive Sol rings (23:28:57,
 00:22:55, 00:27:07, 01:10:08) and heard none of them, its position unchanged at
@@ -117,9 +139,18 @@ standing in Sol. On 2026-08-08 the VM sat in Luna through four consecutive Sol r
 (02:00:12, 02:06:05).
 
 `bellRegions` in `telemetry.go` is therefore right where it has been tested: a Luna toll must not
-reach Sol, and vice versa. What remains untested is the WIDTH of each region — whether a Luna toll
-reaches Lost Bastille, which rests on a single first-batch observation and no player in these
-batches ever stood there.
+reach Sol, and vice versa. **Area `10160000` contains Servants' Quarters as well as Belfry Luna** — the parked listener at
+`(-184.4, 7.2, 534)` is at the Servants' Quarters bonfire, identified by the player, and it reports
+`10160000`. So an earlier reading here that "no player was ever in Lost Bastille" was wrong: it came
+from assuming `10140000` was Lost Bastille and `10160000` was only the belfry. The listener was in
+Lost Bastille for essentially the whole corpus.
+
+That makes the Luna direction answered too, from the same seat: the listener at Servants' Quarters
+**did** hear Luna bells (05:41:17, 05:41:29, 21:24:00, 22:15:43) and **never** heard a Sol one.
+
+Still untested: whether a Luna toll reaches Iron Keep — no Luna bell in any batch rang while either
+client was there. And what `10140000` actually is; it appears in area-population responses but no
+client ever visited it.
 
 **Two same-zone silences remain unexplained**, both in the first batch, and both with the same
 shape:

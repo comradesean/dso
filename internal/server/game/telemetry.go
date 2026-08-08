@@ -371,11 +371,16 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 //
 // CONFIRMED 2026-08-08 that a belfry does NOT reach the OTHER belfry. Across
 // three capture batches, a machine standing in one belfry's map heard the other
-// belfry's bell 0 times out of 5, while machines in the bell's own map heard it
-// 27 times out of 29. The cleanest run: one client sat in Belfry Luna through
-// four consecutive Belfry Sol rings, position unchanged, and heard none, then
-// walked to Sol and heard the next two. Keeping these two entries separate is
-// therefore right, not merely cautious.
+// belfry's bell 0 times out of 6, while machines in the bell's own map heard it
+// 27 times out of 29.
+//
+// The decisive case was set up deliberately: a client parked at the SERVANTS'
+// QUARTERS bonfire in Lost Bastille (area 10160000, position -184.4, 7.2, 534),
+// while the player died on the other client in Iron Keep and let the invader
+// pull the lever. Two Sol rings went out at 04:39:42 and 04:39:54 and NO 0x03EF
+// was delivered to anyone at all -- the listener's position is pinned unmoved
+// both before and 74s after. So keeping these two entries separate is right, and
+// note that 10160000 covers Servants' Quarters as well as the belfry above it.
 //
 // Region membership is overridable at runtime via DSO_BELL_REGION_<mapid>, a
 // comma-separated list of area ids, so a gap can be filled from evidence without
