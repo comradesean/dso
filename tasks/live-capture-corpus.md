@@ -180,3 +180,39 @@ as upload scheduling, and a reason to leave it unimplemented rather than a reaso
 - The meaning of most `PlayerStatus` sub-message fields beyond the ones named above.
 - Whether `0x0320` is a push-specific wrapper or a general "server-originated message" opcode. Every
   push observed used it; no non-push used it.
+
+## What the captures added to the protocol definitions (2026-08-08)
+
+A sweep of every corpus bucket against what the server dispatches. Six push types now have
+FromSoftware's own bytes behind them rather than inference:
+
+| message | opcode | n | verdict |
+|---|---|---|---|
+| `PushRequestSummonSign` | `0x039B` | 1 | **confirmed field-for-field** |
+| `PushRequestRemoveSign` | `0x039D` | 1 | **confirmed field-for-field** |
+| `PushRequestBreakInTarget` | `0x03B9`, `0x03FB` | 7 | **confirmed field-for-field** |
+| `PushRequestVisit` | `0x03CC` | 72 | **confirmed field-for-field** |
+| `PushRequestRejectVisit` | `0x03CD` | 1 | **confirmed**, incl. the `unknown_3` slot (read 1) |
+| `PushRequestRemoveVisitor` | `0x03CE` | 23 | **confirmed field-for-field** |
+
+Nothing needed changing in any of them, which is the useful result: six definitions that were
+schema guesses are now measurements.
+
+**NEW — `BreakInType` has a value 4 that we did not have.** Break-in pushes arrived with `type = 0`
+(six, on `0x03B9`) and `type = 4` (one, on `0x03FB`). The enum held only `RedEyeOrb = 0` and
+`BlueEyeOrb = 2`, and 2 has never actually been observed. Added as `Unknown4` deliberately unnamed —
+guessing it from the item list is how the existing unverified name got there.
+
+**The opcode moves with the type**, which is the alias-block behaviour: type 0 on `0x03B9`, type 4 on
+`0x03FB`.
+
+**CORRECTION to `docs/protocol-map.md` — `0x03B9` is not `PushRequestRemoveVisitor`.** The PC map
+lists it as that. Six live pushes carry six fields including an area and a cell;
+`PushRequestRemoveVisitor` has four and neither. It is `PushRequestBreakInTarget`, and the matching
+allow-relay is `0x03BB` = `0x03B9 + 2`, which fits the BreakIn block `base + 4*mode + role` with
+role 2 = Allow. So the PC build uses the same `0x03B9` block PS3 does. This also retires
+`tasks/invasion-timeline.md`'s "join kind 5 — mechanic not identified": it is a break-in of type 0.
+
+**Sign ids run around 194 million** on FromSoftware's server (194224127, 194220913). Ours start at
+100000. Nothing depends on the range, but it is worth knowing before assuming a client cares.
+

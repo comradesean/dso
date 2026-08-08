@@ -518,6 +518,9 @@ message MatchingParameter {
 	required uint32 soul_memory = 12;               
 }
 
+// CONFIRMED field-for-field against FromSoftware's own push, 2026-08-08:
+// {923, player 3232428, sign 194224127, 65-byte struct, psn}. Note their sign ids
+// run around 194 million; ours start at 100000.
 message PushRequestSummonSign {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; // 290333, 1705594, 2514885
@@ -546,6 +549,8 @@ message PushRequestRejectSign {
     required string player_psn_id = 4;
 }
 
+// CONFIRMED field-for-field against a live push, 2026-08-08:
+// {925, player 2997752, sign 194220913, psn}.
 message PushRequestRemoveSign {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; 
@@ -745,9 +750,19 @@ message RequestUpdateMirrorKnightSignResponse {
 // Game Server Messages - Break In Messages
 // ------------------------------------------------------------------------------------------------------------
 
+// CONFIRMED LIVE, and INCOMPLETE. Captures of FromSoftware's own server carry
+// break-in pushes with type = 0 (six of them) and type = **4** (one). 4 is not in
+// this enum and its mechanic is unidentified; 2 is in the enum but has never been
+// observed. Treat the set as {0, 2?, 4, ...} rather than closed.
+//
+// The opcode moves with the type, which is the alias-block behaviour: type 0
+// arrived on 0x03B9 and type 4 on 0x03FB. See tasks/live-capture-corpus.md.
 enum BreakInType {
 	BreakInType_RedEyeOrb = 0;
 	BreakInType_BlueEyeOrb = 2;
+	// Observed live on 0x03FB, 2026-08-08. Name unknown -- do NOT guess it from
+	// the item list; the enum already has one unverified name in it.
+	BreakInType_Unknown4 = 4;
 };
 
 message BreakInTargetData {
@@ -762,6 +777,9 @@ message PushRequestAllowBreakInTarget {
 	required uint32 unknown_4 = 4;
 }
 
+// CONFIRMED field-for-field against live pushes, 2026-08-08, on BOTH 0x03B9
+// (type 0) and 0x03FB (type 4) -- the same message under two opcodes, which is
+// what the alias block predicts.
 message PushRequestBreakInTarget {
 	required PushMessageId push_message_id = 1;
 	required uint32 player_id = 2;
@@ -896,6 +914,8 @@ message RequestGetVisitorListResponse {
 	repeated VisitorData target_data = 3; // 
 }
 
+// CONFIRMED field-for-field against 23 live pushes, 2026-08-08:
+// {974, player, psn, type 1}. We deliberately never send this one.
 message PushRequestRemoveVisitor {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; // 290333
@@ -927,6 +947,8 @@ message RequestRejectVisitResponse {
     // Not received.
 }
 
+// CONFIRMED field-for-field against a live push, 2026-08-08. unknown_3 read 1;
+// still unidentified, but the field is real and in this position.
 message PushRequestRejectVisit {
     // Base on ghidra.
 	required PushMessageId push_message_id = 1;
@@ -936,6 +958,8 @@ message PushRequestRejectVisit {
     required VisitorType type = 5;
 }
 
+// CONFIRMED field-for-field against 72 live pushes, 2026-08-08:
+// {972, player, psn, 67-byte struct, type 1 = BellKeepers, area, cell}.
 message PushRequestVisit {
 	required PushMessageId push_message_id = 1;
 	required int64 player_id = 2; // 290333

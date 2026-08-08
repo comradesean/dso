@@ -1,3 +1,12 @@
+> **CORRECTION 2026-08-08 — `0x03B9` is NOT `PushRequestRemoveVisitor`.** Six live pushes captured
+> from FromSoftware's own server carry
+> `{push_id 953, player_id, psn_id, type 0, online_area_id, cell_id}` — six fields, exactly
+> `PushRequestBreakInTarget`. `PushRequestRemoveVisitor` has four fields and no area or cell.
+> The matching allow-relay is `0x03BB` (955), which is `0x03B9 + 2` and fits the BreakIn alias block
+> `base + 4*mode + role` with role 2 = Allow. So the PC build uses the same `0x03B9` block for
+> break-ins that PS3 does, and additionally sends `0x03FB` for type 4. See
+> `tasks/live-capture-corpus.md`.
+
 # DS2 protocol map
 
 > **VERIFIED AGAINST LIVE PC TRAFFIC (2026-08-07).** Nine sessions against FromSoftware's own
@@ -431,7 +440,7 @@ Invader                     Server                      Host
 | `0x03D7` | `0x03B6` | `RequestRejectVisit` | C→S | empty |
 | `0x03CF` | `0x03B7` | `PushRequestVisit` | push | — |
 | `0x03D0` | `0x03B8` | `PushRequestRejectVisit` | push | — |
-| `0x03D1` | `0x03B9` | `PushRequestRemoveVisitor` | push | — |
+| `0x03D1` | `0x03B9` | ~~`PushRequestRemoveVisitor`~~ **WRONG — see below** | push | — |
 
 `DS2_..._Types.inc:136-142`. Handlers: `.../Visitor/DS2_VisitorManager.cpp`, dispatch `:33`.
 

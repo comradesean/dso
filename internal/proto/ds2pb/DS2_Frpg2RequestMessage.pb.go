@@ -296,11 +296,21 @@ func (SignType) EnumDescriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{2}
 }
 
+// CONFIRMED LIVE, and INCOMPLETE. Captures of FromSoftware's own server carry
+// break-in pushes with type = 0 (six of them) and type = **4** (one). 4 is not in
+// this enum and its mechanic is unidentified; 2 is in the enum but has never been
+// observed. Treat the set as {0, 2?, 4, ...} rather than closed.
+//
+// The opcode moves with the type, which is the alias-block behaviour: type 0
+// arrived on 0x03B9 and type 4 on 0x03FB. See tasks/live-capture-corpus.md.
 type BreakInType int32
 
 const (
 	BreakInType_BreakInType_RedEyeOrb  BreakInType = 0
 	BreakInType_BreakInType_BlueEyeOrb BreakInType = 2
+	// Observed live on 0x03FB, 2026-08-08. Name unknown -- do NOT guess it from
+	// the item list; the enum already has one unverified name in it.
+	BreakInType_BreakInType_Unknown4 BreakInType = 4
 )
 
 // Enum value maps for BreakInType.
@@ -308,10 +318,12 @@ var (
 	BreakInType_name = map[int32]string{
 		0: "BreakInType_RedEyeOrb",
 		2: "BreakInType_BlueEyeOrb",
+		4: "BreakInType_Unknown4",
 	}
 	BreakInType_value = map[string]int32{
 		"BreakInType_RedEyeOrb":  0,
 		"BreakInType_BlueEyeOrb": 2,
+		"BreakInType_Unknown4":   4,
 	}
 )
 
@@ -3036,6 +3048,14 @@ func (*RequestNotifyBuyItemResponse) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{45}
 }
 
+// field_3 SEPARATES THE TWO KINDS OF DEATH, 26 of 26 in the 2026-08-07 corpus:
+//
+//	14 = we died as a PHANTOM inside someone else's session
+//	 0 = we died in our OWN world
+//
+// Cross-checked against the role derived independently from the join messages
+// (0x03E8 guest-joined-us vs 0x03EA we-joined-them); they agreed every time.
+// A death with field_4 = 1 and field_5 = <six-digit id> is PvE, the enemy id.
 type RequestNotifyDeath struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OnlineAreaId  *uint32                `protobuf:"varint,1,req,name=online_area_id,json=onlineAreaId" json:"online_area_id,omitempty"`
@@ -3599,11 +3619,18 @@ func (*RequestNotifyKillEnemyResponse) Descriptor() ([]byte, []int) {
 // 14/0/5 in field_1 and 0/10/13 in field_3, i.e. the session-kind-looking values
 // in the OTHER field. Either the layout differs on PS3 or those samples were
 // read wrongly. The PS3 wire above is what we follow.
+// Fields 1 and 3 are NOT consistent between the two records below, and the
+// difference has never been explained. A 2026-08-07 corpus of 14 kills from live
+// PC traffic has field_1 = 14 (the session kind) and field_3 = 0 in ALL 14, which
+// is the opposite placement from the PS3 live capture noted here.
+//
+// Only field_2 is safe to rely on: it is the victim, agreed by both, and every
+// conclusion drawn from these messages rests on it alone.
 type RequestNotifyKillPlayer struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Field_1       *int64                 `protobuf:"varint,1,req,name=field_1,json=field1" json:"field_1,omitempty"` // PC captures: 14, 0, 5. PS3 live: 0
-	Field_2       *int64                 `protobuf:"varint,2,req,name=field_2,json=field2" json:"field_2,omitempty"` // victim player id (CONFIRMED live)
-	Field_3       *int64                 `protobuf:"varint,3,req,name=field_3,json=field3" json:"field_3,omitempty"` // session kind (PS3 live: 14). PC captures: 0, 10, 13
+	Field_1       *int64                 `protobuf:"varint,1,req,name=field_1,json=field1" json:"field_1,omitempty"` // PS3 live: 0.  PC corpus: 14 (session kind) in 14/14
+	Field_2       *int64                 `protobuf:"varint,2,req,name=field_2,json=field2" json:"field_2,omitempty"` // victim player id (CONFIRMED live, both platforms)
+	Field_3       *int64                 `protobuf:"varint,3,req,name=field_3,json=field3" json:"field_3,omitempty"` // PS3 live: 14 (session kind).  PC corpus: 0 in 14/14
 	Field_4       *int64                 `protobuf:"varint,4,req,name=field_4,json=field4" json:"field_4,omitempty"` // 0, 1
 	Field_5       *int64                 `protobuf:"varint,5,req,name=field_5,json=field5" json:"field_5,omitempty"` // 0
 	unknownFields protoimpl.UnknownFields
@@ -4203,6 +4230,9 @@ func (x *MatchingParameter) GetSoulMemory() uint32 {
 	return 0
 }
 
+// CONFIRMED field-for-field against FromSoftware's own push, 2026-08-08:
+// {923, player 3232428, sign 194224127, 65-byte struct, psn}. Note their sign ids
+// run around 194 million; ours start at 100000.
 type PushRequestSummonSign struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
@@ -4452,6 +4482,8 @@ func (x *PushRequestRejectSign) GetPlayerPsnId() string {
 	return ""
 }
 
+// CONFIRMED field-for-field against a live push, 2026-08-08:
+// {925, player 2997752, sign 194220913, psn}.
 type PushRequestRemoveSign struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
@@ -6266,6 +6298,9 @@ func (x *PushRequestAllowBreakInTarget) GetUnknown_4() uint32 {
 	return 0
 }
 
+// CONFIRMED field-for-field against live pushes, 2026-08-08, on BOTH 0x03B9
+// (type 0) and 0x03FB (type 4) -- the same message under two opcodes, which is
+// what the alias block predicts.
 type PushRequestBreakInTarget struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
@@ -7290,6 +7325,8 @@ func (x *RequestGetVisitorListResponse) GetTargetData() []*VisitorData {
 	return nil
 }
 
+// CONFIRMED field-for-field against 23 live pushes, 2026-08-08:
+// {974, player, psn, type 1}. We deliberately never send this one.
 type PushRequestRemoveVisitor struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
@@ -7582,6 +7619,8 @@ func (*RequestRejectVisitResponse) Descriptor() ([]byte, []int) {
 	return file_DS2_Frpg2RequestMessage_proto_rawDescGZIP(), []int{125}
 }
 
+// CONFIRMED field-for-field against a live push, 2026-08-08. unknown_3 read 1;
+// still unidentified, but the field is real and in this position.
 type PushRequestRejectVisit struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Base on ghidra.
@@ -7659,6 +7698,8 @@ func (x *PushRequestRejectVisit) GetType() VisitorType {
 	return VisitorType_VisitorType_None
 }
 
+// CONFIRMED field-for-field against 72 live pushes, 2026-08-08:
+// {972, player, psn, 67-byte struct, type 1 = BellKeepers, area, cell}.
 type PushRequestVisit struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PushMessageId *PushMessageId         `protobuf:"varint,1,req,name=push_message_id,json=pushMessageId,enum=DS2_Frpg2RequestMessage.PushMessageId" json:"push_message_id,omitempty"`
@@ -12424,10 +12465,11 @@ const file_DS2_Frpg2RequestMessage_proto_rawDesc = "" +
 	"\x1cSignType_SmallWhiteSoapstone\x10\x03\x12\x19\n" +
 	"\x15SignType_RedSoapstone\x10\x04\x12\x13\n" +
 	"\x0fSignType_Dragon\x10\x06\x12\x19\n" +
-	"\x15SignType_MirrorKnight\x10c*D\n" +
+	"\x15SignType_MirrorKnight\x10c*^\n" +
 	"\vBreakInType\x12\x19\n" +
 	"\x15BreakInType_RedEyeOrb\x10\x00\x12\x1a\n" +
-	"\x16BreakInType_BlueEyeOrb\x10\x02*\x90\x01\n" +
+	"\x16BreakInType_BlueEyeOrb\x10\x02\x12\x18\n" +
+	"\x14BreakInType_Unknown4\x10\x04*\x90\x01\n" +
 	"\vVisitorType\x12\x1d\n" +
 	"\x10VisitorType_None\x10\xff\xff\xff\xff\xff\xff\xff\xff\xff\x01\x12\x1d\n" +
 	"\x19VisitorType_BlueSentinels\x10\x00\x12\x1b\n" +

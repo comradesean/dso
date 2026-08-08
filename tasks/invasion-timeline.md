@@ -299,7 +299,7 @@ Every one of the 16 guest joins has an identified summoning path — none is une
 |---|---|---|---|
 | 14 | 13 | `0x03D6 RequestVisit` we sent 10.8–16.1 s earlier, mode 1 = BellKeepers, plus a `PUSH_0x03CE` remove-visitor confirming the id | the Bell Keeper covenant defender we summoned into our own world |
 | 6 | 1 | `PUSH_0x03FB PushRequestBreakInTarget` (20:14:01, f4 = 4), answered 0.3 s later by relaying push **1021 = 0x03FD AllowBreakInTarget** through `0x0320` | a break-in invader, a different mechanic from the covenant |
-| 5 | 2 | `PUSH_0x03B9` (push id 953) naming the player, answered ~0.3 s later by relaying push **955 = 0x03BB** through `0x0320` | **mechanic not identified.** 0x03B9/0x03BB are not in `proto/DS2_Frpg2RequestMessage.proto`; by analogy with the sign block (0x039B/9C/9D) and the aliased visitor block (0x03CC/CD/CE) they look like a sign-family summon/allow pair, but that is inference. Both were player 2973239; LOCAL died within 2 min each time. |
+| 5 | 2 | `PUSH_0x03B9` (push id 953) naming the player, answered ~0.3 s later by relaying push **955 = 0x03BB** through `0x0320` | **IDENTIFIED 2026-08-08: a BREAK-IN of `BreakInType` 0.** `0x03B9` carries `{push_id, player_id, psn_id, type 0, online_area_id, cell_id}` — `PushRequestBreakInTarget` field for field — and `0x03BB` is `0x03B9 + 2`, role 2 = Allow in the BreakIn alias block. The earlier sign-family reading was wrong. Both were player 2973239; LOCAL died within 2 min each time. |
 
 Both kind-5 joins are counted as invasions in the tables below because rule 1 defines the role by
 `0x03E8`, but they are **not** Bell Keeper invasions and should not be read as such.
