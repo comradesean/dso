@@ -29,6 +29,23 @@ because each file is assembled independently. `VMrun2` is on port **50001**, not
 (2026-08-07). Rebuild with `tools/pcap/ingest.sh <dir>` — it finds the key, the port and the
 ring-buffer grouping itself, all three of which were re-derived by hand the first time.
 
+**The message-offset bug is fixed (2026-08-07).** `protoStart` used to probe candidate offsets
+beginning at **8**, which is the INDEX field — and four bytes of index parse as valid protobuf often
+enough that the probe accepted them. **6,515 of 15,573 files, 42% of the corpus, were written with
+the index prepended to their payload and a decoded tree built from it.** Verified after the fact:
+for every one of those files the first four payload bytes read as a little-endian uint32 equal the
+file's own `index:` header, 6,515/6,515.
+
+The header is self-describing and never needed probing: `[0:4]` is its own size (12), `[4:8]` the
+opcode, `[8:12]` the index, and a reply carries 16 more bytes and has a zero opcode. After the fix
+every message lands at **12 or 28 and nothing else**, and `NO CLEAN PARSE` went from 5,305 to **0**.
+
+`parsesCleanly` also rejected protobuf **groups** (wire types 3/4), which DS2 still uses. That left
+136 messages unparseable; groups are now handled and rendered nested. One payoff:
+`RequestGetRightMatchingArea` responses are readable for the first time and turn out to be repeated
+`{area_id, player_count}` groups — live area populations from FromSoftware's own server, e.g.
+`10190000: 11, 10170000: 4, 10140000: 2`.
+
 **Every response is now identified.** The message Index at `full[8:12]` (little-endian, while the two
 fields before it are big-endian) is echoed by the reply that answers a request, so responses — half
 the corpus, and previously anonymous under opcode 0 — are paired to their requests and carry a

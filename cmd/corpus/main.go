@@ -110,19 +110,43 @@ func pushID(body []byte) (uint32, bool) {
 	return uint32(v), true
 }
 
+// Message-layer header sizes, matching internal/frpg/rudp/message.go.
+const (
+	msgHeaderSize     = 12 // size(4) opcode(4) index(4)
+	msgRespHeaderSize = 16 // replies carry this much again before the body
+)
+
 // protoStart locates where the protobuf begins inside a reassembled message.
 //
-// The message header is NOT a fixed size: requests and responses carry different
-// amounts of preamble after the opcode, and assuming one offset produced garbage
-// for half the corpus. Rather than invent a layout, this tries the plausible
-// offsets and takes the first that parses cleanly all the way to the end — a
-// whole-buffer parse is a strong check, since a wrong offset almost always hits
-// an invalid wire type or runs off the end.
+// The header is SELF-DESCRIBING and does not need to be guessed: [0:4] is its
+// own size (12), [4:8] the opcode, [8:12] the message index. A reply carries
+// msgRespHeaderSize more bytes and is identifiable by a zero opcode.
 //
-// The chosen offset is recorded per message, so the real layout can be worked
-// out FROM the corpus rather than assumed before reading it.
+// This used to probe candidate offsets starting at 8 and take the first that
+// parsed cleanly. Offset 8 is the INDEX field, and four bytes of index parse as
+// valid protobuf often enough that the probe accepted them: 6,515 of 15,573
+// files in the corpus were written with the index prepended to their payload and
+// a decoded tree built from it — 42% of the corpus, silently wrong. Verified
+// after the fact: for every one of those files the first four payload bytes read
+// as a little-endian uint32 equal the file's own index header, 6,515/6,515.
+//
+// So: derive the offset, and only fall back to probing if the derived one does
+// not parse — and never probe 8.
 func protoStart(full []byte) (int, bool) {
-	for _, off := range []int{8, 12, 16, 20, 24, 28, 32, 36, 40} {
+	if len(full) >= msgHeaderSize {
+		if hdr := int(binary.BigEndian.Uint32(full[0:4])); hdr == msgHeaderSize {
+			off := hdr
+			if binary.BigEndian.Uint32(full[4:8]) == 0 {
+				off += msgRespHeaderSize // a reply
+			}
+			// An empty body is legitimate — most replies carry none — and must
+			// not be rejected by a parser that requires at least one field.
+			if off == len(full) || (off < len(full) && parsesCleanly(full[off:])) {
+				return off, true
+			}
+		}
+	}
+	for _, off := range []int{12, 28, 16, 20, 24, 32, 36, 40} {
 		if off >= len(full) {
 			break
 		}
@@ -138,7 +162,7 @@ func parsesCleanly(b []byte) bool {
 	if len(b) == 0 {
 		return false
 	}
-	i, fields := 0, 0
+	i, fields, depth := 0, 0, 0
 	for i < len(b) {
 		tag, n := uvarint(b[i:])
 		if n == 0 {
@@ -166,6 +190,17 @@ func parsesCleanly(b []byte) bool {
 				return false
 			}
 			i += n + int(ln)
+		// Wire types 3 and 4 are GROUPS — the deprecated protobuf construct.
+		// DS2 still uses them: RequestGetRightMatchingArea's response and
+		// RequestNotifyKillEnemy both do, and rejecting them left 136 messages
+		// unparseable and filed at a fallback offset.
+		case 3:
+			depth++
+		case 4:
+			depth--
+			if depth < 0 {
+				return false
+			}
 		default:
 			return false
 		}
@@ -174,7 +209,7 @@ func parsesCleanly(b []byte) bool {
 		}
 		fields++
 	}
-	return fields > 0
+	return fields > 0 && depth == 0
 }
 
 // parseTagged reads one line of udpdump --tagged output.
@@ -504,12 +539,82 @@ func describeProto(b []byte, indent string) string {
 			}
 			fmt.Fprintf(&sb, "%sfield %d  fixed64 %d\n", indent, field, binary.LittleEndian.Uint64(b[i:]))
 			i += 8
+		// Wire 3/4 are GROUPS, the deprecated construct DS2 still uses — for
+		// RequestNotifyKillEnemy and RequestGetRightMatchingArea responses among
+		// others. Rendering them as nested keeps those readable instead of
+		// stopping the whole tree at the first one.
+		case 3:
+			end, ok := groupEnd(b, i, field)
+			if !ok {
+				fmt.Fprintf(&sb, "%sfield %d  group   <unterminated>\n", indent, field)
+				return sb.String()
+			}
+			fmt.Fprintf(&sb, "%sfield %d  group\n", indent, field)
+			sb.WriteString(describeProto(b[i:end], indent+"    "))
+			i = end
+			if _, n := uvarint(b[i:]); n > 0 {
+				i += n // step over the matching end-group tag
+			}
+		case 4:
+			// A stray end-group; the caller consumed the opener.
+			return sb.String()
 		default:
 			fmt.Fprintf(&sb, "%s<wire type %d, stopping>\n", indent, wire)
 			return sb.String()
 		}
 	}
 	return sb.String()
+}
+
+// groupEnd finds the offset of the END_GROUP tag matching a group opened at
+// start, honouring nesting so an inner group cannot close the outer one.
+func groupEnd(b []byte, start int, field uint64) (int, bool) {
+	i, depth := start, 1
+	for i < len(b) {
+		tag, n := uvarint(b[i:])
+		if n == 0 {
+			return 0, false
+		}
+		f, wire := tag>>3, tag&7
+		if wire == 4 {
+			depth--
+			if depth == 0 {
+				if f != field {
+					return 0, false // closes a different field: malformed
+				}
+				return i, true
+			}
+			i += n
+			continue
+		}
+		i += n
+		switch wire {
+		case 0:
+			_, n := uvarint(b[i:])
+			if n == 0 {
+				return 0, false
+			}
+			i += n
+		case 1:
+			i += 8
+		case 5:
+			i += 4
+		case 2:
+			ln, n := uvarint(b[i:])
+			if n == 0 {
+				return 0, false
+			}
+			i += n + int(ln)
+		case 3:
+			depth++
+		default:
+			return 0, false
+		}
+		if i > len(b) {
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 func looksNested(b []byte) bool {

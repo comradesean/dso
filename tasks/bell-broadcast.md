@@ -63,8 +63,18 @@ player — so the behaviour matches, but the reason is not the one the code comm
 | phantom | died | 10 | 0 |
 | host (I was invaded) | died | 10 | **2** (the same two, from the other side) |
 
-Whether the lever gets pulled is the obvious explanation, and the ratio is the opposite way round
-from what the player expected — so two alternatives were tested against the corpus and **both are
+**The player's account resolves this: the target often runs.** A successful kill frequently happens
+far from the belfry, because the trespasser flees and the fight follows them, and the session ends
+before the invader can get back to the lever. A kill is not a bell, and there is no missing
+mechanism — the ratio is behavioural.
+
+That is consistent with everything measurable here: the four kills that did produce a bell are
+followed by the toll within 9.7-18.1 s, i.e. the lever was right there, while several silent kills
+land at the very end of a session. It is not falsifiable from the wire, since nothing is sent
+between the kill and the `0x03EE`.
+
+Two alternatives were tested against the corpus first and both are refuted, which is what left the
+behavioural explanation standing — so two alternatives were tested against the corpus and **both are
 refuted**:
 
 - **"Those were a different covenant."** No. Every visitor push in the batch is mode 1: `0x03CC`
