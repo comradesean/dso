@@ -25,8 +25,8 @@ as rebuilt on 2026-08-07 (sources in `Desktop/PACKETS`, outside the repo):
 share a key and a session. Messages whose fragments straddle a file boundary are lost at each seam,
 because each file is assembled independently. `VMrun2` is on port **50001**, not 50000.
 
-**15,573 messages in 43 buckets, zero decryption failures** across two capture batches
-(2026-08-07). Rebuild with `tools/pcap/ingest.sh <dir>` — it finds the key, the port and the
+**25,851 messages in 49 buckets** across three capture batches (2026-08-07/08), from 79 captures
+totalling ~8 GB, with 3 failed datagrams in the whole set. Rebuild with `tools/pcap/ingest.sh <dir>` — it finds the key, the port and the
 ring-buffer grouping itself, all three of which were re-derived by hand the first time.
 
 **The message-offset bug is fixed (2026-08-07).** `protoStart` used to probe candidate offsets
@@ -51,7 +51,13 @@ fields before it are big-endian) is echoed by the reply that answers a request, 
 the corpus, and previously anonymous under opcode 0 — are paired to their requests and carry a
 `replies-to:` line. 7,739 of 7,739 matched.
 
-Superseded counts: **5,594 messages in 34 buckets.** Counted from `corpus/` on 2026-08-07;
+Superseded counts: 5,594 messages in 34 buckets (batch 1); 15,573 in 43 (batches 1-2).
+
+**Batch 3 was gathered to answer one question and it did**: whether a bell rung in one belfry is
+heard in the other. It is not — see `tasks/bell-broadcast.md`. 61 captures, 3 login groups, and the
+`LOCAL` key is the same as batch 2's because the client never logged out between them; one
+sub-directory is a genuine re-login with its own pair. `ingest.sh` sorts that out by verifying every
+file rather than trusting the directory. Counted from `corpus/` on 2026-08-07;
 an earlier "~4,700 messages, 28 distinct opcodes" was an estimate and is superseded.
 
 33 buckets carry an identified opcode. The 34th, `0x0000_unknown`, holds **2,787 messages — half

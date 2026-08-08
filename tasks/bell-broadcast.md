@@ -92,25 +92,47 @@ lever was actually pulled, which the protocol cannot see: nothing is sent betwee
 Incidentally this confirms field 2 of the visit push is the **host** player id — the self-invasion
 at 18:21:33 names host 2910025, which is LOCAL.
 
-### It broadcasts to the AREA AROUND THE BELL
+### SETTLED — the toll does NOT cross between Belfry Luna and Belfry Sol
 
-Established from play, and every measurement in the corpus agrees. Recorded because two rounds of
-analysis wandered off into whether the hearer was in the reporting host's session or invasion — they are
-not the predicate, and testing that was a detour. A player hears a bell because of **where they are
-standing**, not because of who was fighting whom.
+A third capture batch (2026-08-08, 61 captures, ~6 GB) was gathered deliberately to test this: one
+character slain and the invader pulling the lever, with the other character parked either in the
+same belfry or the other one.
 
-Confirmed by measurement:
+Classified by POSITION rather than the reported area id, because positions separate the two
+belfries with nothing in between — Luna sits at x ≈ −185, Iron Keep/Sol at x ≈ −575…−840 — and
+position updates arrive far more often than area updates, so the fixes are fresh.
 
-- **Field 3 of `0x03EF` is the map of the belfry that was rung** — `10160000` Luna, `10190000` Iron
-  Keep/Sol. Every push carries it.
-- **Every hearer was in the bell's map.** All 13 distinct events.
-- **The one player in the wrong map did not hear it**: 18:32:48, a Sol bell, with the VM sitting in
-  Luna throughout. That is the positive case.
-- **It reaches well beyond the belfry itself.** The player who heard three Sol tolls was at the
-  Threshold Bridge bonfire in Iron Keep (activity cell 101950), ~200 units from the belfry cell
-  101910. Area, not room.
-- **Session membership is irrelevant** — 7 of 15 hearings were from inside the ringing host's
-  world and 8 from outside. Noted once so nobody re-tests it.
+Across all three batches, every toll and both machines:
+
+| | heard it | silent |
+|---|---|---|
+| machine in the **same** belfry's map as the bell | **27** | 2 |
+| machine in the **other** belfry's map | **0** | **5** |
+
+**Five for five: a player standing in Belfry Luna never hears an Iron Keep/Sol bell.** The
+controls are in the same table — the same machine, minutes apart, hears Sol bells whenever it is
+standing in Sol. On 2026-08-08 the VM sat in Luna through four consecutive Sol rings (23:28:57,
+00:22:55, 00:27:07, 01:10:08) and heard none of them, its position unchanged at
+`(−184.4, 7.2, 534.0)` across the whole run; it then moved to Sol and heard the next two
+(02:00:12, 02:06:05).
+
+`bellRegions` in `telemetry.go` is therefore right where it has been tested: a Luna toll must not
+reach Sol, and vice versa. What remains untested is the WIDTH of each region — whether a Luna toll
+reaches Lost Bastille, which rests on a single first-batch observation and no player in these
+batches ever stood there.
+
+**Two same-zone silences remain unexplained**, both in the first batch, and both with the same
+shape:
+
+| | bell | machine that heard it | machine that did not |
+|---|---|---|---|
+| 09:12:16 | Sol | LOCAL, in Sol — had killed the reporting host 18 s earlier | VM, also in Sol |
+| 09:47:24 | Luna | VM, in Luna — had killed the reporting host 10 s earlier | LOCAL, also in Luna |
+
+In both, the machine that heard it was inside the ringing host's world and the silent one was not.
+That is 2 of 29 same-zone cases, and the later batches contain many same-zone hearings by machines
+that were *not* in the ringing world — so world membership is not a general requirement. Recorded
+as an open residual rather than explained.
 
 ### The evidence behind it, and what is still unmeasured
 

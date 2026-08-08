@@ -369,6 +369,14 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 //
 // A belfry always reaches itself.
 //
+// CONFIRMED 2026-08-08 that a belfry does NOT reach the OTHER belfry. Across
+// three capture batches, a machine standing in one belfry's map heard the other
+// belfry's bell 0 times out of 5, while machines in the bell's own map heard it
+// 27 times out of 29. The cleanest run: one client sat in Belfry Luna through
+// four consecutive Belfry Sol rings, position unchanged, and heard none, then
+// walked to Sol and heard the next two. Keeping these two entries separate is
+// therefore right, not merely cautious.
+//
 // Region membership is overridable at runtime via DSO_BELL_REGION_<mapid>, a
 // comma-separated list of area ids, so a gap can be filled from evidence without
 // a rebuild.
