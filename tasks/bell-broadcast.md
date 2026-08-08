@@ -148,9 +148,21 @@ Lost Bastille for essentially the whole corpus.
 That makes the Luna direction answered too, from the same seat: the listener at Servants' Quarters
 **did** hear Luna bells (05:41:17, 05:41:29, 21:24:00, 22:15:43) and **never** heard a Sol one.
 
-Still untested: whether a Luna toll reaches Iron Keep — no Luna bell in any batch rang while either
-client was there. And what `10140000` actually is; it appears in area-population responses but no
-client ever visited it.
+**ACCEPTED GAP, not an open question: the mirror case.** Whether a Luna toll reaches Iron Keep was
+never tested — no Luna bell in any batch rang while a client stood there — and it is being left that
+way deliberately. Arranging one costs a great deal for very little: the ring requires being killed by
+an invader who then bothers to walk to the lever, and three capture batches over roughly fourteen
+hours of belfry play produced **six rings in total**. The direction that was tested is clean at six
+for six, and there is no reason in the message to expect the two belfries to behave differently —
+`0x03EE` and `0x03EF` are byte-identical between them apart from the map id. Treat the rule as
+symmetric.
+
+One loose end worth a decision rather than more capture: **`bellRegions` sends a Luna toll to
+`10140000` as well**, and that entry is now poorly supported. It came from a synthetic toll on our
+own PS3 server, not from FromSoftware's traffic; the real-world grouping of Servants' Quarters with
+Belfry Luna turns out to be the *same area id* (`10160000`), not a second one. `10140000` appears in
+area-population responses so it is a real, populated area, but no client ever visited it and nothing
+here shows a toll reaching it.
 
 **Two same-zone silences remain unexplained**, both in the first batch, and both with the same
 shape:
