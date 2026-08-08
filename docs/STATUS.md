@@ -50,6 +50,8 @@ stretch.
 | **Live regulation push (`0x038B`)** | **Working** | Replaces a param or FMG in the running client, applied next frame, no restart |
 | **The Majula event chest** | **Solved** | Armed it with a pushed `OnlineEventParam`; it reset and paid out |
 | **The Majula obelisk** | **Solved** | Displays text we push; key is the bare `regulation.fmg`, found in live memory |
+| **Reading FromSoftware's own traffic** | **25,851 messages** | Three capture batches; every response paired to its request; 39 placeholder fields identified from it |
+| **The belfry bell region** | **Partly settled** | A toll does NOT cross between Luna and Sol (6/6). The client reads none of the message — the server's choice of recipients is the only filter |
 | Persistence (SQLite) | Working | Messages, counters, **players, characters, rankings** survive restart |
 | **Stable player ids** | **Working** | Same PSN account keeps its id across restarts |
 | Player status blob | Recorded | Persisted; **nothing consumes it, so no matchmaking filters** |
@@ -328,12 +330,17 @@ The build-out phase is essentially over; what is left is verification and depth.
 2. **Consume the status blob for matchmaking.** Soul memory, area and covenant all arrive and are
    persisted; nothing reads them, so every listing offers every online player. This is the
    difference between "the mode works" and "the mode works correctly".
-3. **Watch the chest and the obelisk land in one login.** Both are confirmed individually, but
+3. **Finish the bell-region walk.** One login with `DSO_BELL_TEST_SECONDS` set: the synthetic toll
+   is unfiltered by design, so walking one character through every map and noting where a bell
+   sounds gives the complete client-side set in a single pass. Already known to include Belfry Luna,
+   Iron Keep/Belfry Sol and Sinner's Rise — which is wider than `bellRegions` currently sends to, so
+   our filter is probably too narrow.
+4. **Watch the chest and the obelisk land in one login.** Both are confirmed individually, but
    never together. The applier accepts one entry per pass and destroys the rest, so the three
    login pushes are now spaced two seconds apart — reasoned from the disassembly (`0x770454`
    recomputes `cr4` after each accept) and unit-tested, but not yet observed on a client. If only
    one takes, widen `DSO_REGULATION_PUSH_GAP_SECONDS`. This is the last thing standing between
    `0x038B` and "done".
-4. **Capture `0x0387`/`0x0388`/`0x038A`.** Patch 1.10 added population hints to the warp screen —
+5. **Capture `0x0387`/`0x0388`/`0x038A`.** Patch 1.10 added population hints to the warp screen —
    server-supplied, no known opcode, and these three are emitted early in boot and never seen.
    Warping on 1.10 with full logging may catch them.

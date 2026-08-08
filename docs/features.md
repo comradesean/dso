@@ -374,6 +374,12 @@ somebody.
 > | Override | `DSO_BELL_REGION_<mapid>` | `DSO_BELL_KEEPER_CELLS` |
 > | Write-up | `tasks/bell-broadcast.md` | this section, and §13 |
 >
+> **CONFIRMED 2026-08-08 that the toll filter is REQUIRED.** An unfiltered synthetic toll claiming
+> Belfry Luna rang in Belfry Sol and in Sinner's Rise. The client reads none of the message body —
+> it sets a latch and the loaded map's script asks `IsBellRung()` — so a toll sent to the wrong map
+> rings the wrong bell. The map id in the message decides nothing; only the server's choice of
+> recipients does.
+>
 > They fail closed and open respectively **on purpose**. For the toll, a false positive rings the
 > wrong bell and players notice, while a false negative costs one person one toll — so silence is
 > the safer error. For the summon it is the reverse: the client already gates on position when it

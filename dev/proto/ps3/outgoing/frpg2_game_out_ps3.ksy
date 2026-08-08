@@ -225,4 +225,18 @@ enums:
     0x03e5: quick_match_push_alias_5
     0x03e6: quick_match_push_alias_6
     0x03e7: quick_match_push_alias_7
-    0x03ef: push_session_disconnect
+    # NOT a session disconnect. That name came from the PC reference and was
+    # wrong: GetTypeName in this binary returns
+    # Frpg2RequestMessage.PushRequestNotifyRingBell, and it has been driven live
+    # -- a player outside the belfry, not in the session, heard the bell.
+    #
+    # Body: {push_id, reporting_host_player_id, map_id_of_the_belfry_rung,
+    # empty bytes}. Field 2 is the HOST who reported the ring after dying, not
+    # the invader who pulled the lever. Settled across 27 captured tolls.
+    #
+    # THE CLIENT READS NONE OF IT. It sets a boolean latch and the loaded map's
+    # script asks IsBellRung(). Confirmed by experiment 2026-08-08: an unfiltered
+    # toll claiming Belfry Luna rang in Belfry Sol AND in Sinner's Rise. So the
+    # map id in the body decides nothing on the client, and any restriction has
+    # to be applied server-side by choosing who to send to.
+    0x03ef: push_request_notify_ring_bell

@@ -169,6 +169,25 @@ asks `IsBellRung()`; the script asks in more than one map. A toll delivered to t
 therefore rings the WRONG BELL, which is a visible defect rather than a missing packet.
 `bellRegions` is load-bearing, not an optimisation.
 
+**A second run found the same thing further out.** With the toll still claiming Belfry Luna, the
+player rode the elevator up into **Sinner's Rise (`10170000`)** — silent below, audible partway up,
+ringing at the top. So the set of maps whose script answers `IsBellRung()` includes at least:
+
+| map | |
+|---|---|
+| `10160000` | Belfry Luna + Servants' Quarters |
+| `10190000` | Iron Keep + Belfry Sol |
+| `10170000` | Sinner's Rise |
+
+**Which means our filter may now be too NARROW, not too wide.** `bellRegions` sends each toll to one
+map only, so a player in Sinner's Rise gets nothing from us — while the client would plainly have
+played something. Whether FromSoftware sent it there is still unknown, and the PC captures cannot
+say: no client was ever in `10170000` when a bell rang.
+
+The remaining cheap experiment is the rest of that walk — Lost Bastille proper, Majula, Iron Keep's
+lower reaches — with the toll running, to get the complete client-side set. That sizes every region
+at once and costs one login.
+
 ### `10140000` REMOVED from Belfry Luna's region
 
 The same experiment retires the only evidence for it. That entry cited a synthetic toll being heard

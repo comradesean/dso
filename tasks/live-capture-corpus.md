@@ -216,3 +216,14 @@ role 2 = Allow. So the PC build uses the same `0x03B9` block PS3 does. This also
 **Sign ids run around 194 million** on FromSoftware's server (194224127, 194220913). Ours start at
 100000. Nothing depends on the range, but it is worth knowing before assuming a client cares.
 
+## Placeholder fields identified from the corpus
+
+`tasks/unknown-fields.md` holds a row for every `unknown_N` / `field_N` in all three protos, swept
+against all 25,851 messages: **39 identified, 21 suggestive, 49 no signal, 6 too few samples.** The
+proto comments carry the evidence and sample counts; anything weaker than IDENTIFIED was left out of
+the protos and listed as a proposal instead.
+
+Worth knowing beyond the placeholders — a field that already had a confident NAME turned out wrong:
+**`PlayerStatus.play_time_seconds` is not play time.** It reads 20200 in 169 of 169, which is the
+`calibration_version`. The real play-time counter is `StatsInfo.unknown_18`, monotone across 2,170
+samples at very nearly one per second. A named field is not a verified field.
