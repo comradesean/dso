@@ -134,6 +134,46 @@ That is 2 of 29 same-zone cases, and the later batches contain many same-zone he
 that were *not* in the ringing world — so world membership is not a general requirement. Recorded
 as an open residual rather than explained.
 
+### OPEN LEAD — the two same-zone silences may be a REGION filter
+
+Raised from play: invading a Russian host, the bell did not ring for the listening client. That
+observation is not in any capture, but the captures can test the shape of it — and the mechanism to
+do so was sitting in the pcaps unused.
+
+**DS2 sessions are PEER TO PEER, and the host's IP is in every capture.** We had only ever parsed
+the two FromSoftware ports. Every invasion has a heavy UDP flow to one peer whose lifetime matches
+the game session exactly — it opens 13-16 s before `0x03EA` (connection setup) and its last packet
+lands on the same second as `0x03EB`:
+
+| bell | game session | peer flow | packets |
+|---|---|---|---|
+| 09:12:16 (anomaly) | LOCAL join 09:10:24, leave **09:12:15** | `93.42.45.121` 09:10:11 - **09:12:15** | 8,538 |
+| 09:47:24 (anomaly) | VM join 09:45:41, leave **09:47:31** | `93.234.202.118` 09:45:25 - **09:47:31** | 7,177 |
+| 02:00:12 (control) | LOCAL join 01:59:23, leave **02:00:19** | `76.32.35.146` 01:59:11 - **02:00:19** | 4,773 |
+
+So the invaded host's address is recoverable for every captured invasion, and with it a region.
+
+**The correlation, on three cases:** both unexplained silences had a host in **93/8 (RIPE, European
+registry)**, and the bystander in the right map heard nothing. The control had a host in
+**76/8 (ARIN, North American registry)**, and the bystander heard it.
+
+That is consistent with: *you hear a toll if you are in the ringing host's session, OR if you are in
+the same region as that host.* It would explain every same-zone silence without touching the
+map-scoping result, which is separately settled.
+
+**It is n = 3 and it is not established.** What is honest here:
+
+- **RIR blocks are not geolocation.** 93/8 being RIPE and 76/8 ARIN is an IANA allocation fact, not
+  a country. Turning these into regions properly needs an offline GeoIP database, or sending other
+  players' IP addresses to a third-party lookup service — which publishes them. That is a decision
+  for the repo owner, not something to do by default; `corpus/` is already gitignored because it
+  holds other players' Steam ids and character names, and IPs are more identifying still.
+- **Some flows may be relays, not peers.** One 400-second flow in the control window does not match
+  any session and is unexplained; only the session-matched flows are trustworthy as host addresses.
+- **The test is cheap now.** Every invasion in three batches has a recoverable host IP. Classifying
+  all of them and cross-tabulating against who heard each bell would take the sample from 3 to
+  roughly 60.
+
 ### The evidence behind it, and what is still unmeasured
 
 > **Two earlier claims in this file were wrong and are withdrawn.** The first said FromSoftware
