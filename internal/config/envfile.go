@@ -35,6 +35,7 @@ func LoadEnvFile(path string) error {
 	}
 	defer f.Close()
 
+	seen := map[string]bool{}
 	sc := bufio.NewScanner(f)
 	for line := 1; sc.Scan(); line++ {
 		text := strings.TrimSpace(sc.Text())
@@ -52,12 +53,39 @@ func LoadEnvFile(path string) error {
 		// Only the surrounding pair is stripped, so a value that is genuinely
 		// meant to contain quotes keeps them.
 		value = strings.TrimSpace(value)
+		quoted := false
 		if len(value) >= 2 {
 			if (value[0] == '"' && value[len(value)-1] == '"') ||
 				(value[0] == '\'' && value[len(value)-1] == '\'') {
-				value = value[1 : len(value)-1]
+				value, quoted = value[1:len(value)-1], true
 			}
 		}
+		// Strip a trailing ` # comment` from UNQUOTED values.
+		//
+		// Without this, `DSO_BELL_TEST_MAP=10190000  # Belfry Sol` sets the value
+		// to "10190000  # Belfry Sol", every numeric parse of it fails, and the
+		// code silently falls back to its default — which is exactly the kind of
+		// quiet wrong-value this project keeps paying for. It bit us once
+		// already, and only harmlessly because the default happened to match.
+		//
+		// Quoted values are taken literally, so free text that really wants a #
+		// (an obelisk message, say) just needs quoting.
+		if !quoted {
+			if i := strings.IndexAny(value, " \t"); i >= 0 {
+				if j := strings.Index(value[i:], "#"); j >= 0 &&
+					strings.TrimSpace(value[i:i+j]) == "" {
+					value = strings.TrimSpace(value[:i])
+				}
+			}
+		}
+		// FIRST occurrence wins, so a duplicate further down the file is silently
+		// ignored. That is survivable but confusing enough to say out loud —
+		// editing the second copy and seeing nothing change is a bad afternoon.
+		if seen[key] {
+			fmt.Fprintf(os.Stderr, "config: %s:%d: %s appears more than once; "+
+				"the FIRST value is used and this line is ignored\n", path, line, key)
+		}
+		seen[key] = true
 		if _, set := os.LookupEnv(key); set {
 			continue
 		}

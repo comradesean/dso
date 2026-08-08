@@ -93,3 +93,38 @@ func TestExampleFileParses(t *testing.T) {
 		t.Fatalf("dso.env.example does not parse: %v", err)
 	}
 }
+
+// TestEnvFileInlineComment pins the fix for a value that parsed as garbage and
+// then silently fell back to a default.
+//
+// `DSO_BELL_TEST_MAP=10190000  # Belfry Sol` used to set the value to
+// "10190000  # Belfry Sol". Every numeric parse of that fails, so the caller
+// used its default and the operator saw no error at all.
+func TestEnvFileInlineComment(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "t.env")
+	if err := os.WriteFile(p, []byte(
+		"A=10190000  # Belfry Sol\n"+
+			"B=plain\n"+
+			"C=\"keeps # this\"\n"+
+			"D=no#space\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"A", "B", "C", "D"} {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
+	}
+	if err := LoadEnvFile(p); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ k, want string }{
+		{"A", "10190000"},     // inline comment stripped
+		{"B", "plain"},        // untouched
+		{"C", "keeps # this"}, // quoted values are literal
+		{"D", "no#space"},     // no whitespace before #: not a comment
+	} {
+		if got := os.Getenv(c.k); got != c.want {
+			t.Errorf("%s = %q, want %q", c.k, got, c.want)
+		}
+	}
+}
