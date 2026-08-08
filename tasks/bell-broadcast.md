@@ -80,28 +80,27 @@ lever was actually pulled, which the protocol cannot see: nothing is sent betwee
 Incidentally this confirms field 2 of the visit push is the **host** player id — the self-invasion
 at 18:21:33 names host 2910025, which is LOCAL.
 
-### Session-scoping is REFUTED
+### It broadcasts to the AREA AROUND THE BELL
 
-A tempting reading of the second batch is that a toll only reaches players who were in the ringing
-host's world — because 8 of the 13 distinct bell events rang in a world one of our characters had
-been invited into. Classifying every (bell, hearer) pair by whether that hearer was actually inside
-that host's session at the time kills it:
+Established from play, and every measurement in the corpus agrees. Recorded because two rounds of
+analysis wandered off into whether the hearer was in the ringer's session or invasion — they are
+not the predicate, and testing that was a detour. A player hears a bell because of **where they are
+standing**, not because of who was fighting whom.
 
-```
-  heard while INSIDE the ringing host's world : 7
-  heard while OUTSIDE it                      : 8
-```
+Confirmed by measurement:
 
-Eight hearings came from players who were never invited to that world at all, including two bells
-(05:41:17 and 05:41:29, host 3241000) from a stranger our characters never met. So the toll is not
-scoped to the session, and "I was in that fight" is not why it was heard.
+- **Field 3 of `0x03EF` is the map of the belfry that was rung** — `10160000` Luna, `10190000` Iron
+  Keep/Sol. Every push carries it.
+- **Every hearer was in the bell's map.** All 13 distinct events.
+- **The one player in the wrong map did not hear it**: 18:32:48, a Sol bell, with the VM sitting in
+  Luna throughout. That is the positive case.
+- **It reaches well beyond the belfry itself.** The player who heard three Sol tolls was at the
+  Threshold Bridge bonfire in Iron Keep (activity cell 101950), ~200 units from the belfry cell
+  101910. Area, not room.
+- **Session membership is irrelevant** — 7 of 15 hearings were from inside the ringing host's
+  world and 8 from outside. Noted once so nobody re-tests it.
 
-Worth keeping in view when reading the event list: **most bells we captured were downstream of our
-own play** — 3 rung by our own characters and 8 rung in worlds we had invaded, against only 2 that
-were entirely unrelated. A corpus gathered by two people farming belfries is not a neutral sample of
-what a bell does.
-
-### The map filter is SUPPORTED, not refuted
+### The evidence behind it, and what is still unmeasured
 
 > **Two earlier claims in this file were wrong and are withdrawn.** The first said FromSoftware
 > filtered, on four pushes the two machines shared none of — weak reasoning that happened to point
