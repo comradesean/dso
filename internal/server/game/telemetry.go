@@ -357,9 +357,29 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // observed, because a wrong entry either silences a bell or rings the wrong one,
 // and both are worse than an honest gap.
 //
-//   - Belfry Luna (10160000) -> Lost Bastille (10140000): CONFIRMED on the wire.
-//     A live 0x03EF carrying 10160000 was received by a client standing in
-//     m10_14. See tasks/bell-broadcast.md.
+//   - THE FILTER IS REQUIRED, CONFIRMED BY EXPERIMENT 2026-08-08. An UNFILTERED
+//     synthetic toll claiming map 10160000 (Belfry Luna) was sent to a client
+//     that then walked from Luna cells into Belfry Sol (101910) — and it rang
+//     there too. The client does NOT mute on field 3. So a toll delivered to the
+//     wrong map rings the WRONG BELL, and this table is load-bearing rather than
+//     an optimisation.
+//
+//   - ~~Belfry Luna (10160000) -> Lost Bastille (10140000)~~ REMOVED 2026-08-08.
+//     The only support for it was that same synthetic toll being heard "in the
+//     Lost Bastille" — but the synthetic path sends to EVERYONE regardless of
+//     location, so hearing it there shows only that the map's script asks
+//     IsBellRung(), never that FromSoftware would have targeted it. The
+//     observation cannot support the entry it was cited for.
+//
+//     Nor do the PC captures: the listener who heard Luna tolls from "Lost
+//     Bastille" was at the Servants' Quarters bonfire, which reports 10160000 —
+//     the SAME map as the bell. No client was ever in 10140000 at all.
+//
+//     Dropped rather than kept on the project's own stated principle: a false
+//     positive rings the wrong bell, which players notice, while a false
+//     negative costs one person one toll. Re-add it if a client standing in
+//     10140000 is ever shown to receive a Luna toll from FromSoftware.
+//
 //   - Belfry Sol -> Iron Keep needs NO extra entry: 10190000 IS Iron Keep, with
 //     Belfry Sol inside it. CONFIRMED from live captures — a player at the
 //     Threshold Bridge bonfire (activity cell 101950, ~200 units from cell
@@ -386,8 +406,8 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // comma-separated list of area ids, so a gap can be filled from evidence without
 // a rebuild.
 var bellRegions = map[uint32][]uint32{
-	10160000: {10160000, 10140000}, // Belfry Luna, Lost Bastille
-	10190000: {10190000},           // Iron Keep, Belfry Sol inside it
+	10160000: {10160000}, // Belfry Luna + Servants' Quarters (same area id)
+	10190000: {10190000}, // Iron Keep, Belfry Sol inside it
 }
 
 // bellReaches reports whether a toll from ringMap should go to a player in area.

@@ -157,12 +157,32 @@ for six, and there is no reason in the message to expect the two belfries to beh
 `0x03EE` and `0x03EF` are byte-identical between them apart from the map id. Treat the rule as
 symmetric.
 
-One loose end worth a decision rather than more capture: **`bellRegions` sends a Luna toll to
-`10140000` as well**, and that entry is now poorly supported. It came from a synthetic toll on our
-own PS3 server, not from FromSoftware's traffic; the real-world grouping of Servants' Quarters with
-Belfry Luna turns out to be the *same area id* (`10160000`), not a second one. `10140000` appears in
-area-population responses so it is a real, populated area, but no client ever visited it and nothing
-here shows a toll reaching it.
+### THE FILTER IS REQUIRED — confirmed by direct experiment, 2026-08-08
+
+Run on our own server, where a synthetic toll can be fired on a timer with nobody dying: the test
+path sends to **every session regardless of location**, and the toll carried `field 3 = 10160000`
+(Belfry Luna). The client then walked from Luna cells into **Belfry Sol** (cell `101910`) — and the
+bell rang there too.
+
+**So the client does not mute on the map id.** It sets a boolean latch and the loaded map's script
+asks `IsBellRung()`; the script asks in more than one map. A toll delivered to the wrong map
+therefore rings the WRONG BELL, which is a visible defect rather than a missing packet.
+`bellRegions` is load-bearing, not an optimisation.
+
+### `10140000` REMOVED from Belfry Luna's region
+
+The same experiment retires the only evidence for it. That entry cited a synthetic toll being heard
+"in the Lost Bastille" — but the synthetic path is unfiltered, so hearing it there shows only that
+the map's script plays a bell, never that FromSoftware would have targeted it. The observation
+cannot support the claim it was cited for.
+
+The PC captures do not support it either: the listener who heard Luna tolls from "the Lost Bastille"
+was at the **Servants' Quarters bonfire, which reports `10160000`** — the same map as the bell. No
+client was ever in `10140000` at all.
+
+Dropped on the project's own stated principle: a false positive rings the wrong bell and players
+notice; a false negative costs one person one toll. Re-add it only if a client standing in
+`10140000` is shown to receive a Luna toll from FromSoftware's server.
 
 **Two same-zone silences remain unexplained**, both in the first batch, and both with the same
 shape:

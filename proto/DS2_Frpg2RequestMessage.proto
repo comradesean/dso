@@ -347,21 +347,33 @@ message RequestNotifyBuyItemResponse {
     // Never received.
 }
 
-// field_3 SEPARATES THE TWO KINDS OF DEATH, 26 of 26 in the 2026-08-07 corpus:
+// field_3 SEPARATES THE TWO KINDS OF DEATH, now 54 of 54 across the whole
+// 2026-08-07/08 corpus (was 26 of 26 when this note was first written):
 //   14 = we died as a PHANTOM inside someone else's session
 //    0 = we died in our OWN world
 // Cross-checked against the role derived independently from the join messages
-// (0x03E8 guest-joined-us vs 0x03EA we-joined-them); they agreed every time.
+// (0x03E8 guest-joined-us vs 0x03EA we-joined-them); they agreed every time,
+// with zero mismatches. See tasks/unknown-fields.md.
+//
 // A death with field_4 = 1 and field_5 = <six-digit id> is PvE, the enemy id.
+// That still holds but is not clean: in the corpus field_5 is non-zero in 11 of
+// 54 and field_4 = 1 in all 11, yet field_4 = 1 twice more with field_5 = 0.
 message RequestNotifyDeath {
 	required uint32 online_area_id = 1;
 	required uint32 cell_id = 2;
-	required int64 field_3 = 3; // 0, 10, 5, 15
+	required int64 field_3 = 3; // see above. corpus: 0 (34), 14 (20)
 	required int64 field_4 = 4; // 0, 3, 1, 5
 	required int64 field_5 = 5; // 0, 302000, 301005, 226000, 319000
 	required int64 field_6 = 6; // 0, 4483, 11220, 5190, 5890, 25380, 837, 3167, 36, 1400, 86, 1005387, 1057, 857
 	required int64 field_7 = 7; // 25380, 0, 1005387, 11220, 36, 1200
-	required bytes field_8 = 8; 
+	// THE DEATH POSITION. These 15 bytes are themselves protobuf --
+	// `0d <f32> 15 <f32> 1d <f32>`, i.e. a Vector of three little-endian
+	// IEEE-754 fixed32, the same encoding as PlayerLocation.position.
+	// Decoded and compared against the sender's own bracketing PlayerLocation
+	// fixes: 54 of 54 land within 15 world units of the nearer bracket and 40 of
+	// 54 within 5, several matching exactly. The residuals are all cases where
+	// the bracketing fix is 10-30 s away and the player was moving.
+	required bytes field_8 = 8;
 }
 
 message RequestNotifyDeathResponse {
@@ -376,27 +388,75 @@ message RequestNotifyDisconnectSessionResponse {
     // Never received.
 }
 
+// Sent by the HOST when a guest enters their world. Fields 7-9 are a location
+// triple: area, cell, position. Read off 31 of FromSoftware's own instances in
+// the 2026-08-07/08 corpus; see tasks/unknown-fields.md for the working.
+//
+// THE JOIN KIND (field_2) is the useful part. Four of its five observed values
+// are pinned by an independent message that arrived seconds earlier:
+//
+//   14  BellKeepers visit   preceded by RequestVisit / PushRequestVisit type 1
+//    5  break-in, type 0    preceded by PushRequestBreakInTarget type=0, 6 of 6
+//    6  break-in, type 4    preceded by PushRequestBreakInTarget type=4, 1 of 1
+//   10  guest summoned from their sign into our world -- we sent
+//       RequestSummonSign for that player 11 s earlier
+//   (2 = we were summoned via OUR OWN sign; seen only on 0x03EA, see there)
+//
+// So kind 5 and kind 6 ARE break-ins, of BreakInType 0 and 4 respectively.
 message RequestNotifyJoinGuestPlayer {
-	required int64 field_1 = 1; // 0, 1563822, 290333, 1867879, 1764181, 2553538, 1056527
-	required int64 field_2 = 2; // 2, 14, 10, 4, 1, 5, 8, 13, 15
-	required int64 field_3 = 3; // 0, 1
-	required int64 field_4 = 4; // 0
-	required int64 field_5 = 5; // 0
-	required int64 field_6 = 6; // 0, 1
-	required int64 field_7 = 7; // 0, 10310000, 10160000, 10190000, 10100000, 10230000, 10340000
-	required int64 field_8 = 8; // 0, 12583935, 4290772988, 4290772992, 4290774014, 4290772987, 4286581750, 4286581753, 4194304, 1015, 4282385414
-	required bytes field_9 = 9; 
+	// The GUEST's player id. 31 of 31 name a player who had just been invited by
+	// this machine (RequestVisit), had just appeared in a PushRequestBreakInTarget
+	// to it, or whose sign it had just summoned. Six of the 31 name our own VM at
+	// moments when the VM simultaneously emitted 0x03EA naming our LOCAL -- the
+	// six self-invasions, both ends captured.
+	required int64 field_1 = 1;
+	// Join kind. Corpus: 14 (23), 5 (6), 6 (1), 10 (1). See the table above.
+	required int64 field_2 = 2;
+	required int64 field_3 = 3; // 1 in 31 of 31; meaning unknown
+	required int64 field_4 = 4; // 0 in 31 of 31; meaning unknown
+	required int64 field_5 = 5; // 0 in 31 of 31; meaning unknown
+	// 1 IFF THE GUEST ARRIVED BY BREAK-IN. 31 of 31: 1 for every kind-5 and
+	// kind-6 join (7 of 7), 0 for every kind-10 and kind-14 join (24 of 24).
+	// Not a copy of field_2 -- two kinds map to 1 and two map to 0.
+	required int64 field_6 = 6;
+	// online_area_id. Equal to the sender's own bracketed PlayerLocation area in
+	// 31 of 31 on the before side (29 of 31 on the after side; the two
+	// exceptions are area changes made after the join).
+	required int64 field_7 = 7;
+	// cell_id, in the same value family as the cell_id of RequestNotifyDeath,
+	// RequestCreateGhostData and RequestCreateBloodstain -- and in a DIFFERENT
+	// family from PlayerLocation field 2, which it never equals (0 of 31).
+	// Matches the cell in a bracketing RequestCreateGhostData in 27 of 31. Direct
+	// confirmation: a RequestSummonSign with cell_id 4290774015 was followed 11 s
+	// later by a join carrying field_8 = 4290774015.
+	required int64 field_8 = 8;
+	// THE REPORTING HOST'S OWN POSITION, same encoding as
+	// RequestNotifyDeath.field_8: `0d <f32> 15 <f32> 1d <f32>`, a Vector of three
+	// little-endian IEEE-754 fixed32. All 31 lie within 20 world units of a
+	// bracketing PlayerLocation fix and 24 within 3.5; 15 of 31 are EXACTLY equal
+	// at one decimal to a fix the same client sent, which is what makes it the
+	// sender's position rather than the guest's.
+	required bytes field_9 = 9;
 }
 
 message RequestNotifyJoinGuestPlayerResponse {
     // Never received.
 }
 
+// Sent by the PHANTOM when it enters someone else's world, so field_1 is the
+// HOST -- the mirror of RequestNotifyJoinGuestPlayer. 66 instances in the
+// 2026-08-07/08 corpus; see tasks/unknown-fields.md.
 message RequestNotifyJoinSession {
-	required int64 field_1 = 1; // 290333, 2683839, 1705594, 2514885
-	required int64 field_2 = 2; // 14, 10, 5, 15, 2, 4
-	required int64 field_3 = 3; // 0
-	required int64 field_4 = 4; // 0, 1
+	// The HOST's player id. Six of the 66 name our own LOCAL and were sent by the
+	// VM at the same moments LOCAL emitted 0x03E8 naming the VM: the six
+	// self-invasions, seen from the other side.
+	required int64 field_1 = 1;
+	// Join kind, the same scale as RequestNotifyJoinGuestPlayer.field_2. Corpus:
+	// 14 (65) and 2 (1). The single 2 is the one session we entered as a summoned
+	// white phantom -- a PushRequestSummonSign for OUR sign arrived 21 s earlier.
+	required int64 field_2 = 2;
+	required int64 field_3 = 3; // 0 in 66 of 66; meaning unknown
+	required int64 field_4 = 4; // 0 in 66 of 66; meaning unknown
 }
 
 message RequestNotifyJoinSessionResponse {
@@ -434,16 +494,24 @@ message RequestNotifyKillEnemyResponse {
 // in the OTHER field. Either the layout differs on PS3 or those samples were
 // read wrongly. The PS3 wire above is what we follow.
 // Fields 1 and 3 are NOT consistent between the two records below, and the
-// difference has never been explained. A 2026-08-07 corpus of 14 kills from live
-// PC traffic has field_1 = 14 (the session kind) and field_3 = 0 in ALL 14, which
-// is the opposite placement from the PS3 live capture noted here.
+// difference has never been explained. The full 2026-08-07/08 corpus of 18 kills
+// from live PC traffic has field_1 = 14 and field_3 = 0 in ALL 18 (this said 14
+// of 14 before the corpus was completed), which is the opposite placement from
+// the PS3 live capture noted here. It does NOT resolve the disagreement, and it
+// cannot: every kill in the corpus happened inside a kind-14 session, so
+// "field_1 is the session kind" and "field_1 is the constant 14" are
+// indistinguishable there.
+//
+// field_2 gained a both-ended confirmation on PC: at 18:21:33 our VM sent
+// field_2 = 2910025 and our LOCAL sent RequestNotifyDeath in the same second
+// with field_3 = 0 (died in its own world). See tasks/unknown-fields.md.
 //
 // Only field_2 is safe to rely on: it is the victim, agreed by both, and every
 // conclusion drawn from these messages rests on it alone.
 message RequestNotifyKillPlayer {
-	required int64 field_1 = 1; // PS3 live: 0.  PC corpus: 14 (session kind) in 14/14
+	required int64 field_1 = 1; // PS3 live: 0.  PC corpus: 14 (session kind) in 18/18
 	required int64 field_2 = 2; // victim player id (CONFIRMED live, both platforms)
-	required int64 field_3 = 3; // PS3 live: 14 (session kind).  PC corpus: 0 in 14/14
+	required int64 field_3 = 3; // PS3 live: 14 (session kind).  PC corpus: 0 in 18/18
 	required int64 field_4 = 4; // 0, 1
 	required int64 field_5 = 5; // 0
 }
@@ -452,22 +520,29 @@ message RequestNotifyKillPlayerResponse {
     // Never received.
 }
 
+// The closing half of RequestNotifyJoinGuestPlayer. Every one of the 31 leaves
+// in the 2026-08-07/08 corpus was matched to its own join by (machine, player
+// id, nearest preceding join), and in 31 of 31 the triple below equals the
+// join's (field_1, field_2, field_6) exactly.
 message RequestNotifyLeaveGuestPlayer {
-	required int64 field_1 = 1; // 290333, 0, 1563822, 1867879, 1056527, 2553538, 1764181
-	required int64 field_2 = 2; // 15, 2, 14, 10, 5, 1, 8, 4, 13
-	required int64 field_3 = 3; // 0
-	required int64 field_4 = 4; // 0, 1
+	required int64 field_1 = 1; // the GUEST's player id, echoing the join
+	required int64 field_2 = 2; // join kind, echoing the join. 14 (23), 5 (6), 6 (1), 10 (1)
+	required int64 field_3 = 3; // 0 in 31 of 31; meaning unknown
+	required int64 field_4 = 4; // the join's field_6: 1 iff the guest arrived by break-in. 0 (24), 1 (7)
 }
 
 message RequestNotifyLeaveGuestPlayerResponse {
     // Never received.
 }
 
+// The closing half of RequestNotifyJoinSession; identical layout, and in the
+// 2026-08-07/08 corpus the 66 leaves carry the same (host id, join kind) as
+// their joins.
 message RequestNotifyLeaveSession {
-	required int64 field_1 = 1; // 290333, 2683839, 1705594, 2514885
-	required int64 field_2 = 2; // 14, 10, 5, 15, 2, 4
-	required int64 field_3 = 3; // 0
-	required int64 field_4 = 4; // 0, 1
+	required int64 field_1 = 1; // the HOST's player id, echoing the join
+	required int64 field_2 = 2; // join kind, echoing the join. 14 (65), 2 (1)
+	required int64 field_3 = 3; // 0 in 66 of 66; meaning unknown
+	required int64 field_4 = 4; // 0 in 66 of 66; meaning unknown
 }
 
 message RequestNotifyLeaveSessionResponse {
