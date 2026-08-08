@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"sort"
 
 	"google.golang.org/protobuf/proto"
 
@@ -29,6 +30,12 @@ import (
 // opcode is never harmless: the client retries silently and will not open other
 // online UI while one is outstanding.
 const opRequestGetRightMatchingArea uint32 = 0x03FA
+
+// matchingAreaReportLimit is how many areas the response carries.
+//
+// Three, because that is what FromSoftware's own server sent in every one of the
+// 97 responses in the capture corpus — never two, never four.
+const matchingAreaReportLimit = 3
 
 // handleGetRightMatchingArea reports where other players actually are.
 //
@@ -62,12 +69,33 @@ func (s *Service) handleGetRightMatchingArea(log logger, cs *clientSession, payl
 		counts[other.areaID]++
 	}
 
+	// FROM SOFTWARE SENT EXACTLY THREE, SORTED BY POPULATION DESCENDING.
+	// Measured from their live server: 97 of 97 captured responses carry three
+	// entries, and 97 of 97 are in descending order (tasks/live-capture-corpus.md).
+	//
+	// Both halves matter and we had neither. Ranging over a Go map yields a
+	// DELIBERATELY RANDOMISED order, so the client was handed a different
+	// ordering on every request — and if it renders these positionally, the
+	// highlighted area would move at random. Sending every area rather than three
+	// is also a guess about a client we cannot see; matching the observed shape
+	// costs nothing and removes the guess.
+	//
+	// Ties break on the lower area id so the result is fully deterministic.
 	areas := make([]*ds2pb.RequestGetRightMatchingAreaResponse_AreaInfo, 0, len(counts))
 	for areaID, n := range counts {
 		areas = append(areas, &ds2pb.RequestGetRightMatchingAreaResponse_AreaInfo{
 			OnlineAreaId: proto.Uint32(areaID),
 			Population:   proto.Uint32(n),
 		})
+	}
+	sort.Slice(areas, func(i, j int) bool {
+		if areas[i].GetPopulation() != areas[j].GetPopulation() {
+			return areas[i].GetPopulation() > areas[j].GetPopulation()
+		}
+		return areas[i].GetOnlineAreaId() < areas[j].GetOnlineAreaId()
+	})
+	if len(areas) > matchingAreaReportLimit {
+		areas = areas[:matchingAreaReportLimit]
 	}
 
 	log.Info("matching area populations requested",

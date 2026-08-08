@@ -1,6 +1,7 @@
 package game
 
 import (
+	"strconv"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -438,5 +439,72 @@ func TestVisitorListFiltersBySoulMemory(t *testing.T) {
 	}
 	if len(resp.GetTargetData()) != 0 {
 		t.Errorf("offered %d out-of-band targets, want 0", len(resp.GetTargetData()))
+	}
+}
+
+// TestMatchingAreaResponseShape pins the two things measured from FromSoftware's
+// own server: exactly three areas, ordered by population descending.
+//
+// The ordering half is the one that was actually broken. Ranging over a Go map
+// randomises order by design, so before this the client got a different ranking
+// on every request.
+func TestMatchingAreaResponseShape(t *testing.T) {
+	svc, log, cs := testService(t)
+	// Five areas with distinct populations, so both the cap and the sort bite.
+	pops := map[uint32]int{10160000: 2, 10190000: 5, 10140000: 4, 10170000: 1, 10250000: 3}
+	id := uint32(200000)
+	for area, n := range pops {
+		for range n {
+			id++
+			svc.sessions[strconv.FormatUint(uint64(id), 10)] = &clientSession{playerID: id, areaID: area}
+		}
+	}
+
+	// MatchingParameter's fields are all `required`, so a zero value will not
+	// marshal — fill the set the client always sends.
+	payload, err := proto.Marshal(&ds2pb.RequestGetRightMatchingArea{
+		MatchingParameter: &ds2pb.MatchingParameter{
+			CalibrationVersion:     proto.Uint32(20200),
+			SoulLevel:              proto.Uint32(108),
+			ClearCount:             proto.Uint32(1),
+			Unknown_4:              proto.Uint32(77),
+			Covenant:               proto.Uint32(covenantBellKeepers),
+			Unknown_7:              proto.Uint32(2),
+			DisableCrossRegionPlay: proto.Uint32(1),
+			Unknown_9:              proto.Uint32(1),
+			Unknown_10:             proto.Uint32(0),
+			NameEngravedRing:       proto.Uint32(0),
+			SoulMemory:             proto.Uint32(752008),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := svc.handleGetRightMatchingArea(log, cs, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resp ds2pb.RequestGetRightMatchingAreaResponse
+	if err := proto.Unmarshal(raw, &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	got := resp.GetAreaInfo()
+	if len(got) != matchingAreaReportLimit {
+		t.Fatalf("returned %d areas, want %d — FromSoftware sent 3 in 97 of 97 captures",
+			len(got), matchingAreaReportLimit)
+	}
+	want := []uint32{10190000, 10140000, 10250000} // populations 5, 4, 3
+	for i, w := range want {
+		if got[i].GetOnlineAreaId() != w {
+			t.Errorf("rank %d = area %d (pop %d), want area %d",
+				i, got[i].GetOnlineAreaId(), got[i].GetPopulation(), w)
+		}
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1].GetPopulation() < got[i].GetPopulation() {
+			t.Errorf("not sorted descending: %d then %d",
+				got[i-1].GetPopulation(), got[i].GetPopulation())
+		}
 	}
 }
