@@ -588,6 +588,19 @@ message MatchingParameter {
 	required uint32 unknown_7 = 7;                  // 2            nat type?
 	required uint32 disable_cross_region_play = 8;  // 1
 	required uint32 unknown_9 = 9;                  // 1            region?
+	// SET WHILE A MULTIPLAYER SESSION IS LIVE. Across all 2,685 MatchingParameters
+	// our two clients sent to FromSoftware on 2026-08-07/08, with host/phantom role
+	// reconstructed independently from the join and leave notifies:
+	//
+	//   unknown_10 = 0 : 2533, and ZERO of them during a session
+	//   unknown_10 = 1 :  152 -- 136 while hosting a guest, 6 while a phantom,
+	//                     and 10 with no session, NINE of which fall 1.4-28 s
+	//                     BEFORE a hosting session opened (the client knows a
+	//                     summon is inbound before the 0x03E8 goes out)
+	//
+	// Both directions are covered, so this is not a statement about hosting alone.
+	// Caveat: every session in the corpus is a Bell Keeper visit or a break-in, so
+	// co-op is untested. See tasks/unknown-fields.md.
 	required uint32 unknown_10 = 10;                // 0, 1
 	required uint32 name_engraved_ring = 11;        
 	required uint32 soul_memory = 12;               

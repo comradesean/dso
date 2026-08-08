@@ -113,7 +113,19 @@ message PlayerLocation {
 	optional uint32 cell_id = 2;        // 1074321607, 3225573558, 1078414675,
 	optional uint32 online_activity_area_id = 3;      // 0, 101640, 103130, 103110, 103120,
 	optional Vector position = 4;
-	optional float unknown_5 = 5;       // 1074321607, 3225573558, 1078414675
+	// AN ANGLE IN RADIANS, wrapped to (-pi, pi]. 2,490 live values in the
+	// 2026-08-07/08 corpus, 1,705 of them distinct: min is exactly -3.14159, max
+	// is exactly +3.14159, NOTHING falls outside, and the values cover the whole
+	// circle (rounded histogram -3:188 -2:480 -1:441 0:452 1:284 2:411 3:234).
+	//
+	// A float hard-bounded at +-pi over the full range is an angle; that much is
+	// measured. Sitting immediately after `position`, the player's facing/yaw is
+	// the only sensible referent, but that last step is placement rather than
+	// measurement, so the field keeps its placeholder name.
+	//
+	// The old comment here ("1074321607, 3225573558, 1078414675") was the raw
+	// fixed32 bit patterns read as integers, not values.
+	optional float unknown_5 = 5;
 }
 
 message PlayerStatus_Phantom_leave_at {
@@ -136,7 +148,22 @@ message PlayerStatus {
 	repeated uint32 played_areas = 12;    
 	optional uint32 unknown_13 = 13;
 	optional uint32 unknown_14 = 14;
-	optional uint32 soul_level = 15;    
+	optional uint32 soul_level = 15;
+	// SOULS CURRENTLY HELD. 182 live values in the 2026-08-07/08 corpus:
+	//
+	//   - In the 08:52:36-08:56:13 run, twelve consecutive uploads have
+	//     d(unknown_16) EXACTLY equal to d(soul_memory) -- 161, 322, 323, 323,
+	//     323, 323, 323, 646, 646, 646, 323. Souls gained raise both by the same
+	//     amount, which is the defining relationship between held souls and soul
+	//     memory.
+	//   - The only decrease is 7515 -> 2515, exactly -5000, with soul_memory
+	//     unchanged. The only RequestNotifyBuyItem that machine ever sent reports
+	//     souls_spent = 5000. Spending lowers held souls and leaves memory alone.
+	//   - unknown_16 < soul_memory in all 182.
+	//
+	// IT IS A CACHED SNAPSHOT: refreshed only when the character record is, so it
+	// can lag the true value by tens of minutes (2515 persisted through nine
+	// deaths). Do not treat it as live. See tasks/unknown-fields.md.
 	optional uint32 unknown_16 = 16;
 	optional uint32 unknown_17 = 17;
 	optional uint32 play_time_seconds = 18;        
@@ -172,6 +199,23 @@ message StatsInfo {
 	optional uint32 unknown_15 = 15;
 	optional uint32 unknown_16 = 16;
 	optional DateTime datetime = 17;
+	// PLAY TIME IN SECONDS. 2,172 live values in the 2026-08-07/08 corpus, 2,029
+	// distinct, monotone non-decreasing in 2,170 of 2,170 consecutive pairs.
+	// Against the pcap's own clock, over the 2,167 same-machine pairs less than
+	// 600 s apart:
+	//
+	//   median d(unknown_18) / d(wall clock) = 0.997
+	//   |d(unknown_18) - d(wall clock)| <= 2 s in 1652 of 2167 (76%)
+	//
+	// The residual is one-sided in the right direction -- the counter runs slower
+	// than the clock across pauses and menus -- plus a few pairs straddling a
+	// capture seam. A worked run: 05:17:39 -> 05:18:00 -> 05:18:20 -> 05:18:40 ->
+	// 05:19:00 gives deltas 20, 20, 20, 20 against elapsed 21, 20, 20, 20.
+	//
+	// NOTE this means PlayerStatus field 18, currently named play_time_seconds, is
+	// NOT play time: it is 20200 in 169 of 169 across two characters and 15 hours,
+	// and 20200 is exactly MatchingParameter.calibration_version. That rename is
+	// out of scope here; see tasks/unknown-fields.md.
 	optional uint32 unknown_18 = 18;
 	repeated uint32 unlocked_bonfires = 19;
 	optional uint32 unknown_20 = 20;
