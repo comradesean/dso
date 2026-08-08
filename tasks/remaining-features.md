@@ -562,9 +562,12 @@ retail player ever heard a belfry bell while nowhere near a belfry.
 
   Two things to settle before implementing, both cheap and both capable of silently inverting the
   filter if guessed:
-  - **Polarity of field 8.** It read `1` in all 412 `MatchingParameter` blocks in the corpus, and the
-    field name is the reference author's guess, so `1` may mean "cross-region play disabled" or "the
-    toggle is on". Flip the in-game network option and re-capture.
+  - ~~**Polarity of field 8.**~~ **ANSWERED 2026-08-08.** The player toggled the in-game option, so
+    the corpus now holds both values, and peer IPs give the host's country for every invasion.
+    **With field 8 = 1 we were matched into 14 countries** (FR, CN, IT, RU, JP, DE, PL, UA, SE, DZ,
+    AT, BR, TR, GB) across 54 invasions, against 15 US ones — so `1` is NOT a restriction that
+    FromSoftware honoured, whichever way the name is meant to read. The `0` sample is six invasions
+    and settles nothing by itself. See `tasks/bell-broadcast.md`.
   - **Whether `unknown_9` is the region.** Also `1` everywhere — but every capture is from one
     location, so constant-ness proves nothing. A capture from a second location settles it.
 

@@ -178,9 +178,40 @@ geographic notion of region. But BR and TR being heard makes any simple geograph
 **Incidentally the same data shows DS2's matchmaking was genuinely global** — hosts in IT, DE, PL,
 BR, TR and US inside a few hours of belfry play from one US client.
 
-**The two silences remain unexplained, and they are both in the first batch** (09:12:16, 09:47:24),
-while every same-zone case in batches 2 and 3 was heard. "Batch 1 behaved differently" is now the
-most that can be said, and it is a description rather than a cause.
+**The two silences are treated as OUTLIERS from here on.** Both are in the first batch (09:12:16,
+09:47:24); every same-zone case in batches 2 and 3 was heard. Two candidate causes were raised from
+play — server congestion, and the player having set cross-region play to unrestricted to get more
+invasions — and neither is testable against this data:
+
+- **The cross-region toggle is ruled OUT by timing.** `disable_cross_region_play` really was toggled
+  (see below), but the first change is at **08-07 23:50:18**, fourteen hours after both silences. At
+  09:12 and 09:47 both machines had been sending the same value since login.
+- **Congestion is not visible on the wire.** Nothing in the capture reports server load, and a push
+  that was never sent looks exactly like one that was dropped.
+
+So: recorded, not explained, and not treated as evidence about the delivery rule. 2 of 13 same-zone
+cases, both inside one three-hour window on one night.
+
+### What the toggle DID settle: `disable_cross_region_play = 1` is not a restriction
+
+Testing the toggle hypothesis needed the flag's history, and having both that and the host countries
+answers a question `tasks/remaining-features.md` had listed as unresolvable from the protocol alone:
+**which way round field 8 runs.**
+
+It changes: LOCAL flips it five times and VM three, all on 08-07 23:50 or later. Cross-referencing
+every invasion against the value we were sending at the time:
+
+| our `disable_cross_region_play` | US hosts invaded | non-US hosts invaded |
+|---|---|---|
+| **1** | 15 | **39** |
+| 0 | 4 | 2 |
+
+**With the flag at 1 we were matched into 14 different countries** — FR, CN, IT, RU, JP, DE, PL, UA,
+SE, DZ, AT, BR, TR, GB — so whatever field 8 means, **1 is not a restriction that FromSoftware
+honoured**. The reference schema's name is the original author's guess and should be treated as one.
+The `f8 = 0` sample is only six invasions and settles nothing on its own.
+
+
 
 ### The evidence behind it, and what is still unmeasured
 
