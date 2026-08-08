@@ -980,20 +980,35 @@ message PushRequestVisit {
 // (uint32, uint32, uint32, bytes). Field 1 is the push id, as in every other
 // push here.
 //
-// Fields 2-4 have UNKNOWN meaning. Nothing has ever sent one of these, so there
-// is no capture to learn from and the assignment below is a considered guess:
-// the client->server RequestNotifyRingBell carries the map id and an always-
-// empty byte string, so the broadcast most likely relays the same map id, with
-// field 4 the same empty blob. field_3 is sent as 0 for want of anything better.
+// FIELDS 2-4 ARE SETTLED, against 27 of FromSoftware's own tolls in the
+// 2026-08-07/08 corpus (`corpus/PUSH_0x03ef_.../`, every instance, both
+// machines). An earlier comment here had field 2 as the map id and field 3 as
+// "unknown, sent as 0"; that was a guess made before any capture existed and it
+// was wrong. See tasks/bell-broadcast.md and tasks/unknown-fields.md.
+//
+// These meanings are about being faithful to FromSoftware's wire, NOT about
+// driving the client: the PS3 client never reads this body at all. Its handler
+// sets a boolean latch and the loaded map's own script asks IsBellRung(). See
+// internal/server/game/telemetry.go, which already sends the values below.
 //
 // All four are declared required so we cannot forget one. The client's
 // IsInitialized would drop the whole message over a missing field, and that
 // failure is silent.
 message PushRequestNotifyRingBell {
 	required PushMessageId push_message_id = 1;
-	required uint32 field_2 = 2; // believed to be the map id, e.g. 10160000
-	required uint32 field_3 = 3; // unknown; sent as 0
-	required bytes  field_4 = 4; // believed to mirror the request's empty blob
+	// The REPORTING HOST's player id -- the player whose client emitted the
+	// 0x03EE, i.e. the invaded host who died, NOT the invader who pulled the
+	// lever and NOT the recipient. 27/27 carry a value in the live player-id
+	// range; in four captured ring/toll pairs where both ends were ours it is
+	// exactly the id of the machine that sent the 0x03EE, ~95 ms earlier.
+	required uint32 field_2 = 2;
+	// Map id of the belfry that was rung, matching field 1 of the 0x03EE that
+	// caused it. 10 of 10 Luna tolls = 10160000 (Belfry Luna and Servants'
+	// Quarters share the area), 17 of 17 Sol tolls = 10190000 (Iron Keep, with
+	// Belfry Sol inside it).
+	required uint32 field_3 = 3;
+	// Empty in all 27, mirroring the empty field 2 of the request.
+	required bytes  field_4 = 4;
 }
 
 // Client -> server, sent when a covenant defender pulls a belfry lever after
@@ -1006,9 +1021,15 @@ message PushRequestNotifyRingBell {
 // field_1 is uint32, not int32: ByteSize takes the unsigned varint-size path.
 // field_2 is always constructed empty by the only caller, so it goes out as
 // `12 00`.
+//
+// CONFIRMED AGAIN against FromSoftware's own traffic: all 6 rings in the
+// 2026-08-07/08 corpus are ONE OF TWO literal hex strings and nothing else --
+// `08808fec041200` (Belfry Luna, 10160000) three times and `08b0f9ed041200`
+// (Belfry Sol / Iron Keep, 10190000) three times. So the message carries the map
+// and nothing that varies with who rang, when, or where in the belfry.
 message RequestNotifyRingBell {
-	optional uint32 field_1 = 1; // map id, DS2 decimal form (10160000)
-	optional bytes  field_2 = 2; // always empty
+	optional uint32 field_1 = 1; // map id, DS2 decimal form. 6/6: 10160000 x3, 10190000 x3
+	optional bytes  field_2 = 2; // always empty -- 6/6 in the corpus
 }
 
 message RequestNotifyRingBellResponse {

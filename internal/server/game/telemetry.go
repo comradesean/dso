@@ -564,20 +564,28 @@ func (s *Service) maybeSendTestBellToll(log logger) {
 	}
 	s.lastTestBell = time.Now()
 
+	mapID := testBellMapID()
+
 	body, err := proto.Marshal(&ds2pb.PushRequestNotifyRingBell{
 		PushMessageId: ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell.Enum(),
-		Field_2:       proto.Uint32(10160000), // Belfry Luna's map
-		// UNDER TEST: field 3 was the invented literal 0, and this is Belfry
-		// Luna's activity cell — the finer-grained location, the same value the
-		// Bell Keeper pool matches on. If field 3 is a location or a bell
-		// identity, this is the value it would want.
-		//
-		// The decompilation says the consumer never reads this field at all, so
-		// the prediction is that NOTHING changes: the bell rings exactly as
-		// before, in the same places. A change of any kind — a different bell,
-		// a different range, silence — refutes that and means a reader exists
-		// which the analysis missed, as one already did for the sink pointer.
-		Field_3: proto.Uint32(101640),
+
+		// Field 2 is the REPORTING HOST's player id — the invaded player whose
+		// client emitted the 0x03EE after dying. A synthetic toll has no host,
+		// so this is deliberately ZERO rather than a borrowed player id.
+		// Inventing a real-looking id would put a lie in the one field of this
+		// message whose meaning is actually established (27 captured tolls), and
+		// anyone reading a log afterwards would take it at face value.
+		Field_2: proto.Uint32(0),
+
+		// Field 3 is the map id of the belfry rung. Settled from the same 27
+		// tolls: 10 of 10 Luna carried 10160000 and 17 of 17 Sol carried
+		// 10190000. This used to send 101640, a CELL id, from a period when
+		// field 2 was believed to be the map and field 3 unknown. Both readings
+		// were wrong; the code that sends real tolls was already right.
+		Field_3: proto.Uint32(uint32(mapID)),
+
+		// Empty in all 27 captured tolls, mirroring the empty field 2 of the
+		// 0x03EE that provokes them.
 		Field_4: []byte{},
 	})
 	if err != nil {
@@ -588,7 +596,7 @@ func (s *Service) maybeSendTestBellToll(log logger) {
 	// observable. A player roams, hears the toll only in the map this names, and
 	// that is the experiment. Adding the location filter here would quietly
 	// destroy it.
-	var sent, skipped int
+	var sent int
 	for _, other := range s.sessions {
 		if other.playerID == 0 {
 			continue
@@ -597,9 +605,31 @@ func (s *Service) maybeSendTestBellToll(log logger) {
 		sent++
 	}
 	if sent > 0 {
-		log.Info("TEST bell toll sent with no bell rung anywhere",
-			"recipients", sent, "skipped_out_of_region", skipped, "map_id", 10160000)
+		// No skipped count here on purpose: the old line logged
+		// skipped_out_of_region, which is now permanently 0 and would read as
+		// evidence that a filter ran. Nothing is filtered on this path.
+		log.Info("TEST bell toll sent with no bell rung anywhere — UNFILTERED, every session",
+			"recipients", sent, "claimed_map_id", mapID, "reporting_host", 0)
 	}
+}
+
+// testBellMapID is the belfry a synthetic toll claims to come from.
+//
+// Configurable because the experiment it exists for is "walk somewhere and see
+// whether a bell sounds", and that has to be run once per belfry. Belfry Luna by
+// default; 10190000 is Iron Keep, which contains Belfry Sol.
+//
+// NOTE this does not change WHO the toll is sent to. The test path deliberately
+// sends to everyone regardless of location — see the comment at the send loop —
+// so what this selects is what the message SAYS, which is the client-side half
+// of the question.
+func testBellMapID() uint64 {
+	if v := os.Getenv("DSO_BELL_TEST_MAP"); v != "" {
+		if n, err := strconv.ParseUint(v, 10, 32); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 10160000 // Belfry Luna
 }
 
 func testBellInterval() time.Duration {
