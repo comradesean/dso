@@ -288,7 +288,7 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // WHAT WE SEND, and how well each value is actually understood:
 //
 //	field 1  the push id. CONFIRMED from the binary.
-//	field 2  the map id lifted from the ringer's own 0x03EE. CONFIRMED
+//	field 2  the map id lifted from the reporting host's own 0x03EE. CONFIRMED
 //	         SEMANTICALLY 2026-08-06 — see below. Forwarding it here was a guess
 //	         and the guess was right.
 //	field 3  the literal 0. INVENTED, because proto2 required something.
@@ -318,7 +318,7 @@ func (s *Service) handleNotifyRingBell(log logger, cs *clientSession, payload []
 // Consequences worth knowing:
 //
 //   - The invented values in fields 3 and 4 carry no risk, and equally no
-//     meaning. Field 2 is kept as the ringer's map id only so a PC client or a
+//     meaning. Field 2 is kept as that map id only so a PC client or a
 //     future consumer would have it — nothing on PS3 acts on it.
 //   - THE LATCH IS A BOOLEAN, NOT A COUNTER. Two pushes arriving between script
 //     polls collapse into one toll, so a burst of genuine rings under-reports.
@@ -415,7 +415,12 @@ func bellRegionFor(ringMap uint32) []uint32 {
 	return []uint32{ringMap}
 }
 
-// Sent to everyone EXCEPT the ringer. Their own client already played the bell
+// Sent to everyone EXCEPT the sender of the 0x03EE.
+//
+// Note who that is: the INVADER pulls the lever, but the HOST's client is
+// authoritative for its own world, so the HOST is what sends 0x03EE and what
+// gets excluded here. The invader who actually rang it hears the toll like
+// anyone else standing in the area. Their own client already played the bell
 // locally, and a relay would give them a second one.
 func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint32) {
 	if !bellBroadcastEnabled() {
@@ -431,15 +436,23 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 	//	18 808fec04    field 3 = 10160000, the ringing bell's MAP id
 	//	22 00          field 4 = empty bytes
 	//
-	// Field 2 is the HOST of the world the bell rang in, not the ringer. An
-	// earlier note here said "ringer" and that was wrong. A second capture
-	// settled it within one session: a Bell Keeper visitor push (0x3CC) invited
-	// that client into host 2350487's world at map 10160000, and the bell toll
-	// that followed carried f2=2350487 f3=10160000 — the same host, the same
-	// map. The receiving client's own id was 3473926, so it is not the ringer's
-	// either.
+	// Field 2 is the HOST of the world the bell rang in — the client that
+	// REPORTED the ring, not the player who pulled the lever.
 	//
-	// We send the ringer's id because the host is not threaded through here. The
+	// Both halves of that mattered and both were got wrong once. The invader is
+	// who actually rings the bell, having beaten the host; the host's client is
+	// authoritative for its own world, so the host is what emits 0x03EE and what
+	// this field names. An earlier note here called it "the ringer", which is
+	// wrong twice over.
+	//
+	// A capture settled the identity within one session: a Bell Keeper visitor
+	// push (0x3CC) invited that client into host 2350487's world at map 10160000,
+	// and the toll that followed carried f2=2350487 f3=10160000 — same host, same
+	// map. The receiving client's own id was 3473926, so it is not the recipient's
+	// id either.
+	//
+	// We send the 0x03EE sender's id because the host is not threaded through
+	// here — for a real belfry ring those are the same player anyway. The
 	// client never reads the body — it sets a boolean latch — so this affects
 	// nothing observable, but do not mistake it for a faithful reproduction.
 	// See tasks/bell-broadcast.md.
@@ -510,7 +523,7 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 		sent++
 	}
 	log.Info("broadcast bell toll",
-		"ringer_player_id", from.playerID, "map_id", mapID,
+		"reporting_host_player_id", from.playerID, "map_id", mapID,
 		"push_id", fmt.Sprintf("%#04x", int(ds2pb.PushMessageId_PushID_PushRequestNotifyRingBell)),
 		"recipients", sent, "skipped_out_of_region", skipped,
 		"payload_bytes", len(body))
@@ -526,7 +539,7 @@ func (s *Service) broadcastBellToll(log logger, from *clientSession, mapID uint3
 // server-generated toll with nobody ringing anything anywhere is the only clean
 // test of whether 0x03EF does anything on the receiving end.
 //
-// Off unless explicitly set. Sends to every player, since there is no ringer to
+// Off unless explicitly set. Sends to every player, since there is no reporting host to
 // exclude.
 func (s *Service) maybeSendTestBellToll(log logger) {
 	every := testBellInterval()

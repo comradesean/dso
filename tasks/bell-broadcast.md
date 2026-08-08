@@ -37,7 +37,7 @@ it":
                     BYSTANDER — LOCAL was not in that session at all.
 
 22:54:08  LOCAL, as phantom, killed a third-party host.
-          22:54:20  that host (3161263) is the ringer.  LOCAL, the killer, hears it.
+          22:54:20  that host (3161263) REPORTS it.  LOCAL, who pulled the lever, hears it.
 ```
 
 **Only the first is a self-invasion**, and it is the only session in this batch where both machines
@@ -48,9 +48,11 @@ Roles are read from the traffic, not assumed: `0x03E8 NotifyJoinGuestPlayer` mea
 *my* world, so I am the host and I was invaded; `0x03EA NotifyJoinSession` means I entered someone
 else's, so I am the phantom and I invaded.
 
-**So "the ringer" in `0x03EF` field 2 is the host of the world the bell rang in**, and the
-ringer-exclusion rule means the *host* is the one who does not hear it. The victorious invader
-does. Our `telemetry.go` excludes `from.playerID`, which is the sender of `0x03EE` — the same
+**Nobody in this exchange is "the ringer" in the sense the field name suggests.** The INVADER
+pulls the lever. The HOST's client is authoritative for its own world, so it is the one that
+*reports* the ring with `0x03EE`, and `0x03EF` field 2 carries that reporting host's id. The
+exclusion rule is therefore: the **reporting host** does not get the toll back. The invader who
+actually rang it does — they are in the area like everyone else. Our `telemetry.go` excludes `from.playerID`, which is the sender of `0x03EE` — the same
 player — so the behaviour matches, but the reason is not the one the code comment implies.
 
 **A bell follows a kill only sometimes: 2 of 10.** Separated by role, out of 30 outcomes:
@@ -83,7 +85,7 @@ at 18:21:33 names host 2910025, which is LOCAL.
 ### It broadcasts to the AREA AROUND THE BELL
 
 Established from play, and every measurement in the corpus agrees. Recorded because two rounds of
-analysis wandered off into whether the hearer was in the ringer's session or invasion — they are
+analysis wandered off into whether the hearer was in the reporting host's session or invasion — they are
 not the predicate, and testing that was a detour. A player hears a bell because of **where they are
 standing**, not because of who was fighting whom.
 
@@ -111,20 +113,20 @@ Bracketing each bell with the last fix before and the first after:
 
 | time | bell map | LOCAL | VM | verdict |
 |---|---|---|---|---|
-| 18:21:51 | Luna | Luna, **missed** | Luna, got | LOCAL is the ringer |
+| 18:21:51 | Luna | Luna, **missed** | Luna, got | LOCAL is the reporting host |
 | 18:32:48 | **Sol** | Sol at −29s, Luna at +10s, **got** | Luna, **missed** | VM in the wrong map missed it |
 | 21:02:17 | Luna | Luna, got | Luna, got | both in map |
 | 21:24:00 | Luna | Luna, got | Luna, got | both in map |
-| 22:15:43 | Luna | Luna at −581s, Sol at +75s, got | Luna, **missed** | VM is the ringer |
+| 22:15:43 | Luna | Luna at −581s, Sol at +75s, got | Luna, **missed** | VM is the reporting host |
 | 22:23:57 | Sol | Sol, got | Sol, got | both in map |
 | 22:39:58 | Sol | Sol, got | Sol, got | both in map |
 | 22:54:20 | Sol | Sol, got | Sol, got | both in map |
 
 **Every one of the eight is consistent with "delivered to players in the bell's map, except the
-ringer."** Nothing requires cross-map delivery.
+reporting host."** Nothing requires cross-map delivery.
 
 The case I had called proof of crossing was 22:15:43: LOCAL's nearest fix was Sol, 75s *after* the
-bell — but the fix *before* it says Luna, and the ringer moved to Sol in the same window, so both
+bell — but the fix *before* it says Luna, and the reporting host moved to Sol in the same window, so both
 players were plainly in Luna at the ring and travelled together afterwards. Using the nearest fix
 rather than the bracket inverted the answer.
 
@@ -221,11 +223,12 @@ s2c  ...0000 0320                 push wrapper opcode
 - **`0x03EF` is real and FromSoftware sent it.** Not dead code, not a guess from the PS3 binary.
 - **The field layout, which we had backwards.** Field 3 carries the map; field 2 is a
   server-assigned **player id**, not a map. Corrected in `broadcastBellToll`.
-- **Field 2 is the HOST of the world the bell rang in** — not the ringer, which is what this file
+- **Field 2 is the HOST of the world the bell rang in** — the client that REPORTED the ring, not
+  the player who pulled the lever, and not the recipient. This file
   said first. A second pair of captures settled it inside one session: a Bell Keeper visitor push
   (`0x3CC`) invited that client into host **2350487**'s world at map **10160000**, and the bell toll
   that followed carried `f2=2350487 f3=10160000`. Same host, same map. The receiving client's own id
-  was 3473926, so it is not the ringer's either.
+  was 3473926, so it is not the recipient's either.
 - **Pushes ride a wrapper opcode `0x0320`**, with the real push id in protobuf field 1. That is why
   an opcode table keyed on the message header mislabels every push.
 - **The map filter was wrong.** A listener in `m10_14` received a toll for `m10_16`. Our filter
@@ -411,7 +414,7 @@ discriminate: a Luna ring reaching a Lost Bastille player is consistent with bot
 - **A Sol ring has never been captured.** That it carries `10190000` is inference from the
   generic map-id helper the decomp traced — well-founded, unobserved.
 - **Fields 3 and 4 have no known meaning.** They are inert on PS3, so this only matters for
-  a PC client or some future consumer. Field 2 is kept as the ringer's map id on the same
+  a PC client or some future consumer. Field 2 is kept as that map id on the same
   grounds.
 
 ### Current settings
