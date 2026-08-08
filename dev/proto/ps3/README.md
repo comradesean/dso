@@ -24,6 +24,23 @@ reimplementation of a different edition.
 Login and auth *framing* is unchanged from PC and is byte-verified for both — use
 `../pc/` for those, and this directory's auth file only for the stage-4 struct.
 
+## What a live capture corpus added (2026-08-07)
+
+Reading FromSoftware's own traffic settled three things these specs had left open
+or wrong, all of them in the message layer:
+
+- **`msg_index` is little-endian**, while the two fields before it are big-endian.
+  Proven 6,515/6,515. It is not cosmetic: a reply echoes its request's index, and
+  since a reply carries opcode 0 that echo is the only thing that identifies it.
+- **A reply's header is 28 bytes, a push's is 12.** Probing for the protobuf start
+  instead of deriving it from the header put 42% of a corpus at the wrong offset,
+  with the index parsed as protobuf.
+- **The push model is the PC model** — `0x0320`, `msg_index = 0xFFFFFFFF`, real id
+  in protobuf field 1. Previously marked UNRESOLVED here.
+
+Also: the payload can contain protobuf **groups** (wire types 3/4), which DS2 still
+uses; and zlib streams use a 4 KB window, so they begin `58 c3`, not `78 9c`.
+
 ## The differences that will bite you
 
 **1. `game_server_info` is 56 bytes, not 184.** Hard equality check at vaddr
@@ -31,9 +48,15 @@ Login and auth *framing* is unchanged from PC and is byte-verified for both — 
 error, no log — then binds `0.0.0.0:0` and never sends. It has a binary u32 IP (not
 ASCII), no `stack_data` block, and ten trailing u32 rather than eleven.
 
-**2. Six PC opcodes do not exist here.** `0x03FA`, `0x03FB`, `0x03FC`, `0x03FD`,
-`0x03FF`, `0x0400` have no code in this client. The opcode space is `0x0320` plus
-`0x0386`–`0x03F9` and nothing above.
+**2. FIVE PC opcodes do not exist here** — `0x03FB`, `0x03FC`, `0x03FD`, `0x03FF`,
+`0x0400`. On the launch disc the opcode space is `0x0320` plus `0x0386`–`0x03F9`.
+
+> **Corrected 2026-08-07.** This used to say six, including `0x03FA`. That opcode
+> **does** exist, in **v1.10 only**: `li r4,0x03fa` occurs zero times in the v1.00
+> EBOOT and twice in the title update, and two real v1.10 clients were seen sending
+> it at boot. It is `RequestGetRightMatchingArea`, it feeds the bonfire warp
+> screen's population hints, and it is implemented. "Absent from the binary" is
+> only ever true of the build it was measured on.
 
 **3. BreakIn pushes are `0x03B9`–`0x03C8`**, sixteen aliases — *not* the
 `0x03FB`/`0x03FC`/`0x03FD` the PC reference lists. A server built from the PC map

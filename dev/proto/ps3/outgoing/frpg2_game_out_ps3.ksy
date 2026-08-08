@@ -84,14 +84,13 @@ types:
 
         REPLY - msg_type 0, msg_index copied from the request, and a 16-byte
                 response header before the protobuf.
-        PUSH  - unsolicited. The PC reference says these use msg_type 0x0320 with
-                msg_index 0xFFFFFFFF, identified by the first protobuf field.
-                UNRESOLVED ON PS3: the client's push dispatcher (vaddr 0x158C138)
-                keys on a u32 the caller has already placed on the stack, and
-                decompilation could not establish statically whether that value
-                comes from the transport header or from a parsed protobuf field.
-                Both models fit the evidence. Do not assume the PC model holds
-                here until a push has actually been driven end to end.
+        PUSH  - unsolicited. msg_type 0x0320, msg_index 0xFFFFFFFF, and the real
+                push id in PROTOBUF FIELD 1. **RESOLVED 2026-08-07** - the PC
+                model does hold here. Driven end to end from this server (the
+                banner, the regulation push and the bell toll all render on a
+                real console), and independently corroborated by captures of
+                FromSoftware's own live server, where every push arrives in
+                exactly that shape.
 
       IMPORTANT - 16 client->server opcodes register NO response callback, so the
       client never parses a reply body for them. Confirmed live: the client
@@ -107,12 +106,31 @@ types:
         doc: 0 for a reply. See the push caveat above.
       - id: msg_index
         type: u4le
-        doc: Echoed from the request for a reply.
+        doc: |
+          LITTLE-ENDIAN, while the two fields before it are big-endian.
+          Echoed from the request for a reply, 0xFFFFFFFF for a push.
+
+          This echo is the ONLY link between a response and its request: a reply
+          carries msg_type 0, so without the index it cannot be attributed to an
+          opcode at all. In a 15,573-message corpus it named all 7,739 responses,
+          which are half the traffic.
       - id: response_header
         type: response_header
         if: msg_type == 0
+        doc: |
+          Present ONLY on replies, which makes a reply's total header 28 bytes
+          against a push's 12. Missing that distinction is what let cmd/corpus
+          mis-place 42% of its output. An empty reply body is normal and common.
       - id: protobuf_body
         size-eos: true
+        doc: |
+          May contain protobuf GROUPS (wire types 3/4). The
+          RequestGetRightMatchingArea response is entirely groups: a repeated
+          `field 1 group { area_id, population }`.
+
+          MEASURED from FromSoftware's live server, 97 of 97 responses: exactly
+          THREE areas, sorted by population DESCENDING. A server that returns a
+          different count, or an unsorted list, is not reproducing the original.
 
   response_header:
     doc: |

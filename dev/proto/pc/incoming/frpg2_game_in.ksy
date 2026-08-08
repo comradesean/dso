@@ -160,9 +160,19 @@ types:
         doc: |
           12 on every message observed. NOTE: on server->client RESPONSES the protobuf
           does not begin at offset 12 -- an extra 16 bytes sit between msg_index and the
-          protobuf, so the body starts at 28. Those 16 bytes are UNIDENTIFIED; cmd/corpus
-          finds the boundary by trial-parsing rather than assuming one. Requests do start
-          at 12.
+          protobuf, so the body starts at 28. Requests start at 12.
+
+          IDENTIFIED 2026-08-07: those 16 bytes are the response header, `{0, 1, 0, 0}`
+          written LITTLE-endian (the TCP response header holds the same values
+          big-endian; they look alike in a hexdump only because the values are small).
+
+          DERIVE the offset from the header, never probe for it. cmd/corpus used to
+          trial-parse starting at 8, and offset 8 is msg_index -- four bytes of index
+          parse as valid protobuf often enough that 6,515 of 15,573 files, 42% of the
+          corpus, were written with the index prepended to their payload. Verified after
+          the fact: in every one of those files the first four payload bytes read as a
+          little-endian u32 equal the file's own index. The rule is simply
+          `12, or 28 when msg_type == 0`.
       - id: msg_type
         type: u4
         doc: |
@@ -171,7 +181,13 @@ types:
           numbering mapped from the PS3 binary.
 
           RESPONSES CARRY msg_type 0. They are matched to their request by msg_index,
-          not by an echoed opcode -- 1,925 of the captured corpus are these.
+          not by an echoed opcode -- 7,739 of the 15,573-message corpus are these, and
+          every one was successfully attributed to a request that way.
+
+          The protobuf body may contain GROUPS (wire types 3/4), the deprecated
+          construct. DS2 still uses them: RequestNotifyKillEnemy and the
+          RequestGetRightMatchingArea response are both groups, and a reader that
+          rejects wire type 3 stops mid-message on live traffic.
 
           Special case CONFIRMED LIVE: 0x0320 client->server is RequestSendMessageToPlayers,
           but 0x0320 server->client with msg_index 0xFFFFFFFF is a PUSH, and the real push

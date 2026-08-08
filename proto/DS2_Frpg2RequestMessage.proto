@@ -347,6 +347,12 @@ message RequestNotifyBuyItemResponse {
     // Never received.
 }
 
+// field_3 SEPARATES THE TWO KINDS OF DEATH, 26 of 26 in the 2026-08-07 corpus:
+//   14 = we died as a PHANTOM inside someone else's session
+//    0 = we died in our OWN world
+// Cross-checked against the role derived independently from the join messages
+// (0x03E8 guest-joined-us vs 0x03EA we-joined-them); they agreed every time.
+// A death with field_4 = 1 and field_5 = <six-digit id> is PvE, the enemy id.
 message RequestNotifyDeath {
 	required uint32 online_area_id = 1;
 	required uint32 cell_id = 2;
@@ -427,10 +433,17 @@ message RequestNotifyKillEnemyResponse {
 // 14/0/5 in field_1 and 0/10/13 in field_3, i.e. the session-kind-looking values
 // in the OTHER field. Either the layout differs on PS3 or those samples were
 // read wrongly. The PS3 wire above is what we follow.
+// Fields 1 and 3 are NOT consistent between the two records below, and the
+// difference has never been explained. A 2026-08-07 corpus of 14 kills from live
+// PC traffic has field_1 = 14 (the session kind) and field_3 = 0 in ALL 14, which
+// is the opposite placement from the PS3 live capture noted here.
+//
+// Only field_2 is safe to rely on: it is the victim, agreed by both, and every
+// conclusion drawn from these messages rests on it alone.
 message RequestNotifyKillPlayer {
-	required int64 field_1 = 1; // PC captures: 14, 0, 5. PS3 live: 0
-	required int64 field_2 = 2; // victim player id (CONFIRMED live)
-	required int64 field_3 = 3; // session kind (PS3 live: 14). PC captures: 0, 10, 13
+	required int64 field_1 = 1; // PS3 live: 0.  PC corpus: 14 (session kind) in 14/14
+	required int64 field_2 = 2; // victim player id (CONFIRMED live, both platforms)
+	required int64 field_3 = 3; // PS3 live: 14 (session kind).  PC corpus: 0 in 14/14
 	required int64 field_4 = 4; // 0, 1
 	required int64 field_5 = 5; // 0
 }

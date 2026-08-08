@@ -108,6 +108,10 @@ types:
         doc: |
           Non-zero if the reassembled payload is zlib-compressed; fragment 0 then
           carries an extra u4be decompressed length before its body.
+
+          The stream uses a 4 KB window (CINFO=5), so it begins `58 c3` rather
+          than the familiar `78 9c`. That is a valid zlib header - CM=8, and the
+          two bytes divide by 31 - but it does not look like one at a glance.
       - id: unknown_1
         size: 3
       - id: total_payload_length
@@ -135,14 +139,34 @@ types:
       - id: msg_index
         type: u4le
         doc: |
-          Read little-endian to match the TCP layer. Observed values decode as
-          0x13000000, 0x2E000000 etc, which byte-swapped are small integers - so
-          this layer may actually be big-endian here. It round-trips correctly
-          either way because the server echoes the same bytes back, so it is
-          cosmetic until something depends on index ordering. UNRESOLVED.
+          LITTLE-ENDIAN. RESOLVED 2026-08-07 - the two fields before it are
+          big-endian and this one is not, which is as odd as it looks.
+
+          Proof: across a 15,573-message corpus, every message whose payload was
+          mistakenly taken to start at offset 8 had its first four bytes equal
+          the message index read as a little-endian u32. 6,515 of 6,515, zero
+          mismatches.
+
+          This is NOT cosmetic, and assuming otherwise cost real work: a reply
+          echoes the index of the request it answers, so it is the only thing
+          that pairs a response with its request. Half a capture corpus is
+          responses, whose header carries no opcode at all, and they are
+          anonymous without it.
       - id: protobuf_body
         size-eos: true
-        doc: Protobuf; Kaitai does not parse it. See docs/protocol-map-ps3.md.
+        doc: |
+          Protobuf; Kaitai does not parse it. See docs/protocol-map-ps3.md.
+
+          The body starts at offset 12 for a request, and NEVER at 8 - offset 8
+          is the msg_index above. Four bytes of index parse as valid protobuf
+          often enough to fool a decoder that probes offsets, which is exactly
+          what happened to cmd/corpus: 42% of its output carried the index
+          prepended to the payload and a decoded tree built from it.
+
+          The body may contain protobuf GROUPS (wire types 3 and 4), the
+          deprecated construct. DS2 still uses them - RequestNotifyKillEnemy and
+          the RequestGetRightMatchingArea response both do - so a reader that
+          rejects wire type 3 will stop mid-message on live traffic.
 
 enums:
   packet_type:
@@ -163,9 +187,16 @@ enums:
     0x36: fin_ack
     0x38: dat_frag_ack
 
-  # The PS3 opcode space: 0x0320 plus 0x0386-0x03F9. NOTHING exists at or above
-  # 0x03FA. The PC reference lists 0x03FA, 0x03FB, 0x03FC, 0x03FD, 0x03FF and
-  # 0x0400 - none of them have any code in this client. Do not implement them.
+  # The PS3 opcode space: 0x0320 plus 0x0386-0x03F9 on the LAUNCH DISC.
+  #
+  # CORRECTED 2026-08-07: 0x03FA DOES exist, in v1.10 only. `li r4,0x03fa`
+  # occurs zero times in the v1.00 EBOOT and twice in the title update, and two
+  # real v1.10 clients were seen sending it at boot. It is implemented. The
+  # never-implement list is therefore FIVE opcodes - 0x03FB, 0x03FC, 0x03FD,
+  # 0x03FF, 0x0400 - not six.
+  #
+  # The lesson generalises: "absent from the binary" is only ever true of the
+  # build it was measured on.
   #
   # Names marked LIVE were driven by a real BLUS41045 client against this server
   # on 2026-08-05. The rest are decomp-derived.
@@ -173,6 +204,12 @@ enums:
     0x0320: request_send_message_to_players    # client-relayed push tunnel
     0x0386: request_wait_for_user_login        # LIVE - first message, returns player_id
     0x0387: unknown_0387                       # exists on PS3, in neither PC table
+    # 0x0387/0x0388/0x038A are CLIENT-TO-SERVER, not pushes: each has a send site
+    # (0x16638F4, 0x1663994, 0x1663A34, all from one function 0x16633A8) rather
+    # than a push-handler registration. None has ever been observed on the wire,
+    # and they cannot appear in a PC capture because they are PS3-only. The best
+    # candidate for what switches them on is 0x038C, which carries exactly three
+    # upload periods against exactly three opcodes from one dispatch function.
     0x0388: unknown_0388                       # exists on PS3, in neither PC table
     0x038a: unknown_038a                       # exists on PS3, in neither PC table
     0x038d: server_ping                        # PC reference calls this DS3-only
@@ -239,3 +276,8 @@ enums:
     0x03f7: request_notify_buy_item             # no response callback
     0x03f8: request_get_power_stone_ranking_record_count
     0x03f9: request_notify_disconnect_session   # no response callback
+    # v1.10 ONLY -- absent from the launch disc, present in the title update, and
+    # seen at boot from two real v1.10 clients. Feeds the bonfire warp screen's
+    # population hints; the response is repeated protobuf GROUPS of
+    # {area_id, population}, three of them, sorted descending.
+    0x03fa: request_get_right_matching_area     # LIVE (v1.10)
